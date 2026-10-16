@@ -42,6 +42,7 @@ function renderPage(page) {
   $("crumbTitle").textContent = page;
   const admin = role === "admin";
   $("addCompanyButton").hidden = !(admin && page === "Companies");
+  $("companyInlineAdd").hidden = !(admin && page === "Companies");
   $("exportButton").hidden = page === "System settings" || page === "Companies";
   if (admin && page === "Companies") { renderCompanies(); return; }
   if (admin && ["Branches", "Technicians", "Customers"].includes(page)) { renderDirectory(page); return; }
@@ -65,6 +66,8 @@ function renderPage(page) {
 }
 function renderCompanies() {
   $("addCompanyButton").hidden = false;
+  $("companyInlineAdd").hidden = false;
+  $("addCompanyButton").innerHTML = "<span>＋</span> Add company";
   $("pageContent").hidden = false;
   $("metricGrid").hidden = true;
   $("tableTitle").textContent = "Companies on Servora";
@@ -239,6 +242,7 @@ $("logoutBtn").addEventListener("click", async () => {
 $("menuToggle").addEventListener("click", () => $("opsNav").closest(".ops-sidebar").classList.toggle("open"));
 document.addEventListener("DOMContentLoaded", () => { document.title = `${config.title} — Servora`; $("crumbTitle").textContent = config.title; $("workspaceKicker").textContent = config.kicker; $("tableTitle").textContent = config.tableTitle; $("tableSubtitle").textContent = config.tableSubtitle; $("sidePanelTitle").textContent = config.sideTitle; $("bottomTitle").textContent = config.bottomTitle; loadDashboard(); });
 $("addCompanyButton").addEventListener("click", () => { $("companyFormMessage").textContent = ""; $("companyDialog").showModal(); });
+$("companyInlineAdd").addEventListener("click", () => { $("companyFormMessage").textContent = ""; $("companyDialog").showModal(); });
 $("closeCompanyDialog").addEventListener("click", () => $("companyDialog").close());
 $("cancelCompany").addEventListener("click", () => $("companyDialog").close());
 $("companyForm").addEventListener("submit", async (event) => {
