@@ -3,6 +3,8 @@ import { API_BASE_URL } from "./config.js";
 let currentUser = null;
 let userAppliances = [];
 let userRequests = [];
+let registeredCompanies = [];
+let companyListLoadError = false;
 let selectedRequestId = null;
 
 const $ = (id) => document.getElementById(id);
@@ -105,10 +107,21 @@ async function readApiJson(path, options) {
 
 async function loadDashboardData() {
   try {
-    const [appliancesResult, requestsResult] = await Promise.allSettled([
+    const [appliancesResult, requestsResult, companiesResult] = await Promise.allSettled([
       readApiJson("/api/appliances"),
       readApiJson("/api/requests"),
+      readApiJson("/api/appliances/companies"),
     ]);
+
+    if (companiesResult.status === "fulfilled") {
+      registeredCompanies = companiesResult.value;
+      companyListLoadError = false;
+    } else {
+      registeredCompanies = [];
+      companyListLoadError = true;
+      console.error("Could not load registered companies:", companiesResult.reason);
+    }
+    renderCompanyOptions();
 
     if (appliancesResult.status === "fulfilled") {
       userAppliances = appliancesResult.value;
@@ -161,12 +174,30 @@ function renderAppliances() {
     <article class="rounded-xl border border-slate-200 p-4 transition hover:border-blue-200 hover:shadow-sm">
       <div class="flex items-start gap-3">
         <span class="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-blue-50 text-servora-600"><i data-lucide="${/^[a-z0-9-]+$/i.test(appliance.icon || "") ? appliance.icon : "box"}" class="h-5 w-5"></i></span>
-        <div class="min-w-0 flex-1"><h3 class="truncate text-sm font-bold text-slate-900">${escapeHtml(appliance.brand)} ${escapeHtml(appliance.category)}</h3><p class="mt-1 text-xs text-slate-500">Model: ${escapeHtml(appliance.model_no)}</p><p class="mt-1 text-[11px] text-slate-400">Serial: ${escapeHtml(appliance.serial_no || "Not provided")}</p></div>
+        <div class="min-w-0 flex-1"><h3 class="truncate text-sm font-bold text-slate-900">${escapeHtml(appliance.brand)} ${escapeHtml(appliance.category)}</h3><p class="mt-1 text-xs text-slate-500">Model: ${escapeHtml(appliance.model_no)}</p><p class="mt-1 text-[11px] text-slate-400">Company: ${escapeHtml(appliance.company_name || "Not selected")}</p><p class="mt-1 text-[11px] text-slate-400">Serial: ${escapeHtml(appliance.serial_no || "Not provided")}</p></div>
       </div>
       <div class="mt-4 flex items-center justify-between gap-2"><span class="rounded-full px-2.5 py-1 text-[10px] font-semibold ${String(appliance.warranty_status || "").toLowerCase().includes("active") ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-600"}">${escapeHtml(appliance.warranty_status || "Warranty details unavailable")}</span><button class="book-appliance text-xs font-bold text-servora-600 hover:text-servora-700" data-appliance-id="${escapeHtml(appliance.id)}">Book service</button></div>
     </article>`).join("");
   list.querySelectorAll(".book-appliance").forEach((button) => button.addEventListener("click", () => openBookingModal(button.dataset.applianceId)));
   if (window.lucide) window.lucide.createIcons();
+}
+
+function renderCompanyOptions() {
+  const select = $("newAppCompany");
+  if (!select) return;
+  if (companyListLoadError) {
+    select.innerHTML = `<option value="">Company list unavailable</option>`;
+    select.disabled = true;
+    $("applianceSubmit").disabled = true;
+    $("applianceCompanyHelp").textContent = "Could not load registered companies. Refresh the page and try again.";
+    return;
+  }
+  select.disabled = registeredCompanies.length === 0;
+  $("applianceSubmit").disabled = registeredCompanies.length === 0;
+  select.innerHTML = `<option value="">${registeredCompanies.length ? "Select a registered company" : "No companies registered yet"}</option>${registeredCompanies.map((company) => `<option value="${escapeHtml(company.id)}">${escapeHtml(company.name)}</option>`).join("")}`;
+  $("applianceCompanyHelp").textContent = registeredCompanies.length
+    ? "Choose the company associated with this appliance."
+    : "A Servora registered company must be available before you can register an appliance.";
 }
 
 function renderRequests() {
@@ -327,11 +358,18 @@ async function submitAppliance(event) {
   button.disabled = true;
   button.textContent = "Saving…";
   $("applianceMessage").textContent = "";
+  if (!registeredCompanies.some((company) => company.id === $("newAppCompany").value)) {
+    $("applianceMessage").textContent = "Select a company registered on Servora before saving.";
+    button.disabled = registeredCompanies.length === 0;
+    button.textContent = "Save appliance";
+    return;
+  }
   try {
     const appliance = await readApiJson("/api/appliances", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
+        company_id: $("newAppCompany").value,
         category: $("newAppCategory").value,
         brand: $("newAppBrand").value.trim(),
         model_no: $("newAppModel").value.trim(),

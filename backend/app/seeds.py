@@ -1,4 +1,5 @@
 import json
+from sqlalchemy import inspect, text
 from sqlalchemy.orm import Session
 from app.db.session import engine, Base, SessionLocal
 from app.db.models import UserModel, TechnicianModel, ApplianceModel, ServiceRequestModel
@@ -6,6 +7,13 @@ from app.db.models import UserModel, TechnicianModel, ApplianceModel, ServiceReq
 def seed_database(db: Session):
     # Ensure tables exist in MySQL or SQLite
     Base.metadata.create_all(bind=engine)
+
+    # Existing production databases need an explicit migration because
+    # create_all() does not add columns to tables that already exist.
+    appliance_columns = {column["name"] for column in inspect(engine).get_columns("appliances")}
+    if "company_id" not in appliance_columns:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE appliances ADD COLUMN company_id VARCHAR(64) NULL"))
 
     # 1. Seed Users if not present
     if not db.query(UserModel).first():

@@ -95,6 +95,7 @@ class ApplianceModel(Base):
 
     id = Column(String(64), primary_key=True, index=True)
     user_id = Column(String(64), ForeignKey("users.id"), nullable=False, index=True)
+    company_id = Column(String(64), ForeignKey("users.id"), nullable=True, index=True)
     brand = Column(String(64), nullable=False)
     category = Column(String(64), nullable=False)
     model_no = Column(String(64), nullable=False)

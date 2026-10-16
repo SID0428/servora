@@ -73,6 +73,8 @@ class CompanyOtpVerify(BaseModel):
 
 class ApplianceBase(BaseModel):
     id: str
+    company_id: Optional[str] = None
+    company_name: Optional[str] = None
     brand: str
     category: str
     model_no: str
@@ -82,6 +84,7 @@ class ApplianceBase(BaseModel):
     icon: str
 
 class NewApplianceCreate(BaseModel):
+    company_id: str = Field(min_length=1, max_length=64)
     brand: str
     category: str
     model_no: str
