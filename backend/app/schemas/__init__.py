@@ -23,6 +23,13 @@ class LoginRequest(BaseModel):
     password: str = Field(min_length=1)
     role: Optional[str] = None
 
+class CustomerRegistration(BaseModel):
+    name: str = Field(min_length=2, max_length=128)
+    email: str = Field(min_length=5, max_length=128, pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+    phone: str = Field(min_length=7, max_length=32)
+    password: str = Field(min_length=10, max_length=128)
+    address: Optional[str] = Field(default=None, max_length=512)
+
 class CompanyCreate(BaseModel):
     name: str = Field(min_length=2, max_length=128)
     email: str

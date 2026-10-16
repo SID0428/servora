@@ -1,14 +1,70 @@
 from fastapi import APIRouter, Depends, Response, Request, HTTPException
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
+from uuid import uuid4
 from app.db.session import get_db
 from app.db.models import BranchOnboardingModel, CompanyOnboardingModel, TechnicianOnboardingModel, UserModel
 from app.security import create_user_session, get_authenticated_user, revoke_user_session
-from app.schemas import LoginRequest, UserBase
+from app.schemas import CustomerRegistration, LoginRequest
 import hashlib
 import hmac
 import os
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
+
+
+def make_password_hash(password: str) -> str:
+    rounds, salt = 310_000, os.urandom(16)
+    digest = hashlib.pbkdf2_hmac("sha256", password.encode(), salt, rounds).hex()
+    return f"pbkdf2_sha256${rounds}${salt.hex()}${digest}"
+
+
+def user_payload(user: UserModel) -> dict:
+    return {
+        "id": user.id,
+        "name": user.name,
+        "email": user.email,
+        "phone": user.phone,
+        "role": "franchise" if user.role == "branch" else user.role,
+        "avatar": user.avatar,
+        "address": user.address,
+    }
+
+
+@router.post("/register", status_code=201)
+def register_customer(payload: CustomerRegistration, response: Response, db: Session = Depends(get_db)):
+    email = payload.email.strip().lower()
+    if db.query(UserModel).filter(UserModel.email.ilike(email)).first():
+        raise HTTPException(status_code=409, detail="An account with this email already exists. Sign in instead.")
+
+    user = UserModel(
+        id=f"customer_{uuid4().hex[:12]}",
+        name=payload.name.strip(),
+        email=email,
+        phone=payload.phone.strip(),
+        role="customer",
+        password_hash=make_password_hash(payload.password),
+        address=(payload.address or "").strip() or None,
+    )
+    db.add(user)
+    try:
+        db.flush()
+        session_token = create_user_session(user, db)
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="An account with this email already exists. Sign in instead.") from exc
+
+    response.set_cookie(
+        key="servora_user_id",
+        value=user.id,
+        httponly=True,
+        max_age=86400 * 7,
+        path="/",
+        samesite="none",
+        secure=True,
+    )
+    return {"status": "success", "session_token": session_token, "user": user_payload(user)}
 
 @router.post("/login")
 def login(payload: LoginRequest, response: Response, db: Session = Depends(get_db)):
@@ -76,29 +132,13 @@ def login(payload: LoginRequest, response: Response, db: Session = Depends(get_d
     return {
         "status": "success",
         "session_token": session_token,
-        "user": {
-            "id": user.id,
-            "name": user.name,
-            "email": user.email,
-            "phone": user.phone,
-            "role": "franchise" if user.role == "branch" else user.role,
-            "avatar": user.avatar,
-            "address": user.address
-        }
+        "user": user_payload(user)
     }
 
 @router.get("/me")
 def get_current_user(request: Request, db: Session = Depends(get_db)):
     user = get_authenticated_user(request, db)
-    return {"user": {
-        "id": user.id,
-        "name": user.name,
-        "email": user.email,
-        "phone": user.phone,
-        "role": "franchise" if user.role == "branch" else user.role,
-        "avatar": user.avatar,
-        "address": user.address,
-    }}
+    return {"user": user_payload(user)}
 
 @router.post("/logout")
 def logout(request: Request, response: Response, db: Session = Depends(get_db)):

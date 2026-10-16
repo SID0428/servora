@@ -11,8 +11,8 @@ const roleSettings = {
 const config = roleSettings[role] || roleSettings.customer;
 const byId = (id) => document.getElementById(id);
 
-function setMessage(message, success = false) {
-  const node = byId("formMessage");
+function setMessage(message, success = false, target = "formMessage") {
+  const node = byId(target);
   if (!node) return;
   node.textContent = message;
   node.classList.toggle("success", success);
@@ -69,6 +69,45 @@ async function handleLogin(event) {
   }
 }
 
+async function handleSignup(event) {
+  event.preventDefault();
+  const password = byId("signupPassword").value;
+  const confirmPassword = byId("signupConfirmPassword").value;
+  if (password !== confirmPassword) {
+    setMessage("The passwords do not match.", false, "signupMessage");
+    return;
+  }
+
+  const button = byId("signupSubmit");
+  const original = button.innerHTML;
+  button.disabled = true;
+  button.innerHTML = "<span>Creating account…</span><span aria-hidden=\"true\">→</span>";
+  setMessage("", false, "signupMessage");
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/auth/register`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({
+        name: byId("signupName").value.trim(),
+        email: byId("signupEmail").value.trim(),
+        phone: byId("signupPhone").value.trim(),
+        password,
+        address: byId("signupAddress").value.trim() || null,
+      }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.detail || "Unable to create your account. Please try again.");
+    localStorage.setItem("servora_user", JSON.stringify({ ...data.user, session_token: data.session_token }));
+    setMessage(`Your account is ready, ${data.user.name}.`, true, "signupMessage");
+    window.location.assign(config.destination);
+  } catch (error) {
+    setMessage(error.message || "Could not connect to Servora. Please try again.", false, "signupMessage");
+    button.disabled = false;
+    button.innerHTML = original;
+  }
+}
+
 document.addEventListener("DOMContentLoaded", () => {
   document.title = `${config.title} — Servora`;
   byId("pageTitle").textContent = config.title;
@@ -77,6 +116,24 @@ document.addEventListener("DOMContentLoaded", () => {
   byId("identifier").placeholder = config.placeholder;
   byId("identifier").type = config.type;
   byId("loginForm").addEventListener("submit", handleLogin);
+  const signupForm = byId("signupForm");
+  const signupToggle = byId("signupToggle");
+  if (role === "customer" && signupForm && signupToggle) {
+    signupForm.addEventListener("submit", handleSignup);
+    signupToggle.addEventListener("click", (event) => {
+      event.preventDefault();
+      const openingSignup = signupForm.classList.contains("hidden");
+      signupForm.classList.toggle("hidden", !openingSignup);
+      byId("loginForm").classList.toggle("hidden", openingSignup);
+      byId("pageTitle").textContent = openingSignup ? "Create your account" : config.title;
+      byId("pageSubtitle").textContent = openingSignup ? "Create a customer account to manage appliances and service visits." : config.subtitle;
+      byId("signupPrompt").textContent = openingSignup ? "Already have an account?" : "New to Servora?";
+      signupToggle.textContent = openingSignup ? "Sign in" : "Create an account";
+      setMessage("", false, "signupMessage");
+      setMessage("");
+      (openingSignup ? byId("signupName") : byId("identifier")).focus();
+    });
+  }
   byId("togglePassword").addEventListener("click", () => {
     const input = byId("password");
     const visible = input.type === "password";
