@@ -8,6 +8,12 @@ const dashboardRouteRole = Object.entries({
   franchise: /(?:^|\/)franchise-dashboard(?:\.html)?\/?$/i,
   technician: /(?:^|\/)technician-dashboard(?:\.html)?\/?$/i,
 }).find(([, pattern]) => pattern.test(window.location.pathname))?.[0];
+const portalLoginPaths = {
+  admin: "/admin-login.html",
+  company: "/company-login.html",
+  franchise: "/franchise-login.html",
+  technician: "/technician-login.html",
+};
 let role = dashboardRouteRole || initialUser?.role || document.body.dataset.role || "company";
 const roleConfig = {
   technician: { title: "Technician workspace", kicker: "FIELD SERVICE", nav: ["My jobs", "Job history", "Route & schedule", "Earnings", "Help center"], columns: ["Ticket", "Customer", "Appliance", "Appointment", "Status", "Action"], tableTitle: "My assigned jobs", tableSubtitle: "Your service calls and the next step for each job.", bottomTitle: "Today's schedule", sideTitle: "My performance", resources: [["Assigned today", "Jobs on your schedule", "▤"], ["Completed", "Jobs closed this week", "✓"], ["Customer rating", "From recent service visits", "☆"], ["Service area", "Your assigned territory", "⌖"]] },
@@ -235,9 +241,25 @@ async function loadDashboard() {
   if (stored) { try { user = JSON.parse(stored); } catch { user = null; } }
   try {
     const userResponse = await fetch(`${API_BASE_URL}/api/auth/me`, { credentials: "include", headers: authHeaders() });
-    if (userResponse.ok) { const authenticated = (await userResponse.json()).user; user = { ...authenticated, session_token: user?.session_token || initialUser?.session_token }; localStorage.setItem("servora_user", JSON.stringify(user)); }
+    if (userResponse.ok) {
+      const authenticated = (await userResponse.json()).user;
+      if (dashboardRouteRole && authenticated.role !== dashboardRouteRole) {
+        localStorage.removeItem("servora_user");
+        window.location.replace(portalLoginPaths[dashboardRouteRole]);
+        return;
+      }
+      user = { ...authenticated, session_token: user?.session_token || initialUser?.session_token };
+      localStorage.setItem("servora_user", JSON.stringify(user));
+    }
     else if (stored) user = JSON.parse(stored);
-    if (user?.role && roleConfig[user.role]) { role = user.role; config = roleConfig[role]; }
+    if (dashboardRouteRole && user?.role && user.role !== dashboardRouteRole) {
+      localStorage.removeItem("servora_user");
+      window.location.replace(portalLoginPaths[dashboardRouteRole]);
+      return;
+    }
+    if (dashboardRouteRole) role = dashboardRouteRole;
+    else if (user?.role && roleConfig[user.role]) role = user.role;
+    config = roleConfig[role] || roleConfig.company;
     document.body.dataset.role = role;
     document.title = `${config.title} — Servora`;
     $("workspaceKicker").textContent = config.kicker;
