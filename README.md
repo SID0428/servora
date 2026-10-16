@@ -47,6 +47,12 @@ Create a Render Web Service from this repository with root directory `backend`. 
 - `DATABASE_URL`: your Aiven SQLAlchemy URI
 - `ALLOWED_ORIGINS`: comma-separated exact frontend origins, such as `https://your-project.vercel.app`
 - `DEMO_PASSWORD`: a strong value if you need seeded demo accounts
+- `BREVO_API_KEY`: Brevo API key for company setup invitations and email OTPs
+- `BREVO_SENDER_EMAIL`: a verified sender address in Brevo
+- `BREVO_SENDER_NAME`: optional sender display name (defaults to Servora)
+- `FRONTEND_BASE_URL`: public Vercel frontend origin used to create company setup links
+
+When an administrator adds a company, Servora emails the registered company address a setup link. The company administrator confirms that email, creates a password, and verifies a six-digit email OTP before the account is activated. Passwords are stored as PBKDF2 hashes. The admin Companies directory shows setup status and the password-set date. Set the Brevo environment variables before adding companies; account creation returns an error rather than silently skipping the invitation when Brevo is unavailable.
 
 Render provides `PORT`. The API health endpoint is `/health`; interactive API docs are at `/docs`.
 

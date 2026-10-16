@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, Response, Request, HTTPException
 from sqlalchemy.orm import Session
 from app.db.session import get_db
-from app.db.models import UserModel
+from app.db.models import CompanyOnboardingModel, UserModel
 from app.schemas import LoginRequest, UserBase
 import hashlib
 import hmac
@@ -24,6 +24,11 @@ def login(payload: LoginRequest, response: Response, db: Session = Depends(get_d
 
     if not user:
         raise HTTPException(status_code=401, detail="Invalid email, phone, or password")
+
+    if user.role == "company":
+        onboarding = db.query(CompanyOnboardingModel).filter_by(company_id=user.id).first()
+        if onboarding and not onboarding.password_set_at:
+            raise HTTPException(status_code=403, detail="Finish setting up your company password from the invitation email before signing in")
 
     if payload.role and user.role != payload.role:
         raise HTTPException(status_code=403, detail="This account cannot access the selected portal")

@@ -16,3 +16,11 @@ services:
         sync: false # Set to your Vercel production domain and any preview domain you use
       - key: DEMO_PASSWORD
         generateValue: true
+      - key: BREVO_API_KEY
+        sync: false
+      - key: BREVO_SENDER_EMAIL
+        sync: false
+      - key: BREVO_SENDER_NAME
+        value: Servora
+      - key: FRONTEND_BASE_URL
+        value: https://servora-frontend-xi.vercel.app

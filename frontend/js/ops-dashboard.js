@@ -77,15 +77,19 @@ function renderCompanies() {
   $("activityContent").innerHTML = `<div class="section-empty">Create a company account, then send its portal credentials to the administrator email.</div>`;
   $("bottomTitle").textContent = "Company directory";
   $("bottomSubtitle").textContent = "Company portal accounts registered on Servora.";
-  $("requestHead").innerHTML = ["Company", "Administrator email", "Phone", "Address", "Portal", "Action"].map((name) => `<th>${name}</th>`).join("");
-  $("requestRows").innerHTML = companies.length ? companies.map((company) => `<tr><td><div class="customer-cell"><span class="customer-avatar">${safe(company.name.split(/\s+/).map((part) => part[0]).slice(0, 2).join(""))}</span><span class="customer-name">${safe(company.name)}<small>${safe(company.id)}</small></span></div></td><td>${safe(company.email)}</td><td>${safe(company.phone)}</td><td>${safe(company.address || "—")}</td><td><span class="status-pill completed">Company portal</span></td><td><button class="table-action" data-send-credentials="${safe(company.id)}">Send login details →</button></td></tr>`).join("") : `<tr><td class="empty-row" colspan="6">No companies yet. Add your first company to get started.</td></tr>`;
+  $("requestHead").innerHTML = ["Company", "Administrator email", "Phone", "Portal", "Action"].map((name) => `<th>${name}</th>`).join("");
+  $("requestRows").innerHTML = companies.length ? companies.map((company) => {
+    const passwordDate = company.password_set_at ? new Intl.DateTimeFormat("en-IN", { dateStyle: "medium", timeStyle: "short" }).format(new Date(company.password_set_at)) : "Not set yet";
+    const setupStatus = company.password_set ? `Password set · ${passwordDate}` : "Password not set";
+    return `<tr><td><div class="customer-cell"><span class="customer-avatar">${safe(company.name.split(/\s+/).map((part) => part[0]).slice(0, 2).join(""))}</span><span class="customer-name">${safe(company.name)}<small>${safe(company.id)}</small><small class="company-password-state ${company.password_set ? "is-set" : "is-pending"}">${safe(setupStatus)}</small></span></div></td><td>${safe(company.email)}</td><td>${safe(company.phone)}</td><td><span class="status-pill completed">Company portal</span></td><td>${company.password_set ? `<span class="status-pill completed">Active</span>` : `<button class="table-action" data-send-credentials="${safe(company.id)}">Resend setup link →</button>`}</td></tr>`;
+  }).join("") : `<tr><td class="empty-row" colspan="5">No companies yet. Add your first company to get started.</td></tr>`;
   document.querySelectorAll("[data-send-credentials]").forEach((button) => button.addEventListener("click", async () => {
     const company = companies.find((item) => item.id === button.dataset.sendCredentials);
-    if (!company || !window.confirm(`Send company portal login details to ${company.email}? This will generate a new temporary password.`)) return;
+    if (!company || !window.confirm(`Resend the password setup link to ${company.email}?`)) return;
     button.disabled = true; button.textContent = "Sending…";
-    try { await adminApi("/companies/send-credentials", { method: "POST", body: JSON.stringify({ company_id: company.id }) }); showToast(`Login details sent to ${company.email}.`); }
+    try { await adminApi("/companies/send-credentials", { method: "POST", body: JSON.stringify({ company_id: company.id }) }); showToast(`Password setup link sent to ${company.email}.`); }
     catch (error) { showToast(error.message, "error"); }
-    finally { button.disabled = false; button.textContent = "Send login details →"; }
+    finally { button.disabled = false; button.textContent = "Resend setup link →"; }
   }));
 }
 async function adminApi(path, options = {}) {
@@ -260,7 +264,7 @@ $("companyForm").addEventListener("submit", async (event) => {
   event.preventDefault(); const form = event.currentTarget; const submit = form.querySelector('[type="submit"]');
   submit.disabled = true; $("companyFormMessage").textContent = "Creating company…";
   const payload = Object.fromEntries(new FormData(form).entries());
-  try { const created = await adminApi("/companies", { method: "POST", body: JSON.stringify(payload) }); companies.push(created); form.reset(); $("companyDialog").close(); renderPage("Companies"); showToast(`${created.name} added to Servora.`); }
+  try { const created = await adminApi("/companies", { method: "POST", body: JSON.stringify(payload) }); companies.push(created); form.reset(); $("companyDialog").close(); renderPage("Companies"); showToast(`Company added. Password setup link sent to ${created.email}.`); }
   catch (error) { $("companyFormMessage").textContent = error.message; }
   finally { submit.disabled = false; }
 });

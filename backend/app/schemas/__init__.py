@@ -32,6 +32,16 @@ class CompanyCreate(BaseModel):
 class CompanyCredentialsEmail(BaseModel):
     company_id: str
 
+class CompanyPasswordSetup(BaseModel):
+    token: str
+    email: str
+    password: str = Field(min_length=10, max_length=128)
+
+class CompanyOtpVerify(BaseModel):
+    token: str
+    email: str
+    otp: str = Field(min_length=6, max_length=6)
+
 class ApplianceBase(BaseModel):
     id: str
     brand: str
