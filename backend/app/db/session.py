@@ -26,6 +26,9 @@ else:
         connect_args["ssl"] = {}
     else:
         url = url.set(query=query)
+    # Use the cleaned URL. Keeping settings.DATABASE_URL here would pass
+    # ssl-mode/ssl_mode through to PyMySQL and raise an unexpected-keyword error.
+    database_url = url
 
     # Aiven MySQL pool management (handles SSL and timeouts gracefully)
     engine_kwargs["pool_pre_ping"] = True
