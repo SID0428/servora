@@ -51,8 +51,8 @@ function setProfile() {
 }
 function greeting() { const hour = new Date().getHours(); return hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening"; }
 function buildNav() {
-  $("opsNav").innerHTML = config.nav.map((item, index) => `<a href="#${item.toLowerCase().replaceAll(/[^a-z0-9]+/g, "-")}" class="nav-link ${index === 0 ? "active" : ""}"><span class="nav-icon">${icons[item] || "•"}</span>${safe(item)}${item === "Service requests" ? `<span class="nav-count">${requests.length}</span>` : ""}</a>`).join("");
-  document.querySelectorAll(".nav-link").forEach((link) => link.addEventListener("click", (event) => { event.preventDefault(); document.querySelectorAll(".nav-link").forEach((item) => item.classList.remove("active")); link.classList.add("active"); loadAdminPageData(link.textContent.trim()); document.querySelector(".ops-sidebar").classList.remove("open"); }));
+  $("opsNav").innerHTML = config.nav.map((item, index) => `<a href="#${item.toLowerCase().replaceAll(/[^a-z0-9]+/g, "-")}" data-page="${safe(item)}" class="nav-link ${index === 0 ? "active" : ""}"><span class="nav-icon">${icons[item] || "•"}</span>${safe(item)}${item === "Service requests" ? `<span class="nav-count">${requests.length}</span>` : ""}</a>`).join("");
+  document.querySelectorAll(".nav-link").forEach((link) => link.addEventListener("click", (event) => { event.preventDefault(); document.querySelectorAll(".nav-link").forEach((item) => item.classList.remove("active")); link.classList.add("active"); loadAdminPageData(link.dataset.page); document.querySelector(".ops-sidebar").classList.remove("open"); }));
 }
 function renderPage(page) {
   $("crumbTitle").textContent = page;
