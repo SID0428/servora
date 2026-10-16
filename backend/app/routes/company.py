@@ -146,16 +146,37 @@ def resend_franchise_setup_link(payload: BranchCredentialsEmail, request: Reques
     if not branch:
         raise HTTPException(status_code=404, detail="Branch not found")
     onboarding = db.query(BranchOnboardingModel).filter_by(branch_id=branch.id).first()
+    if onboarding and onboarding.password_set_at:
+        raise HTTPException(status_code=409, detail="This franchise account has already set its password")
+
+    branch_user = db.query(UserModel).filter_by(id=branch.id).first()
+    if branch_user and (branch_user.role != "branch" or branch_user.email.lower() != branch.email.lower()):
+        raise HTTPException(status_code=409, detail="This branch ID is already linked to a different Servora account")
+    if not branch_user:
+        existing_email = db.query(UserModel).filter(UserModel.email.ilike(branch.email)).first()
+        if existing_email:
+            raise HTTPException(status_code=409, detail="This email already belongs to another Servora account")
+        branch_user = UserModel(
+            id=branch.id,
+            name=branch.manager_name,
+            email=branch.email,
+            phone=branch.mobile,
+            role="branch",
+            address=f"{branch.address}, {branch.pincode}",
+            password_hash=None,
+        )
+        db.add(branch_user)
+
     if not onboarding:
         onboarding = BranchOnboardingModel(branch_id=branch.id)
         db.add(onboarding)
-    elif onboarding.password_set_at:
-        raise HTTPException(status_code=409, detail="This franchise account has already set its password")
-    branch_user = db.query(UserModel).filter_by(id=branch.id, role="branch").first()
-    if not branch_user:
-        raise HTTPException(status_code=404, detail="Franchise account not found")
-    issue_franchise_invite(branch, onboarding, company)
-    db.commit()
+    try:
+        db.flush()
+        issue_franchise_invite(branch, onboarding, company)
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
     return {"status": "sent", "email": branch.email, "message": "Franchise setup link sent"}
 
 
