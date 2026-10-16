@@ -2,7 +2,7 @@ import { API_BASE_URL, setCustomApiUrl } from "./config.js";
 
 const role = document.body.dataset.role || "customer";
 const roleSettings = {
-  customer: { title: "Sign in to your account", subtitle: "Manage your home services, all in one place.", identifier: "Email or phone number", placeholder: "you@example.com", type: "text", destination: "./dashboard.html" },
+  customer: { title: "Sign in to your account", subtitle: "Manage your home services, all in one place.", identifier: "Email or phone number", placeholder: "you@example.com", type: "text", destination: "./customer-dashboard.html" },
   company: { title: "Company sign in", subtitle: "Manage your organization and service network.", identifier: "Work email", placeholder: "name@company.com", type: "text", destination: "./company-dashboard.html" },
   franchise: { title: "Franchise sign in", subtitle: "Access your location and service operations.", identifier: "Email or phone number", placeholder: "you@example.com", type: "text", destination: "./franchise-dashboard.html" },
   technician: { title: "Technician sign in", subtitle: "View your assigned jobs and keep service moving.", identifier: "Work email or phone number", placeholder: "you@example.com or +91 98765 43210", type: "text", destination: "./technician-dashboard.html" },

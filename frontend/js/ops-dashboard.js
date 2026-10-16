@@ -45,6 +45,14 @@ function showToast(message, type = "info") {
 function setProfile() {
   const name = user?.name || "Servora user";
   const displayName = role === "admin" ? "Siddharth" : name;
+  const portalPath = {
+    admin: "./admin-dashboard.html",
+    company: "./company-dashboard.html",
+    franchise: "./franchise-dashboard.html",
+    technician: "./technician-dashboard.html",
+  }[role];
+  const brandLink = document.querySelector(".ops-brand");
+  if (brandLink && portalPath) brandLink.href = portalPath;
   $("userName").textContent = displayName; $("userRole").textContent = role === "admin" ? "Platform administrator" : config.title;
   $("userAvatar").textContent = name.split(/\s+/).map((part) => part[0]).slice(0, 2).join("").toUpperCase();
   $("welcomeTitle").textContent = `${greeting()}, ${displayName.split(/\s+/)[0]}`;
