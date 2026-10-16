@@ -82,7 +82,7 @@ async function loadDashboardData() {
       const data = await userRes.json();
       currentUser = { ...data.user, session_token: currentUser?.session_token || JSON.parse(localStorage.getItem("servora_user") || "null")?.session_token };
       if (currentUser.role !== "customer") {
-        const dashboards = { technician: "technician-dashboard.html", branch: "franchise-dashboard.html", company: "company-dashboard.html", admin: "admin-dashboard.html" };
+        const dashboards = { technician: "technician-dashboard.html", branch: "franchise-dashboard.html", franchise: "franchise-dashboard.html", company: "company-dashboard.html", admin: "admin-dashboard.html" };
         if (dashboards[currentUser.role]) {
           window.location.replace(`./${dashboards[currentUser.role]}`);
           return;
@@ -103,7 +103,7 @@ async function loadDashboardData() {
         return;
       }
       if (currentUser.role !== "customer") {
-        const dashboards = { technician: "technician-dashboard.html", branch: "franchise-dashboard.html", company: "company-dashboard.html", admin: "admin-dashboard.html" };
+        const dashboards = { technician: "technician-dashboard.html", branch: "franchise-dashboard.html", franchise: "franchise-dashboard.html", company: "company-dashboard.html", admin: "admin-dashboard.html" };
         if (dashboards[currentUser.role]) window.location.replace(`./${dashboards[currentUser.role]}`);
         return;
       }

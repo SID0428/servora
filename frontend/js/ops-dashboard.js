@@ -97,12 +97,24 @@ function renderCompanyBranches() {
   $("activityContent").innerHTML = `<div class="section-empty">Branch records are visible only to your company account.</div>`;
   $("bottomTitle").textContent = "Company branches";
   $("bottomSubtitle").textContent = "Branch contacts registered by your company.";
-  $("requestHead").innerHTML = ["Branch", "Franchise owner or manager", "Email", "Mobile number", "Address", "Pincode"].map((name) => `<th>${safe(name)}</th>`).join("");
+  $("requestHead").innerHTML = ["Branch", "Franchise owner or manager", "Email", "Mobile number", "Address", "Pincode", "Portal access"].map((name) => `<th>${safe(name)}</th>`).join("");
   const query = $("requestSearch").value.trim().toLowerCase();
   const filtered = branches.filter((branch) => [branch.branch_name, branch.manager_name, branch.email, branch.mobile, branch.address, branch.pincode].join(" ").toLowerCase().includes(query));
-  $("requestRows").innerHTML = filtered.length ? filtered.map((branch) => `<tr><td><strong>${safe(branch.branch_name)}</strong></td><td>${safe(branch.manager_name)}</td><td>${safe(branch.email)}</td><td>${safe(branch.mobile)}</td><td>${safe(branch.address)}</td><td>${safe(branch.pincode)}</td></tr>`).join("") : `<tr><td class="empty-row" colspan="6">${query ? "No branches match your search." : "No branches yet. Add your first branch to get started."}</td></tr>`;
+  $("requestRows").innerHTML = filtered.length ? filtered.map((branch) => {
+    const status = branch.password_set ? `Password set · ${new Intl.DateTimeFormat("en-IN", { dateStyle: "medium", timeStyle: "short" }).format(new Date(branch.password_set_at))}` : "Password not set";
+    const access = branch.password_set ? `<span class="status-pill completed">Active</span>` : `<button class="table-action" data-resend-franchise="${safe(branch.id)}">Resend setup link →</button>`;
+    return `<tr><td><strong>${safe(branch.branch_name)}</strong></td><td>${safe(branch.manager_name)}<small class="company-password-state ${branch.password_set ? "is-set" : "is-pending"}">${safe(status)}</small></td><td>${safe(branch.email)}</td><td>${safe(branch.mobile)}</td><td>${safe(branch.address)}</td><td>${safe(branch.pincode)}</td><td>${access}</td></tr>`;
+  }).join("") : `<tr><td class="empty-row" colspan="7">${query ? "No branches match your search." : "No branches yet. Add your first branch to get started."}</td></tr>`;
   $("requestCount").textContent = `${filtered.length} branch${filtered.length === 1 ? "" : "es"} shown`;
   $("resourceGrid").innerHTML = "";
+  document.querySelectorAll("[data-resend-franchise]").forEach((button) => button.addEventListener("click", async () => {
+    const branch = branches.find((item) => item.id === button.dataset.resendFranchise);
+    if (!branch) return;
+    button.disabled = true; button.textContent = "Sending…";
+    try { await companyApi("/branches/send-setup-link", { method: "POST", body: JSON.stringify({ branch_id: branch.id }) }); showToast(`Franchise setup link sent to ${branch.email}.`); }
+    catch (error) { showToast(error.message, "error"); }
+    finally { button.disabled = false; button.textContent = "Resend setup link →"; }
+  }));
 }
 function renderCompanies() {
   $("addCompanyButton").hidden = false;
@@ -378,7 +390,7 @@ $("branchForm").addEventListener("submit", async (event) => {
   const payload = Object.fromEntries(new FormData(form).entries());
   try {
     const created = await companyApi("/branches", { method: "POST", body: JSON.stringify(payload) });
-    branches.push(created); form.reset(); $("branchDialog").close(); renderCompanyBranches(); showToast(`${created.branch_name} added to your branches.`);
+    branches.push(created); form.reset(); $("branchDialog").close(); renderCompanyBranches(); showToast(`${created.branch_name} added. Franchise setup link sent to ${created.email}.`);
   } catch (error) { $("branchFormMessage").textContent = error.message; }
   finally { submit.disabled = false; }
 });

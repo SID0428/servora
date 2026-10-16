@@ -1,11 +1,8 @@
 import hashlib
 import hmac
 import html
-import json
 import os
 import secrets
-import urllib.error
-import urllib.request
 from datetime import datetime, timedelta
 from uuid import uuid4
 
@@ -16,6 +13,7 @@ from app.db.models import CompanyOnboardingModel, UserModel
 from app.db.session import get_db
 from app.schemas import CompanyCreate, CompanyCredentialsEmail, CompanyOtpVerify, CompanyPasswordSetup
 from app.security import get_authenticated_user
+from app.email_service import send_brevo_email
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 onboarding_router = APIRouter(prefix="/api/onboarding", tags=["company onboarding"])
@@ -45,31 +43,6 @@ def company_payload(user: UserModel, onboarding: CompanyOnboardingModel | None =
         "password_set": bool(onboarding and onboarding.password_set_at),
         "password_set_at": f"{onboarding.password_set_at.isoformat()}Z" if onboarding and onboarding.password_set_at else None,
     }
-
-
-def send_brevo_email(to_email: str, to_name: str, subject: str, text: str, html: str | None = None) -> None:
-    api_key = os.getenv("BREVO_API_KEY")
-    sender_email = os.getenv("BREVO_SENDER_EMAIL")
-    if not api_key or not sender_email:
-        raise HTTPException(status_code=503, detail="Brevo is not configured. Set BREVO_API_KEY and BREVO_SENDER_EMAIL on the backend.")
-    body = {
-        "sender": {"name": os.getenv("BREVO_SENDER_NAME", "Servora"), "email": sender_email},
-        "to": [{"email": to_email, "name": to_name}], "subject": subject, "textContent": text,
-    }
-    if html:
-        body["htmlContent"] = html
-    req = urllib.request.Request(
-        "https://api.brevo.com/v3/smtp/email", data=json.dumps(body).encode(),
-        headers={"api-key": api_key, "accept": "application/json", "content-type": "application/json"}, method="POST",
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=15) as response:
-            if response.status >= 300:
-                raise HTTPException(status_code=502, detail="Brevo did not accept the message")
-    except urllib.error.HTTPError as exc:
-        raise HTTPException(status_code=502, detail="Brevo could not send the email") from exc
-    except (urllib.error.URLError, TimeoutError) as exc:
-        raise HTTPException(status_code=502, detail="Could not connect to Brevo") from exc
 
 
 def issue_invite(company: UserModel, onboarding: CompanyOnboardingModel) -> str:

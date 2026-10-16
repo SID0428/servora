@@ -32,6 +32,17 @@ class CompanyOnboardingModel(Base):
     otp_expires_at = Column(DateTime, nullable=True)
     password_set_at = Column(DateTime, nullable=True)
 
+class BranchOnboardingModel(Base):
+    __tablename__ = "branch_onboarding"
+
+    branch_id = Column(String(64), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    invite_token_hash = Column(String(64), nullable=True, index=True)
+    invite_expires_at = Column(DateTime, nullable=True)
+    pending_password_hash = Column(String(255), nullable=True)
+    otp_hash = Column(String(64), nullable=True)
+    otp_expires_at = Column(DateTime, nullable=True)
+    password_set_at = Column(DateTime, nullable=True)
+
 class CompanyBranchModel(Base):
     __tablename__ = "company_branches"
     __table_args__ = (UniqueConstraint("company_id", "email", name="uq_company_branch_email"),)

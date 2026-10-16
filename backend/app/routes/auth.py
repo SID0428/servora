@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, Response, Request, HTTPException
 from sqlalchemy.orm import Session
 from app.db.session import get_db
-from app.db.models import CompanyOnboardingModel, UserModel
+from app.db.models import BranchOnboardingModel, CompanyOnboardingModel, UserModel
 from app.security import create_user_session, get_authenticated_user, revoke_user_session
 from app.schemas import LoginRequest, UserBase
 import hashlib
@@ -31,7 +31,13 @@ def login(payload: LoginRequest, response: Response, db: Session = Depends(get_d
         if onboarding and not onboarding.password_set_at:
             raise HTTPException(status_code=403, detail="Finish setting up your company password from the invitation email before signing in")
 
-    if payload.role and user.role != payload.role:
+    if user.role == "branch":
+        onboarding = db.query(BranchOnboardingModel).filter_by(branch_id=user.id).first()
+        if onboarding and not onboarding.password_set_at:
+            raise HTTPException(status_code=403, detail="Finish setting up your franchise password from the invitation email before signing in")
+
+    expected_role = {"franchise": "branch"}.get(payload.role, payload.role)
+    if expected_role and user.role != expected_role:
         raise HTTPException(status_code=403, detail="This account cannot access the selected portal")
 
     # Seed accounts accept the demo password; provisioned accounts use PBKDF2 hashes.
@@ -70,7 +76,7 @@ def login(payload: LoginRequest, response: Response, db: Session = Depends(get_d
             "name": user.name,
             "email": user.email,
             "phone": user.phone,
-            "role": user.role,
+            "role": "franchise" if user.role == "branch" else user.role,
             "avatar": user.avatar,
             "address": user.address
         }
@@ -79,7 +85,15 @@ def login(payload: LoginRequest, response: Response, db: Session = Depends(get_d
 @router.get("/me")
 def get_current_user(request: Request, db: Session = Depends(get_db)):
     user = get_authenticated_user(request, db)
-    return {"user": user}
+    return {"user": {
+        "id": user.id,
+        "name": user.name,
+        "email": user.email,
+        "phone": user.phone,
+        "role": "franchise" if user.role == "branch" else user.role,
+        "avatar": user.avatar,
+        "address": user.address,
+    }}
 
 @router.post("/logout")
 def logout(request: Request, response: Response, db: Session = Depends(get_db)):

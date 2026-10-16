@@ -40,6 +40,7 @@ app.include_router(requests_route.router)
 app.include_router(admin.router)
 app.include_router(admin.onboarding_router)
 app.include_router(company.router)
+app.include_router(company.onboarding_router)
 
 @app.get("/")
 def root():

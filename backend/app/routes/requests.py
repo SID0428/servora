@@ -68,9 +68,9 @@ def list_requests(request: Request, db: Session = Depends(get_db)):
         ).first()
         technician_id = technician.id if technician else user_id
         query = query.filter(ServiceRequestModel.technician_id == technician_id)
-    elif user.role == "company":
+    elif user.role in {"company", "branch"}:
         # Service requests do not yet have a company assignment field. Never
-        # expose the platform-wide request list to a company account.
+        # expose the platform-wide request list to company or franchise accounts.
         query = query.filter(false())
     reqs = query.order_by(ServiceRequestModel.created_at.desc()).all()
     return [format_request_detail(r, db) for r in reqs]
@@ -84,8 +84,8 @@ def get_request(request_id: str, request: Request, db: Session = Depends(get_db)
         raise HTTPException(status_code=404, detail="Service request not found")
     if user.role == "customer" and req.customer_id != user_id:
         raise HTTPException(status_code=403, detail="Not allowed to view this service request")
-    if user.role == "company":
-        raise HTTPException(status_code=403, detail="Company service request access is not configured yet")
+    if user.role in {"company", "branch"}:
+        raise HTTPException(status_code=403, detail="Service request access is not configured for this account yet")
     if user.role == "technician":
         technician = db.query(TechnicianModel).filter(
             (TechnicianModel.id == user_id) | (TechnicianModel.name == user.name)
