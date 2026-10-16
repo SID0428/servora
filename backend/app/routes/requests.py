@@ -3,6 +3,7 @@ import random
 from datetime import datetime
 from typing import List, Optional
 from fastapi import APIRouter, Depends, Request, HTTPException
+from sqlalchemy import false
 from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.db.models import ServiceRequestModel, ApplianceModel, TechnicianModel
@@ -67,6 +68,10 @@ def list_requests(request: Request, db: Session = Depends(get_db)):
         ).first()
         technician_id = technician.id if technician else user_id
         query = query.filter(ServiceRequestModel.technician_id == technician_id)
+    elif user.role == "company":
+        # Service requests do not yet have a company assignment field. Never
+        # expose the platform-wide request list to a company account.
+        query = query.filter(false())
     reqs = query.order_by(ServiceRequestModel.created_at.desc()).all()
     return [format_request_detail(r, db) for r in reqs]
 
@@ -79,6 +84,8 @@ def get_request(request_id: str, request: Request, db: Session = Depends(get_db)
         raise HTTPException(status_code=404, detail="Service request not found")
     if user.role == "customer" and req.customer_id != user_id:
         raise HTTPException(status_code=403, detail="Not allowed to view this service request")
+    if user.role == "company":
+        raise HTTPException(status_code=403, detail="Company service request access is not configured yet")
     if user.role == "technician":
         technician = db.query(TechnicianModel).filter(
             (TechnicianModel.id == user_id) | (TechnicianModel.name == user.name)

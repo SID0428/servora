@@ -210,7 +210,7 @@ function renderRequests() {
       : role === "franchise" ? [safe(item.id), customer, safe(item.appliance_name), safe(item.issue), safe(item.technician?.name || "Unassigned"), `<span class="status-pill ${statusClass(item.status_badge)}">${safe(item.status_badge)}</span>`, action]
       : [safe(item.id), customer, safe(item.brand), safe(item.appliance_name), `<span class="status-pill ${statusClass(item.status_badge)}">${safe(item.status_badge)}</span>`, safe(item.appointment_date), action];
     return `<tr>${cells.map((cell) => `<td>${cell}</td>`).join("")}</tr>`;
-  }).join("") : `<tr><td class="empty-row" colspan="${head.length}">${role === "technician" ? "No jobs are assigned to this technician yet." : "No service requests match this view."}</td></tr>`;
+  }).join("") : `<tr><td class="empty-row" colspan="${head.length}">${role === "technician" ? "No jobs are assigned to this technician yet." : role === "company" ? "No service requests are assigned to this company yet." : "No service requests match this view."}</td></tr>`;
   $("requestCount").textContent = `${filtered.length} request${filtered.length === 1 ? "" : "s"} shown`;
   document.querySelectorAll("[data-request]").forEach((button) => button.addEventListener("click", () => showToast(`${button.dataset.request} · ${requests.find((r) => r.id === button.dataset.request)?.issue || "Service request"}`)));
 }
