@@ -1,6 +1,7 @@
 import hashlib
 import hmac
 import html
+import logging
 import os
 import secrets
 from datetime import datetime, timedelta
@@ -17,6 +18,7 @@ from app.security import get_authenticated_user
 
 router = APIRouter(prefix="/api/company", tags=["company portal"])
 onboarding_router = APIRouter(prefix="/api/onboarding/franchise", tags=["franchise onboarding"])
+logger = logging.getLogger(__name__)
 
 
 def digest(value: str) -> str:
@@ -138,45 +140,49 @@ def create_company_branch(payload: CompanyBranchCreate, request: Request, db: Se
 
 @router.post("/branches/send-setup-link")
 def resend_franchise_setup_link(payload: BranchCredentialsEmail, request: Request, db: Session = Depends(get_db)):
-    company = require_company(request, db)
-    branch = db.query(CompanyBranchModel).filter(
-        CompanyBranchModel.id == payload.branch_id,
-        CompanyBranchModel.company_id == company.id,
-    ).first()
-    if not branch:
-        raise HTTPException(status_code=404, detail="Branch not found")
-    onboarding = db.query(BranchOnboardingModel).filter_by(branch_id=branch.id).first()
-    if onboarding and onboarding.password_set_at:
-        raise HTTPException(status_code=409, detail="This franchise account has already set its password")
-
-    branch_user = db.query(UserModel).filter_by(id=branch.id).first()
-    if branch_user and (branch_user.role != "branch" or branch_user.email.lower() != branch.email.lower()):
-        raise HTTPException(status_code=409, detail="This branch ID is already linked to a different Servora account")
-    if not branch_user:
-        existing_email = db.query(UserModel).filter(UserModel.email.ilike(branch.email)).first()
-        if existing_email:
-            raise HTTPException(status_code=409, detail="This email already belongs to another Servora account")
-        branch_user = UserModel(
-            id=branch.id,
-            name=branch.manager_name,
-            email=branch.email,
-            phone=branch.mobile,
-            role="branch",
-            address=f"{branch.address}, {branch.pincode}",
-            password_hash=None,
-        )
-        db.add(branch_user)
-
-    if not onboarding:
-        onboarding = BranchOnboardingModel(branch_id=branch.id)
-        db.add(onboarding)
     try:
+        company = require_company(request, db)
+        branch = db.query(CompanyBranchModel).filter(
+            CompanyBranchModel.id == payload.branch_id,
+            CompanyBranchModel.company_id == company.id,
+        ).first()
+        if not branch:
+            raise HTTPException(status_code=404, detail="Branch not found")
+        onboarding = db.query(BranchOnboardingModel).filter_by(branch_id=branch.id).first()
+        if onboarding and onboarding.password_set_at:
+            raise HTTPException(status_code=409, detail="This franchise account has already set its password")
+
+        branch_user = db.query(UserModel).filter_by(id=branch.id).first()
+        if branch_user and (branch_user.role != "branch" or branch_user.email.lower() != branch.email.lower()):
+            raise HTTPException(status_code=409, detail="This branch ID is already linked to a different Servora account")
+        if not branch_user:
+            existing_email = db.query(UserModel).filter(UserModel.email.ilike(branch.email)).first()
+            if existing_email:
+                raise HTTPException(status_code=409, detail="This email already belongs to another Servora account")
+            branch_user = UserModel(
+                id=branch.id,
+                name=branch.manager_name,
+                email=branch.email,
+                phone=branch.mobile,
+                role="branch",
+                address=f"{branch.address}, {branch.pincode}",
+                password_hash=None,
+            )
+            db.add(branch_user)
+
+        if not onboarding:
+            onboarding = BranchOnboardingModel(branch_id=branch.id)
+            db.add(onboarding)
         db.flush()
         issue_franchise_invite(branch, onboarding, company)
         db.commit()
-    except Exception:
+    except HTTPException:
         db.rollback()
         raise
+    except Exception:
+        db.rollback()
+        logger.exception("Failed to provision a franchise account or resend its setup link")
+        raise HTTPException(status_code=500, detail="Could not resend the franchise setup link. Check the backend service logs for details.")
     return {"status": "sent", "email": branch.email, "message": "Franchise setup link sent"}
 
 

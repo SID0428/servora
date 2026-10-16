@@ -151,7 +151,13 @@ async function adminApi(path, options = {}) {
   return data;
 }
 async function companyApi(path, options = {}) {
-  const response = await fetch(`${API_BASE_URL}/api/company${path}`, { ...options, credentials: "include", headers: { "Content-Type": "application/json", ...authHeaders(), ...options.headers } });
+  let response;
+  try {
+    response = await fetch(`${API_BASE_URL}/api/company${path}`, { ...options, credentials: "include", headers: { "Content-Type": "application/json", ...authHeaders(), ...options.headers } });
+  } catch (error) {
+    if (error instanceof TypeError) throw new Error("The Servora API did not return a response. Check that the backend is running and allows this frontend origin in CORS settings.");
+    throw error;
+  }
   const data = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(data.detail || "Could not complete the request.");
   return data;
