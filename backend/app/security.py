@@ -30,12 +30,6 @@ def get_session_token(request: Request) -> str | None:
 
 
 def get_authenticated_user(request: Request, db: Session) -> UserModel:
-    cookie_user_id = request.cookies.get("servora_user_id")
-    if cookie_user_id:
-        user = db.query(UserModel).filter(UserModel.id == cookie_user_id).first()
-        if user:
-            return user
-
     token = get_session_token(request)
     if token:
         token_hash = hashlib.sha256(token.encode()).hexdigest()
@@ -47,6 +41,15 @@ def get_authenticated_user(request: Request, db: Session) -> UserModel:
             user = db.query(UserModel).filter(UserModel.id == session.user_id).first()
             if user:
                 return user
+        # An explicit bearer token represents the account the client intends
+        # to use. Do not silently fall back to a potentially stale role cookie.
+        raise HTTPException(status_code=401, detail="Session expired. Please sign in again.")
+
+    cookie_user_id = request.cookies.get("servora_user_id")
+    if cookie_user_id:
+        user = db.query(UserModel).filter(UserModel.id == cookie_user_id).first()
+        if user:
+            return user
 
     raise HTTPException(status_code=401, detail="Not authenticated")
 
