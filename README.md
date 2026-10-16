@@ -32,8 +32,10 @@ The API listens at `http://127.0.0.1:8000` and uses local SQLite when `DATABASE_
 
 Create an Aiven MySQL service, then set `DATABASE_URL` in Render (or in `backend/.env` locally) to the service URI in SQLAlchemy format:
 
+Use SQLAlchemy's PyMySQL driver prefix. Keep the Aiven SSL query option if it is included; the backend translates it to PyMySQL TLS settings:
+
 ```text
-mysql+pymysql://avnadmin:YOUR_PASSWORD@YOUR_HOST:YOUR_PORT/defaultdb?ssl_mode=REQUIRED
+mysql+pymysql://avnadmin:YOUR_PASSWORD@YOUR_HOST:YOUR_PORT/defaultdb?ssl-mode=REQUIRED
 ```
 
 Never commit the real database URI or password. The backend creates tables on startup and seeds example data into an empty database.
