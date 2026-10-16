@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, Response, Request, HTTPException
 from sqlalchemy.orm import Session
 from app.db.session import get_db
-from app.db.models import BranchOnboardingModel, CompanyOnboardingModel, UserModel
+from app.db.models import BranchOnboardingModel, CompanyOnboardingModel, TechnicianOnboardingModel, UserModel
 from app.security import create_user_session, get_authenticated_user, revoke_user_session
 from app.schemas import LoginRequest, UserBase
 import hashlib
@@ -35,6 +35,11 @@ def login(payload: LoginRequest, response: Response, db: Session = Depends(get_d
         onboarding = db.query(BranchOnboardingModel).filter_by(branch_id=user.id).first()
         if onboarding and not onboarding.password_set_at:
             raise HTTPException(status_code=403, detail="Finish setting up your franchise password from the invitation email before signing in")
+
+    if user.role == "technician":
+        onboarding = db.query(TechnicianOnboardingModel).filter_by(technician_id=user.id).first()
+        if onboarding and not onboarding.password_set_at:
+            raise HTTPException(status_code=403, detail="Finish setting up your technician password from the invitation email before signing in")
 
     expected_role = {"franchise": "branch"}.get(payload.role, payload.role)
     if expected_role and user.role != expected_role:

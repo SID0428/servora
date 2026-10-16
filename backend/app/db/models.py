@@ -70,6 +70,26 @@ class TechnicianModel(Base):
     avatar = Column(Text, nullable=True)
     is_verified = Column(Boolean, default=True)
 
+class BranchTechnicianModel(Base):
+    __tablename__ = "branch_technicians"
+
+    technician_id = Column(String(64), ForeignKey("technicians.id", ondelete="CASCADE"), primary_key=True)
+    branch_id = Column(String(64), ForeignKey("company_branches.id", ondelete="CASCADE"), nullable=False, index=True)
+    address = Column(Text, nullable=False)
+    pincode = Column(String(10), nullable=False)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+
+class TechnicianOnboardingModel(Base):
+    __tablename__ = "technician_onboarding"
+
+    technician_id = Column(String(64), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    invite_token_hash = Column(String(64), nullable=True, index=True)
+    invite_expires_at = Column(DateTime, nullable=True)
+    pending_password_hash = Column(String(255), nullable=True)
+    otp_hash = Column(String(64), nullable=True)
+    otp_expires_at = Column(DateTime, nullable=True)
+    password_set_at = Column(DateTime, nullable=True)
+
 class ApplianceModel(Base):
     __tablename__ = "appliances"
 

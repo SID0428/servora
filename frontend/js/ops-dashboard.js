@@ -26,6 +26,7 @@ const $ = (id) => document.getElementById(id);
 let requests = [];
 let companies = [];
 let branches = [];
+let technicians = [];
 let directoryRows = [];
 let user = null;
 
@@ -60,9 +61,11 @@ function renderPage(page) {
   const admin = role === "admin";
   $("addCompanyButton").hidden = !admin;
   $("addBranchButton").hidden = !(role === "company" && page === "Branches");
+  $("addTechnicianButton").hidden = !(role === "franchise" && page === "Technicians");
   $("companyInlineAdd").hidden = !admin || page !== "Companies";
   $("exportButton").hidden = page === "System settings" || page === "Companies";
   if (admin && page === "Companies") { renderCompanies(); return; }
+  if (role === "franchise" && page === "Technicians") { renderFranchiseTechnicians(); return; }
   if (admin && ["Branches", "Technicians", "Customers"].includes(page)) { renderDirectory(page); return; }
   if (admin && page === "Service requests") { renderRequestDirectory(); return; }
   if (admin && page === "Reports") { renderReports(); return; }
@@ -116,6 +119,45 @@ function renderCompanyBranches() {
     finally { button.disabled = false; button.textContent = "Resend setup link →"; }
   }));
 }
+function renderFranchiseTechnicians() {
+  $("crumbTitle").textContent = "Technicians";
+  $("addCompanyButton").hidden = true;
+  $("addBranchButton").hidden = true;
+  $("addTechnicianButton").hidden = false;
+  $("companyInlineAdd").hidden = true;
+  $("exportButton").hidden = true;
+  $("pageContent").hidden = false;
+  $("metricGrid").hidden = true;
+  $("tableTitle").textContent = "Franchise technicians";
+  $("tableSubtitle").textContent = "Technicians managed by your franchise and their portal access.";
+  $("sidePanelTitle").textContent = "Technician directory";
+  $("healthContent").innerHTML = `<div class="section-empty"><strong>${technicians.length}</strong> technicians in your franchise</div>`;
+  $("activityContent").innerHTML = `<div class="section-empty">Technicians and their contact details are visible only to your franchise.</div>`;
+  $("bottomTitle").textContent = "Franchise technicians";
+  $("bottomSubtitle").textContent = "Technician accounts registered by this franchise.";
+  $("requestHead").innerHTML = ["Technician", "Title or specialty", "Email", "Mobile number", "Address", "Pincode", "Portal access"].map((label) => `<th>${safe(label)}</th>`).join("");
+  const query = $("requestSearch").value.trim().toLowerCase();
+  const filtered = technicians.filter((technician) => [technician.name, technician.title, technician.email, technician.mobile, technician.address, technician.pincode].join(" ").toLowerCase().includes(query));
+  $("requestRows").innerHTML = filtered.length ? filtered.map((technician) => {
+    const date = technician.password_set_at ? new Intl.DateTimeFormat("en-IN", { dateStyle: "medium", timeStyle: "short" }).format(new Date(technician.password_set_at)) : "";
+    const status = technician.password_set ? `Password set · ${date}` : "Password not set";
+    const access = technician.password_set ? `<span class="status-pill completed">Active</span>` : `<button class="table-action" data-resend-technician="${safe(technician.id)}">Resend setup link →</button>`;
+    return `<tr><td><strong>${safe(technician.name)}</strong><small class="company-password-state ${technician.password_set ? "is-set" : "is-pending"}">${safe(status)}</small></td><td>${safe(technician.title)}</td><td>${safe(technician.email)}</td><td>${safe(technician.mobile)}</td><td>${safe(technician.address)}</td><td>${safe(technician.pincode)}</td><td>${access}</td></tr>`;
+  }).join("") : `<tr><td class="empty-row" colspan="7">${query ? "No technicians match your search." : "No technicians yet. Add your first technician to get started."}</td></tr>`;
+  $("requestCount").textContent = `${filtered.length} technician${filtered.length === 1 ? "" : "s"} shown`;
+  $("requestSearch").placeholder = "Search technicians";
+  $("resourceGrid").innerHTML = "";
+  document.querySelectorAll("[data-resend-technician]").forEach((button) => button.addEventListener("click", async () => {
+    const technician = technicians.find((item) => item.id === button.dataset.resendTechnician);
+    if (!technician) return;
+    button.disabled = true; button.textContent = "Sending…";
+    try {
+      await franchiseApi("/technicians/send-setup-link", { method: "POST", body: JSON.stringify({ technician_id: technician.id }) });
+      showToast(`Technician setup link sent to ${technician.email}.`);
+    } catch (error) { showToast(error.message, "error"); }
+    finally { button.disabled = false; button.textContent = "Resend setup link →"; }
+  }));
+}
 function renderCompanies() {
   $("addCompanyButton").hidden = false;
   $("companyInlineAdd").hidden = false;
@@ -162,6 +204,27 @@ async function companyApi(path, options = {}) {
   if (!response.ok) throw new Error(data.detail || "Could not complete the request.");
   return data;
 }
+async function franchiseApi(path, options = {}) {
+  let response;
+  try {
+    response = await fetch(`${API_BASE_URL}/api/franchise${path}`, { ...options, credentials: "include", headers: { "Content-Type": "application/json", ...authHeaders(), ...options.headers } });
+  } catch (error) {
+    if (error instanceof TypeError) throw new Error("The Servora API did not return a response. Check that the backend is running and allows this frontend origin in CORS settings.");
+    throw error;
+  }
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.detail || "Could not complete the request.");
+  return data;
+}
+async function loadFranchiseTechnicians() {
+  try {
+    technicians = await franchiseApi("/technicians");
+  } catch (error) {
+    technicians = [];
+    showToast(`Technicians could not load: ${error.message}`, "error");
+  }
+  renderFranchiseTechnicians();
+}
 async function loadCompanyBranches() {
   try {
     branches = await companyApi("/branches");
@@ -176,6 +239,7 @@ async function loadCompanyBranches() {
 async function loadWorkspacePageData(page) {
   if (role === "admin") { await loadAdminPageData(page); return; }
   if (role === "company" && page === "Branches") { await loadCompanyBranches(); return; }
+  if (role === "franchise" && page === "Technicians") { await loadFranchiseTechnicians(); return; }
   renderPage(page);
 }
 async function loadAdminPageData(page) {
@@ -344,7 +408,7 @@ async function loadDashboard() {
   if (role === "admin") { $("crumbTitle").textContent = "Overview"; renderPage("Overview"); }
   if (user?.role && user.role !== role) showToast(`Signed in as ${user.role}; this is the ${role} workspace.`, "error");
 }
-$("requestSearch").addEventListener("input", () => { const page = $("crumbTitle").textContent; if (role === "admin" && page === "Companies") renderCompanies(); else if (role === "company" && page === "Branches") renderCompanyBranches(); else if (role === "admin" && ["Branches", "Technicians", "Customers"].includes(page)) renderDirectory(page); else if (role === "admin" && page === "Service requests") renderRequestDirectory(); else renderRequests(); });
+$("requestSearch").addEventListener("input", () => { const page = $("crumbTitle").textContent; if (role === "admin" && page === "Companies") renderCompanies(); else if (role === "company" && page === "Branches") renderCompanyBranches(); else if (role === "franchise" && page === "Technicians") renderFranchiseTechnicians(); else if (role === "admin" && ["Branches", "Technicians", "Customers"].includes(page)) renderDirectory(page); else if (role === "admin" && page === "Service requests") renderRequestDirectory(); else renderRequests(); });
 $("statusFilter").addEventListener("change", () => { if (role === "admin" && $("crumbTitle").textContent === "Service requests") renderRequestDirectory(); else renderRequests(); });
 $("exportButton").addEventListener("click", () => {
   const rows = [["Request ID", "Customer", "Appliance", "Issue", "Status", "Date"], ...requests.map((item) => [item.id, item.customer_name, item.appliance_name, item.issue, item.status_badge, item.appointment_date])];
@@ -378,10 +442,13 @@ document.addEventListener("DOMContentLoaded", () => { document.title = `${config
 $("addCompanyButton").addEventListener("click", () => { $("companyFormMessage").textContent = ""; $("companyDialog").showModal(); });
 $("companyInlineAdd").addEventListener("click", () => { $("companyFormMessage").textContent = ""; $("companyDialog").showModal(); });
 $("addBranchButton").addEventListener("click", () => { $("branchFormMessage").textContent = ""; $("branchDialog").showModal(); });
+$("addTechnicianButton").addEventListener("click", () => { $("technicianFormMessage").textContent = ""; $("technicianDialog").showModal(); });
 $("closeCompanyDialog").addEventListener("click", () => $("companyDialog").close());
 $("cancelCompany").addEventListener("click", () => $("companyDialog").close());
 $("closeBranchDialog").addEventListener("click", () => $("branchDialog").close());
 $("cancelBranch").addEventListener("click", () => $("branchDialog").close());
+$("closeTechnicianDialog").addEventListener("click", () => $("technicianDialog").close());
+$("cancelTechnician").addEventListener("click", () => $("technicianDialog").close());
 $("companyForm").addEventListener("submit", async (event) => {
   event.preventDefault(); const form = event.currentTarget; const submit = form.querySelector('[type="submit"]');
   submit.disabled = true; $("companyFormMessage").textContent = "Creating company…";
@@ -398,5 +465,16 @@ $("branchForm").addEventListener("submit", async (event) => {
     const created = await companyApi("/branches", { method: "POST", body: JSON.stringify(payload) });
     branches.push(created); form.reset(); $("branchDialog").close(); renderCompanyBranches(); showToast(`${created.branch_name} added. Franchise setup link sent to ${created.email}.`);
   } catch (error) { $("branchFormMessage").textContent = error.message; }
+  finally { submit.disabled = false; }
+});
+$("technicianForm").addEventListener("submit", async (event) => {
+  event.preventDefault(); const form = event.currentTarget; const submit = form.querySelector('[type="submit"]');
+  submit.disabled = true; $("technicianFormMessage").textContent = "Saving technician and sending setup email…";
+  const payload = Object.fromEntries(new FormData(form).entries());
+  try {
+    const created = await franchiseApi("/technicians", { method: "POST", body: JSON.stringify(payload) });
+    technicians.push(created); form.reset(); $("technicianDialog").close(); renderFranchiseTechnicians();
+    showToast(`Technician added. Password setup link sent to ${created.email}.`);
+  } catch (error) { $("technicianFormMessage").textContent = error.message; }
   finally { submit.disabled = false; }
 });
