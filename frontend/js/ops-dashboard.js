@@ -7,7 +7,7 @@ const roleConfig = {
   company: { title: "Company workspace", kicker: "COMPANY OPERATIONS", nav: ["Dashboard", "Branches", "Technicians", "Customers", "Service requests", "Reports", "Settings"], columns: ["Request ID", "Customer", "Company", "Appliance", "Status", "Date", "Action"], tableTitle: "Recent service requests", tableSubtitle: "Monitor service activity across the company network.", bottomTitle: "Network resources", sideTitle: "Network health", resources: [["Branches", "Locations in your network", "▥"], ["Technicians", "Field service professionals", "♙"], ["Customers", "Customers served", "♧"], ["Service brands", "Connected product brands", "◈"]] },
   admin: { title: "Platform overview", kicker: "SERVORA PLATFORM", nav: ["Overview", "Companies", "Branches", "Technicians", "Customers", "Service requests", "Reports", "System settings"], columns: ["Request ID", "Customer", "Company", "Appliance", "Status", "Date", "Action"], tableTitle: "Platform service activity", tableSubtitle: "A view of requests moving across Servora.", bottomTitle: "Platform directory", sideTitle: "Platform health", resources: [["Companies", "Service partners", "▥"], ["Branches", "Operational locations", "⌖"], ["Technicians", "Verified professionals", "♙"], ["Customers", "Registered accounts", "♧"]] },
 };
-const config = roleConfig[role] || roleConfig.company;
+let config = roleConfig[role] || roleConfig.company;
 const $ = (id) => document.getElementById(id);
 let requests = [];
 let companies = [];
@@ -205,13 +205,21 @@ async function loadDashboard() {
     const userResponse = await fetch(`${API_BASE_URL}/api/auth/me`, { credentials: "include" });
     if (userResponse.ok) { user = (await userResponse.json()).user; localStorage.setItem("servora_user", JSON.stringify(user)); }
     else if (stored) user = JSON.parse(stored);
-    if (user?.role && roleConfig[user.role]) role = user.role;
+    if (user?.role && roleConfig[user.role]) { role = user.role; config = roleConfig[role]; }
     document.body.dataset.role = role;
+    document.title = `${config.title} — Servora`;
+    $("workspaceKicker").textContent = config.kicker;
+    $("tableTitle").textContent = config.tableTitle;
+    $("tableSubtitle").textContent = config.tableSubtitle;
+    $("sidePanelTitle").textContent = config.sideTitle;
+    $("bottomTitle").textContent = config.bottomTitle;
     const response = await fetch(`${API_BASE_URL}/api/requests`, { credentials: "include" });
     if (response.ok) requests = await response.json();
     if (role === "admin") companies = await adminApi("/companies");
   } catch (error) { showToast("Could not reach the Servora API. Showing available workspace data.", "error"); }
   setProfile(); buildNav(); setMetrics(); renderRequests(); renderInsights(); renderResources();
+  if (role !== "admin") { $("addCompanyButton").hidden = true; }
+  if (role === "admin") { $("crumbTitle").textContent = "Overview"; }
   if (role === "admin") { renderPage("Overview"); }
   if (user?.role && user.role !== role) showToast(`Signed in as ${user.role}; this is the ${role} workspace.`, "error");
 }
