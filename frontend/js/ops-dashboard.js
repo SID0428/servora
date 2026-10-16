@@ -260,7 +260,8 @@ $("exportButton").addEventListener("click", () => {
 });
 $("logoutBtn").addEventListener("click", async () => {
   try { await fetch(`${API_BASE_URL}/api/auth/logout`, { method: "POST", credentials: "include", headers: authHeaders() }); } catch { /* local sign-out still completes */ }
-  localStorage.removeItem("servora_user"); window.location.href = "./index.html";
+  localStorage.removeItem("servora_user");
+  window.location.href = role === "admin" ? "./admin-login.html" : "./index.html";
 });
 $("menuToggle").addEventListener("click", () => $("opsNav").closest(".ops-sidebar").classList.toggle("open"));
 document.addEventListener("DOMContentLoaded", () => { document.title = `${config.title} — Servora`; $("crumbTitle").textContent = config.title; $("workspaceKicker").textContent = config.kicker; $("tableTitle").textContent = config.tableTitle; $("tableSubtitle").textContent = config.tableSubtitle; $("sidePanelTitle").textContent = config.sideTitle; $("bottomTitle").textContent = config.bottomTitle; loadDashboard(); });
