@@ -1,0 +1,43 @@
+{
+  "version": 2,
+  "cleanUrls": true,
+  "trailingSlash": false,
+  "routes": [
+    { "src": "/login", "dest": "/index.html" },
+    { "src": "/company", "dest": "/company-login.html" },
+    { "src": "/franchise", "dest": "/franchise-login.html" },
+    { "src": "/technician", "dest": "/technician-login.html" },
+    { "src": "/admin", "dest": "/admin-login.html" },
+    { "src": "/technician-dashboard", "dest": "/ops-dashboard.html" },
+    { "src": "/franchise-dashboard", "dest": "/ops-dashboard.html" },
+    { "src": "/company-dashboard", "dest": "/ops-dashboard.html" },
+    { "src": "/admin-dashboard", "dest": "/ops-dashboard.html" },
+    {
+      "src": "/dashboard",
+      "dest": "/dashboard.html"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/$1"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "X-Content-Type-Options",
+          "value": "nosniff"
+        },
+        {
+          "key": "X-Frame-Options",
+          "value": "DENY"
+        },
+        {
+          "key": "X-XSS-Protection",
+          "value": "1; mode=block"
+        }
+      ]
+    }
+  ]
+}

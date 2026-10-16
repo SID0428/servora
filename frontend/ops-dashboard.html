@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="theme-color" content="#f4f7fb">
+  <title>Operations dashboard — Servora</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script><script src="https://unpkg.com/lucide@latest"></script>
+  <link rel="stylesheet" href="./css/style.css"><link rel="stylesheet" href="./css/ops-dashboard.css">
+  <script type="module" src="./js/ops-dashboard.js"></script>
+</head>
+<body class="ops-page" data-role="company">
+  <div id="toast-container" class="fixed top-5 right-5 z-50 flex flex-col space-y-3 pointer-events-none"></div>
+  <div class="ops-layout">
+    <aside class="ops-sidebar">
+      <a class="ops-brand" href="./dashboard.html"><span class="ops-brand-mark">S</span><span>SERVORA<small>Service, connected.</small></span></a>
+      <div class="workspace-label">WORKSPACE</div>
+      <nav id="opsNav" class="ops-nav"></nav>
+      <div class="sidebar-bottom"><div class="support-card"><span class="support-icon">✦</span><strong>Need a hand?</strong><span>Visit Servora support for help with your workspace.</span><a href="mailto:help@servora.com">Contact support →</a></div><button id="logoutBtn" class="logout-button"><span>↪</span> Sign out</button></div>
+    </aside>
+    <main class="ops-main">
+      <header class="ops-topbar"><button class="mobile-menu" id="menuToggle" aria-label="Open navigation">☰</button><div class="breadcrumb">Workspace <span>/</span> <strong id="crumbTitle">Overview</strong></div><div class="topbar-actions"><span class="top-date" id="todayLabel"></span><button class="icon-button" title="Notifications">♧<i></i></button><button class="profile-button" id="profileButton"><span class="avatar" id="userAvatar">U</span><span class="profile-copy"><strong id="userName">Servora user</strong><small id="userRole">Workspace</small></span><span class="chevron">⌄</span></button></div></header>
+      <div class="ops-content">
+        <section class="welcome-row"><div><div class="section-kicker" id="workspaceKicker">OPERATIONS</div><h1 id="welcomeTitle">Good morning</h1><p id="welcomeSubtitle">Here is your service operation at a glance.</p></div><button class="primary-action" id="exportButton"><span>↓</span> Export report</button></section>
+        <section class="metric-grid" id="metricGrid"></section>
+        <section class="dashboard-grid"><div class="panel requests-panel"><div class="panel-heading"><div><h2 id="tableTitle">Recent service requests</h2><p id="tableSubtitle">Track requests across your network.</p></div><div class="table-tools"><label class="search-box"><span>⌕</span><input id="requestSearch" type="search" placeholder="Search requests"></label><select id="statusFilter" aria-label="Filter request status"><option value="all">All status</option><option>In Progress</option><option>Scheduled</option><option>Completed</option></select></div></div><div class="table-scroll"><table><thead><tr id="requestHead"></tr></thead><tbody id="requestRows"><tr><td colspan="7" class="empty-row">Loading service requests…</td></tr></tbody></table></div><div class="panel-foot"><span id="requestCount">Loading records</span><span>Updated just now</span></div></div>
+          <aside class="side-panels"><div class="panel health-panel"><div class="panel-heading"><div><h2 id="sidePanelTitle">Network health</h2><p>Current service performance</p></div><span class="more-button">···</span></div><div id="healthContent"></div></div><div class="panel activity-panel"><div class="panel-heading"><div><h2>Service overview</h2><p>Live workflow snapshot</p></div></div><div id="activityContent"></div></div></aside></section>
+        <section class="panel bottom-panel"><div class="panel-heading"><div><h2 id="bottomTitle">Team & service resources</h2><p id="bottomSubtitle">People and assets supporting your service network.</p></div><a href="mailto:help@servora.com" class="text-link">Manage resources →</a></div><div class="resource-grid" id="resourceGrid"></div></section>
+        <footer class="ops-footer"><span>© 2026 Servora · Service, connected.</span><span>Privacy&nbsp;&nbsp; · &nbsp;&nbsp;Help center</span></footer>
+      </div>
+    </main>
+  </div>
+</body>
+</html>

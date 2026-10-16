@@ -1,0 +1,230 @@
+{% extends "base.html" %}
+
+{% block title %}Login - SERVORA | Service, Connected{% endblock %}
+
+{% block content %}
+<div class="min-h-screen flex flex-col md:flex-row bg-slate-50">
+  
+  <!-- Left Brand Column (Matching Mockup Branding) -->
+  <div class="md:w-5/12 lg:w-1/2 bg-gradient-to-br from-brand-900 via-brand-800 to-slate-900 p-8 sm:p-12 lg:p-16 flex flex-col justify-between text-white relative overflow-hidden">
+    <!-- Subtle background accent rings -->
+    <div class="absolute -top-24 -left-24 w-96 h-96 bg-brand-500/10 rounded-full blur-3xl pointer-events-none"></div>
+    <div class="absolute -bottom-20 -right-20 w-80 h-80 bg-blue-400/10 rounded-full blur-2xl pointer-events-none"></div>
+
+    <div>
+      <!-- Servora Logo -->
+      <div class="flex items-center gap-3 mb-10">
+        <div class="w-10 h-10 rounded-xl bg-brand-500 flex items-center justify-center shadow-lg shadow-brand-500/30">
+          <i data-lucide="shield-check" class="w-6 h-6 text-white"></i>
+        </div>
+        <div>
+          <span class="text-2xl font-extrabold tracking-tight text-white uppercase">SERVORA</span>
+          <p class="text-xs text-blue-200/80 font-medium tracking-wide">Service, connected.</p>
+        </div>
+      </div>
+
+      <!-- Hero Message -->
+      <div class="space-y-4 max-w-lg">
+        <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-brand-500/20 text-blue-200 border border-brand-400/20 text-xs font-semibold">
+          <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+          USIP Architecture Compliant
+        </div>
+        <h1 class="text-3xl sm:text-4xl lg:text-5xl font-extrabold tracking-tight text-white leading-tight">
+          One platform.<br>
+          Multiple stakeholders.<br>
+          <span class="text-blue-400">Seamless service.</span>
+        </h1>
+        <p class="text-slate-300 text-sm sm:text-base leading-relaxed pt-2">
+          Servora connects customers with authorized company branches, trusted technicians and enables companies to manage their service operations — all in one place.
+        </p>
+      </div>
+
+      <!-- Feature Pill List from Mockup -->
+      <div class="grid grid-cols-2 gap-4 pt-10 max-w-md">
+        <div class="flex items-start gap-3 p-3.5 rounded-xl bg-white/5 border border-white/10 backdrop-blur-sm">
+          <div class="p-2 rounded-lg bg-blue-500/20 text-blue-300">
+            <i data-lucide="user-check" class="w-5 h-5"></i>
+          </div>
+          <div>
+            <h4 class="text-xs font-semibold text-white">Trusted Technicians</h4>
+            <p class="text-[11px] text-slate-400">Verified & certified</p>
+          </div>
+        </div>
+
+        <div class="flex items-start gap-3 p-3.5 rounded-xl bg-white/5 border border-white/10 backdrop-blur-sm">
+          <div class="p-2 rounded-lg bg-blue-500/20 text-blue-300">
+            <i data-lucide="building-2" class="w-5 h-5"></i>
+          </div>
+          <div>
+            <h4 class="text-xs font-semibold text-white">Authorized Branches</h4>
+            <p class="text-[11px] text-slate-400">Direct OEM network</p>
+          </div>
+        </div>
+
+        <div class="flex items-start gap-3 p-3.5 rounded-xl bg-white/5 border border-white/10 backdrop-blur-sm">
+          <div class="p-2 rounded-lg bg-blue-500/20 text-blue-300">
+            <i data-lucide="zap" class="w-5 h-5"></i>
+          </div>
+          <div>
+            <h4 class="text-xs font-semibold text-white">Real-time Tracking</h4>
+            <p class="text-[11px] text-slate-400">Live technician updates</p>
+          </div>
+        </div>
+
+        <div class="flex items-start gap-3 p-3.5 rounded-xl bg-white/5 border border-white/10 backdrop-blur-sm">
+          <div class="p-2 rounded-lg bg-blue-500/20 text-blue-300">
+            <i data-lucide="shield-alert" class="w-5 h-5"></i>
+          </div>
+          <div>
+            <h4 class="text-xs font-semibold text-white">Doorstep Security</h4>
+            <p class="text-[11px] text-slate-400">OTP anti-fraud protocol</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Footer meta -->
+    <div class="pt-8 text-xs text-slate-400 flex items-center justify-between border-t border-white/10">
+      <span>Unified Service Intelligence Platform v1.0</span>
+      <span class="text-slate-400">© 2026 Servora</span>
+    </div>
+  </div>
+
+  <!-- Right Form Column -->
+  <div class="flex-1 flex flex-col justify-center px-6 sm:px-12 lg:px-20 py-12 bg-white">
+    <div class="max-w-md w-full mx-auto space-y-8">
+      
+      <!-- Header -->
+      <div>
+        <h2 class="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900">Sign in to your account</h2>
+        <p class="text-sm text-slate-500 mt-1">Access your registered appliances, bookings & live tracking</p>
+      </div>
+
+      <!-- Quick Role Demo Switcher (Instant 1-Click Access) -->
+      <div class="p-4 rounded-2xl bg-blue-50/70 border border-blue-100 space-y-2.5">
+        <div class="flex items-center justify-between">
+          <span class="text-xs font-bold text-blue-900 uppercase tracking-wider">Quick Demo Login</span>
+          <span class="text-[11px] text-blue-600 bg-blue-100/80 px-2 py-0.5 rounded-full font-medium">Click to try</span>
+        </div>
+        
+        <div class="grid grid-cols-2 gap-2">
+          <button type="button" onclick="quickLogin('customer')" class="flex items-center gap-2 p-2 rounded-xl bg-white border border-blue-200 text-left hover:border-brand-500 hover:shadow-sm transition-all group">
+            <span class="w-7 h-7 rounded-lg bg-blue-100 text-brand-600 flex items-center justify-center font-bold text-xs group-hover:bg-brand-500 group-hover:text-white transition-colors">
+              <i data-lucide="user" class="w-4 h-4"></i>
+            </span>
+            <div class="truncate">
+              <div class="text-xs font-semibold text-slate-800">Customer</div>
+              <div class="text-[10px] text-slate-500 truncate">Shreyansh Bansal</div>
+            </div>
+          </button>
+
+          <button type="button" onclick="quickLogin('technician')" class="flex items-center gap-2 p-2 rounded-xl bg-white border border-blue-200 text-left hover:border-brand-500 hover:shadow-sm transition-all group">
+            <span class="w-7 h-7 rounded-lg bg-amber-100 text-amber-600 flex items-center justify-center font-bold text-xs group-hover:bg-amber-500 group-hover:text-white transition-colors">
+              <i data-lucide="wrench" class="w-4 h-4"></i>
+            </span>
+            <div class="truncate">
+              <div class="text-xs font-semibold text-slate-800">Technician</div>
+              <div class="text-[10px] text-slate-500 truncate">Rahul Sharma</div>
+            </div>
+          </button>
+
+          <button type="button" onclick="quickLogin('branch')" class="flex items-center gap-2 p-2 rounded-xl bg-white border border-blue-200 text-left hover:border-brand-500 hover:shadow-sm transition-all group">
+            <span class="w-7 h-7 rounded-lg bg-emerald-100 text-emerald-600 flex items-center justify-center font-bold text-xs group-hover:bg-emerald-500 group-hover:text-white transition-colors">
+              <i data-lucide="store" class="w-4 h-4"></i>
+            </span>
+            <div class="truncate">
+              <div class="text-xs font-semibold text-slate-800">Branch</div>
+              <div class="text-[10px] text-slate-500 truncate">Noida Branch</div>
+            </div>
+          </button>
+
+          <button type="button" onclick="quickLogin('company')" class="flex items-center gap-2 p-2 rounded-xl bg-white border border-blue-200 text-left hover:border-brand-500 hover:shadow-sm transition-all group">
+            <span class="w-7 h-7 rounded-lg bg-purple-100 text-purple-600 flex items-center justify-center font-bold text-xs group-hover:bg-purple-500 group-hover:text-white transition-colors">
+              <i data-lucide="building" class="w-4 h-4"></i>
+            </span>
+            <div class="truncate">
+              <div class="text-xs font-semibold text-slate-800">Company</div>
+              <div class="text-[10px] text-slate-500 truncate">Crompton HQ</div>
+            </div>
+          </button>
+        </div>
+      </div>
+
+      <!-- Standard Login Form -->
+      <form id="loginForm" class="space-y-5" onsubmit="handleFormLogin(event)">
+        <div>
+          <label for="identifier" class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
+            Email or Phone Number
+          </label>
+          <div class="relative">
+            <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+              <i data-lucide="mail" class="w-4 h-4"></i>
+            </div>
+            <input 
+              type="text" 
+              id="identifier" 
+              name="identifier" 
+              value="shreyansh@servora.com"
+              required 
+              class="w-full pl-10 pr-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500 text-sm text-slate-900 transition-all"
+              placeholder="e.g. shreyansh@servora.com or +91 98765 43210"
+            >
+          </div>
+        </div>
+
+        <div>
+          <div class="flex items-center justify-between mb-1.5">
+            <label for="password" class="block text-xs font-semibold text-slate-700 uppercase tracking-wider">
+              Password or OTP
+            </label>
+            <a href="#" class="text-xs text-brand-600 hover:text-brand-700 font-medium">Use OTP instead?</a>
+          </div>
+          <div class="relative">
+            <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+              <i data-lucide="lock" class="w-4 h-4"></i>
+            </div>
+            <input 
+              type="password" 
+              id="password" 
+              name="password" 
+              value="••••••••••••"
+              required 
+              class="w-full pl-10 pr-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500 text-sm text-slate-900 transition-all"
+              placeholder="Enter password"
+            >
+          </div>
+        </div>
+
+        <div class="flex items-center justify-between">
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" checked class="w-4 h-4 rounded text-brand-600 border-slate-300 focus:ring-brand-500">
+            <span class="text-xs text-slate-600 font-medium">Remember this device</span>
+          </label>
+          <a href="#" class="text-xs text-brand-600 hover:text-brand-700 font-medium">Forgot password?</a>
+        </div>
+
+        <button 
+          type="submit" 
+          id="submitBtn"
+          class="w-full py-3.5 px-4 rounded-xl bg-brand-500 hover:bg-brand-600 text-white font-semibold text-sm shadow-lg shadow-brand-500/25 transition-all flex items-center justify-center gap-2 group"
+        >
+          <span>Sign In to Servora</span>
+          <i data-lucide="arrow-right" class="w-4 h-4 group-hover:translate-x-1 transition-transform"></i>
+        </button>
+      </form>
+
+      <!-- Security guarantee -->
+      <div class="flex items-center justify-center gap-2 text-xs text-slate-400 pt-4">
+        <i data-lucide="shield-check" class="w-4 h-4 text-emerald-500"></i>
+        <span>Bank-grade encryption & anti-fraud verified sessions</span>
+      </div>
+
+    </div>
+  </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/auth.js"></script>
+{% endblock %}
