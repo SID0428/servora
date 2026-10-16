@@ -2,8 +2,13 @@ import { API_BASE_URL } from "./config.js";
 
 let initialUser = null;
 try { initialUser = JSON.parse(localStorage.getItem("servora_user") || "null"); } catch { initialUser = null; }
-const isAdminRoute = /(?:^|\/)admin-dashboard(?:\.html)?\/?$/i.test(window.location.pathname);
-let role = isAdminRoute ? "admin" : (initialUser?.role || document.body.dataset.role || "company");
+const dashboardRouteRole = Object.entries({
+  admin: /(?:^|\/)admin-dashboard(?:\.html)?\/?$/i,
+  company: /(?:^|\/)company-dashboard(?:\.html)?\/?$/i,
+  franchise: /(?:^|\/)franchise-dashboard(?:\.html)?\/?$/i,
+  technician: /(?:^|\/)technician-dashboard(?:\.html)?\/?$/i,
+}).find(([, pattern]) => pattern.test(window.location.pathname))?.[0];
+let role = dashboardRouteRole || initialUser?.role || document.body.dataset.role || "company";
 const roleConfig = {
   technician: { title: "Technician workspace", kicker: "FIELD SERVICE", nav: ["My jobs", "Job history", "Route & schedule", "Earnings", "Help center"], columns: ["Ticket", "Customer", "Appliance", "Appointment", "Status", "Action"], tableTitle: "My assigned jobs", tableSubtitle: "Your service calls and the next step for each job.", bottomTitle: "Today's schedule", sideTitle: "My performance", resources: [["Assigned today", "Jobs on your schedule", "▤"], ["Completed", "Jobs closed this week", "✓"], ["Customer rating", "From recent service visits", "☆"], ["Service area", "Your assigned territory", "⌖"]] },
   franchise: { title: "Franchise workspace", kicker: "BRANCH OPERATIONS", nav: ["Dashboard", "Service requests", "Technicians", "Active jobs", "Customers", "Reports", "Settings"], columns: ["Request ID", "Customer", "Appliance", "Issue", "Technician", "Status", "Action"], tableTitle: "Incoming service requests", tableSubtitle: "Review requests and coordinate local service work.", bottomTitle: "Branch resources", sideTitle: "Branch performance", resources: [["Technicians", "Available in this branch", "♙"], ["Active jobs", "Assigned and in progress", "⚒"], ["Service area", "Local coverage", "⌖"], ["Response time", "Average first response", "◷"]] },
@@ -260,12 +265,17 @@ $("exportButton").addEventListener("click", () => {
   downloadCsv(`servora-${role}-requests.csv`, rows);
 });
 $("logoutBtn").addEventListener("click", () => {
-  const isAdmin = role === "admin" || isAdminRoute || document.body.dataset.role === "admin";
+  const logoutRole = dashboardRouteRole || role;
   const headers = authHeaders();
   // Clear the browser-side session immediately; a slow/unavailable API must not
   // leave the user appearing signed in or prevent the login-page redirect.
   localStorage.removeItem("servora_user");
-  const loginPath = isAdmin ? "/admin-login.html" : "/index.html";
+  const loginPath = {
+    admin: "/admin-login.html",
+    company: "/company-login.html",
+    franchise: "/franchise-login.html",
+    technician: "/technician-login.html",
+  }[logoutRole] || "/index.html";
   const logoutController = new AbortController();
   const timeout = window.setTimeout(() => logoutController.abort(), 3000);
   fetch(`${API_BASE_URL}/api/auth/logout`, {

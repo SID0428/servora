@@ -452,9 +452,17 @@ window.switchRole = async function(role) {
   }
 };
 
-window.logout = async function() {
-  await apiFetch("/api/auth/logout", { method: "POST" });
-  window.location.href = "./index.html";
+window.logout = function() {
+  const logoutController = new AbortController();
+  const timeout = window.setTimeout(() => logoutController.abort(), 3000);
+  localStorage.removeItem("servora_user");
+  currentUser = null;
+  apiFetch("/api/auth/logout", {
+    method: "POST",
+    signal: logoutController.signal,
+    keepalive: true,
+  }).catch(() => {}).finally(() => window.clearTimeout(timeout));
+  window.location.replace("/index.html");
 };
 
 document.addEventListener("DOMContentLoaded", () => {
