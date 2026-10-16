@@ -5,16 +5,11 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, Request, HTTPException
 from sqlalchemy.orm import Session
 from app.db.session import get_db
-from app.db.models import ServiceRequestModel, ApplianceModel, TechnicianModel, UserModel
+from app.db.models import ServiceRequestModel, ApplianceModel, TechnicianModel
 from app.schemas import ServiceRequestDetail, ServiceBookingCreate, TechnicianBase, TimelineStep
+from app.security import get_authenticated_user
 
 router = APIRouter(prefix="/api/requests", tags=["requests"])
-
-def get_current_user_id(request: Request) -> str:
-    user_id = request.cookies.get("servora_user_id") or request.headers.get("x-user-id")
-    if not user_id:
-        raise HTTPException(status_code=401, detail="Not authenticated")
-    return user_id
 
 def format_request_detail(req: ServiceRequestModel, db: Session) -> ServiceRequestDetail:
     tech = None
@@ -61,10 +56,8 @@ def format_request_detail(req: ServiceRequestModel, db: Session) -> ServiceReque
 
 @router.get("", response_model=List[ServiceRequestDetail])
 def list_requests(request: Request, db: Session = Depends(get_db)):
-    user_id = get_current_user_id(request)
-    user = db.query(UserModel).filter(UserModel.id == user_id).first()
-    if not user:
-        raise HTTPException(status_code=401, detail="Not authenticated")
+    user = get_authenticated_user(request, db)
+    user_id = user.id
     query = db.query(ServiceRequestModel)
     if user.role == "customer":
         query = query.filter(ServiceRequestModel.customer_id == user_id)
@@ -79,8 +72,8 @@ def list_requests(request: Request, db: Session = Depends(get_db)):
 
 @router.get("/{request_id}", response_model=ServiceRequestDetail)
 def get_request(request_id: str, request: Request, db: Session = Depends(get_db)):
-    user_id = get_current_user_id(request)
-    user = db.query(UserModel).filter(UserModel.id == user_id).first()
+    user = get_authenticated_user(request, db)
+    user_id = user.id
     req = db.query(ServiceRequestModel).filter(ServiceRequestModel.id == request_id).first()
     if not req:
         raise HTTPException(status_code=404, detail="Service request not found")
@@ -96,10 +89,8 @@ def get_request(request_id: str, request: Request, db: Session = Depends(get_db)
 
 @router.post("", response_model=ServiceRequestDetail)
 def create_request(payload: ServiceBookingCreate, request: Request, db: Session = Depends(get_db)):
-    user_id = get_current_user_id(request)
-    user = db.query(UserModel).filter(UserModel.id == user_id).first()
-    if not user:
-        raise HTTPException(status_code=401, detail="Not authenticated")
+    user = get_authenticated_user(request, db)
+    user_id = user.id
     if user.role != "customer":
         raise HTTPException(status_code=403, detail="Only customers can create service requests")
 

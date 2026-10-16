@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Request, HTTPException
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy.orm import Session
 from typing import List
 import uuid
@@ -6,24 +6,19 @@ from datetime import datetime
 from app.db.session import get_db
 from app.db.models import ApplianceModel
 from app.schemas import ApplianceBase, NewApplianceCreate
+from app.security import get_authenticated_user
 
 router = APIRouter(prefix="/api/appliances", tags=["appliances"])
 
-def get_current_user_id(request: Request) -> str:
-    user_id = request.cookies.get("servora_user_id") or request.headers.get("x-user-id")
-    if not user_id:
-        raise HTTPException(status_code=401, detail="Not authenticated")
-    return user_id
-
 @router.get("", response_model=List[ApplianceBase])
 def get_user_appliances(request: Request, db: Session = Depends(get_db)):
-    user_id = get_current_user_id(request)
+    user_id = get_authenticated_user(request, db).id
     apps = db.query(ApplianceModel).filter(ApplianceModel.user_id == user_id).all()
     return apps
 
 @router.post("", response_model=ApplianceBase)
 def add_appliance(payload: NewApplianceCreate, request: Request, db: Session = Depends(get_db)):
-    user_id = get_current_user_id(request)
+    user_id = get_authenticated_user(request, db).id
     
     icon_map = {
         "air conditioner": "air-vent",

@@ -15,15 +15,15 @@ from sqlalchemy.orm import Session
 from app.db.models import CompanyOnboardingModel, UserModel
 from app.db.session import get_db
 from app.schemas import CompanyCreate, CompanyCredentialsEmail, CompanyOtpVerify, CompanyPasswordSetup
+from app.security import get_authenticated_user
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 onboarding_router = APIRouter(prefix="/api/onboarding", tags=["company onboarding"])
 
 
 def require_admin(request: Request, db: Session) -> UserModel:
-    user_id = request.cookies.get("servora_user_id") or request.headers.get("x-user-id")
-    user = db.query(UserModel).filter(UserModel.id == user_id).first() if user_id else None
-    if not user or user.role != "admin":
+    user = get_authenticated_user(request, db)
+    if user.role != "admin":
         raise HTTPException(status_code=403, detail="Administrator access required")
     return user
 

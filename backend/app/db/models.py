@@ -13,6 +13,13 @@ class UserModel(Base):
     avatar = Column(Text, nullable=True)
     address = Column(Text, nullable=True)
 
+class UserSessionModel(Base):
+    __tablename__ = "user_sessions"
+
+    token_hash = Column(String(64), primary_key=True, index=True)
+    user_id = Column(String(64), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    expires_at = Column(DateTime, nullable=False, index=True)
+
 class CompanyOnboardingModel(Base):
     __tablename__ = "company_onboarding"
 

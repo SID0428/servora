@@ -5,6 +5,16 @@ let userAppliances = [];
 let userRequests = [];
 let activeTrackingRequestId = "SR-7845";
 
+function apiFetch(path, options = {}) {
+  let storedUser = currentUser;
+  if (!storedUser) {
+    try { storedUser = JSON.parse(localStorage.getItem("servora_user") || "null"); } catch { storedUser = null; }
+  }
+  const headers = { ...(options.headers || {}) };
+  if (storedUser?.session_token) headers.Authorization = `Bearer ${storedUser.session_token}`;
+  return fetch(`${API_BASE_URL}${path}`, { ...options, credentials: options.credentials || "include", headers });
+}
+
 // Global Toast helper
 window.showToast = function(message, type = 'info') {
   const container = document.getElementById('toast-container');
@@ -67,10 +77,10 @@ window.setViewMode = function(mode) {
 async function loadDashboardData() {
   try {
     // 1. Current user
-    const userRes = await fetch(`${API_BASE_URL}/api/auth/me`, { credentials: "include" });
+    const userRes = await apiFetch("/api/auth/me");
     if (userRes.ok) {
       const data = await userRes.json();
-      currentUser = data.user;
+      currentUser = { ...data.user, session_token: currentUser?.session_token || JSON.parse(localStorage.getItem("servora_user") || "null")?.session_token };
       if (currentUser.role !== "customer") {
         const dashboards = { technician: "technician-dashboard.html", branch: "franchise-dashboard.html", company: "company-dashboard.html", admin: "admin-dashboard.html" };
         if (dashboards[currentUser.role]) {
@@ -101,14 +111,14 @@ async function loadDashboardData() {
     }
 
     // 2. Appliances
-    const appRes = await fetch(`${API_BASE_URL}/api/appliances`, { credentials: "include" });
+    const appRes = await apiFetch("/api/appliances");
     if (appRes.ok) {
       userAppliances = await appRes.json();
       renderAppliances(userAppliances);
     }
 
     // 3. Requests
-    const reqRes = await fetch(`${API_BASE_URL}/api/requests`, { credentials: "include" });
+    const reqRes = await apiFetch("/api/requests");
     if (reqRes.ok) {
       userRequests = await reqRes.json();
       renderRequests(userRequests);
@@ -232,7 +242,7 @@ function renderRequests(requests) {
 
 window.loadTrackingDetails = async function(requestId) {
   try {
-    const res = await fetch(`${API_BASE_URL}/api/requests/${requestId}`, { credentials: "include" });
+    const res = await apiFetch(`/api/requests/${requestId}`);
     if (!res.ok) return;
     const req = await res.json();
     activeTrackingRequestId = req.id;
@@ -316,7 +326,7 @@ function renderTimelineHTML(containerId, steps) {
 
 window.advanceDemoStatus = async function() {
   try {
-    const res = await fetch(`${API_BASE_URL}/api/requests/${activeTrackingRequestId}/advance-status`, {
+    const res = await apiFetch(`/api/requests/${activeTrackingRequestId}/advance-status`, {
       method: "POST",
       credentials: "include"
     });
@@ -324,7 +334,7 @@ window.advanceDemoStatus = async function() {
     if (res.ok) {
       showToast(`Status updated: ${data.new_status}`, "success");
       loadTrackingDetails(activeTrackingRequestId);
-      const reqRes = await fetch(`${API_BASE_URL}/api/requests`, { credentials: "include" });
+      const reqRes = await apiFetch("/api/requests");
       if (reqRes.ok) {
         userRequests = await reqRes.json();
         renderRequests(userRequests);
@@ -358,7 +368,7 @@ window.submitBooking = async function(e) {
   const address = document.getElementById("bookAddress").value;
 
   try {
-    const res = await fetch(`${API_BASE_URL}/api/requests`, {
+    const res = await apiFetch("/api/requests", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "include",
@@ -402,7 +412,7 @@ window.submitNewAppliance = async function(e) {
   const serial_no = document.getElementById("newAppSerial").value.trim();
 
   try {
-    const res = await fetch(`${API_BASE_URL}/api/appliances`, {
+    const res = await apiFetch("/api/appliances", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "include",
@@ -443,7 +453,7 @@ window.switchRole = async function(role) {
 };
 
 window.logout = async function() {
-  await fetch(`${API_BASE_URL}/api/auth/logout`, { method: "POST", credentials: "include" });
+  await apiFetch("/api/auth/logout", { method: "POST" });
   window.location.href = "./index.html";
 };
 

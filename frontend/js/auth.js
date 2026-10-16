@@ -57,7 +57,7 @@ async function handleLogin(event) {
     });
     const data = await response.json();
     if (!response.ok) throw new Error(data.detail || "Unable to sign in. Check your details and try again.");
-    localStorage.setItem("servora_user", JSON.stringify(data.user));
+    localStorage.setItem("servora_user", JSON.stringify({ ...data.user, session_token: data.session_token }));
     setMessage(`Welcome back, ${data.user.name}.`, true);
     // Navigate immediately so static hosting and browser privacy settings cannot
     // interrupt the redirect timer after a successful response.

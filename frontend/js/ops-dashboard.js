@@ -18,6 +18,10 @@ let user = null;
 
 const icons = { Dashboard: "⌂", Overview: "⌂", "My jobs": "▤", "Job history": "◷", "Route & schedule": "⌖", Earnings: "$", "Help center": "?", "Service requests": "▣", "Incoming service requests": "▣", Technicians: "♙", "Active jobs": "⚒", Customers: "♧", Reports: "▥", Settings: "⚙", Companies: "▦", Branches: "⌖", "System settings": "⚙" };
 function safe(value) { const node = document.createElement("span"); node.textContent = value ?? ""; return node.innerHTML; }
+function authHeaders() {
+  const token = user?.session_token || initialUser?.session_token;
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
 function showToast(message, type = "info") {
   const host = $("toast-container"); if (!host) return;
   const note = document.createElement("div");
@@ -93,7 +97,7 @@ function renderCompanies() {
   }));
 }
 async function adminApi(path, options = {}) {
-  const response = await fetch(`${API_BASE_URL}/api/admin${path}`, { ...options, credentials: "include", headers: { "Content-Type": "application/json", ...options.headers } });
+  const response = await fetch(`${API_BASE_URL}/api/admin${path}`, { ...options, credentials: "include", headers: { "Content-Type": "application/json", ...authHeaders(), ...options.headers } });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(data.detail || "Could not complete the request.");
   return data;
@@ -224,8 +228,8 @@ async function loadDashboard() {
   const stored = localStorage.getItem("servora_user");
   if (stored) { try { user = JSON.parse(stored); } catch { user = null; } }
   try {
-    const userResponse = await fetch(`${API_BASE_URL}/api/auth/me`, { credentials: "include" });
-    if (userResponse.ok) { user = (await userResponse.json()).user; localStorage.setItem("servora_user", JSON.stringify(user)); }
+    const userResponse = await fetch(`${API_BASE_URL}/api/auth/me`, { credentials: "include", headers: authHeaders() });
+    if (userResponse.ok) { const authenticated = (await userResponse.json()).user; user = { ...authenticated, session_token: user?.session_token || initialUser?.session_token }; localStorage.setItem("servora_user", JSON.stringify(user)); }
     else if (stored) user = JSON.parse(stored);
     if (user?.role && roleConfig[user.role]) { role = user.role; config = roleConfig[role]; }
     document.body.dataset.role = role;
@@ -235,10 +239,14 @@ async function loadDashboard() {
     $("tableSubtitle").textContent = config.tableSubtitle;
     $("sidePanelTitle").textContent = config.sideTitle;
     $("bottomTitle").textContent = config.bottomTitle;
-    const response = await fetch(`${API_BASE_URL}/api/requests`, { credentials: "include" });
+    const response = await fetch(`${API_BASE_URL}/api/requests`, { credentials: "include", headers: authHeaders() });
+    if (response.status === 401) throw new Error("Your admin session was not accepted. Sign out and sign in again.");
     if (response.ok) requests = await response.json();
     if (role === "admin") companies = await adminApi("/companies");
-  } catch (error) { showToast("Could not reach the Servora API. Showing available workspace data.", "error"); }
+  } catch (error) {
+    const detail = error instanceof TypeError ? "Could not connect to the Servora API." : error.message;
+    showToast(`${detail} Showing available workspace data.`, "error");
+  }
   setProfile(); buildNav(); setMetrics(); renderRequests(); renderInsights(); renderResources();
   if (role !== "admin") { $("addCompanyButton").hidden = true; }
   if (role === "admin") { $("crumbTitle").textContent = "Overview"; renderPage("Overview"); }
@@ -251,7 +259,7 @@ $("exportButton").addEventListener("click", () => {
   downloadCsv(`servora-${role}-requests.csv`, rows);
 });
 $("logoutBtn").addEventListener("click", async () => {
-  try { await fetch(`${API_BASE_URL}/api/auth/logout`, { method: "POST", credentials: "include" }); } catch { /* local sign-out still completes */ }
+  try { await fetch(`${API_BASE_URL}/api/auth/logout`, { method: "POST", credentials: "include", headers: authHeaders() }); } catch { /* local sign-out still completes */ }
   localStorage.removeItem("servora_user"); window.location.href = "./index.html";
 });
 $("menuToggle").addEventListener("click", () => $("opsNav").closest(".ops-sidebar").classList.toggle("open"));

@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, Response, Request, HTTPException
 from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.db.models import CompanyOnboardingModel, UserModel
+from app.security import create_user_session, get_authenticated_user, revoke_user_session
 from app.schemas import LoginRequest, UserBase
 import hashlib
 import hmac
@@ -58,9 +59,12 @@ def login(payload: LoginRequest, response: Response, db: Session = Depends(get_d
         samesite="none",
         secure=True
     )
+    session_token = create_user_session(user, db)
+    db.commit()
 
     return {
         "status": "success",
+        "session_token": session_token,
         "user": {
             "id": user.id,
             "name": user.name,
@@ -74,16 +78,13 @@ def login(payload: LoginRequest, response: Response, db: Session = Depends(get_d
 
 @router.get("/me")
 def get_current_user(request: Request, db: Session = Depends(get_db)):
-    user_id = request.cookies.get("servora_user_id") or request.headers.get("x-user-id")
-    if not user_id:
-        raise HTTPException(status_code=401, detail="Not authenticated")
-    user = db.query(UserModel).filter(UserModel.id == user_id).first()
-    if not user:
-        raise HTTPException(status_code=401, detail="Not authenticated")
+    user = get_authenticated_user(request, db)
     return {"user": user}
 
 @router.post("/logout")
-def logout(response: Response):
+def logout(request: Request, response: Response, db: Session = Depends(get_db)):
+    revoke_user_session(request, db)
+    db.commit()
     response.delete_cookie(key="servora_user_id", path="/", samesite="none", secure=True)
     return {"status": "success", "message": "Logged out successfully"}
 
