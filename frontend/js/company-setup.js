@@ -45,8 +45,8 @@ otpForm.addEventListener("submit", async (event) => {
     $("setupTitle").textContent = "Your password is set";
     $("setupIntro").textContent = "Your company admin account is now active. Sign in with your registered email and new password.";
     otpForm.hidden = true;
-    message("Email verified and password saved.");
-    const signIn = document.createElement("a"); signIn.className = "primary-button setup-signin"; signIn.href = "./company-login.html"; signIn.textContent = "Go to company sign in";
+    message(data.confirmation_email_sent ? "Email verified, password saved, and confirmation email sent." : "Password saved, but the confirmation email could not be sent. Use the portal link below to sign in.");
+    const signIn = document.createElement("a"); signIn.className = "primary-button setup-signin"; signIn.href = data.portal_login_url || "./company-login.html"; signIn.textContent = "Go to company sign in";
     otpForm.after(signIn);
     history.replaceState({}, "", window.location.pathname);
   } catch (error) { message(error.message, true); }

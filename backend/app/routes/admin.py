@@ -203,4 +203,25 @@ def verify_company_setup_otp(payload: CompanyOtpVerify, db: Session = Depends(ge
     onboarding.invite_token_hash = None
     onboarding.invite_expires_at = None
     db.commit()
-    return {"status": "password_set", "email": company.email, "password_set_at": onboarding.password_set_at.isoformat()}
+    frontend_url = os.getenv("FRONTEND_BASE_URL", "https://servora-frontend-xi.vercel.app").rstrip("/")
+    portal_url = f"{frontend_url}/company-login.html"
+    confirmation_email_sent = False
+    safe_name = html.escape(company.name)
+    safe_url = html.escape(portal_url, quote=True)
+    try:
+        send_brevo_email(
+            company.email, company.name, "Your Servora company password is set",
+            f"Hello {company.name},\n\nYour Servora company admin password has been set successfully. You can now access your company portal using your registered email and password:\n{portal_url}\n\nIf you did not make this change, please contact Servora support.",
+            f"<p>Hello {safe_name},</p><p>Your Servora company admin password has been set successfully. You can now access your company portal using your registered email and password.</p><p><a href=\"{safe_url}\">Open the Servora company portal</a></p><p>If you did not make this change, please contact Servora support.</p>",
+        )
+        confirmation_email_sent = True
+    except Exception:
+        # Password setup is already committed; report email delivery separately
+        # so the company is not incorrectly prompted to repeat OTP verification.
+        pass
+    return {
+        "status": "password_set", "email": company.email,
+        "password_set_at": onboarding.password_set_at.isoformat(),
+        "confirmation_email_sent": confirmation_email_sent,
+        "portal_login_url": portal_url,
+    }
