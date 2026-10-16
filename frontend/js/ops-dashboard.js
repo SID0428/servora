@@ -10,6 +10,8 @@ const roleConfig = {
 const config = roleConfig[role] || roleConfig.company;
 const $ = (id) => document.getElementById(id);
 let requests = [];
+let companies = [];
+let directoryRows = [];
 let user = null;
 
 const icons = { Dashboard: "⌂", Overview: "⌂", "My jobs": "▤", "Job history": "◷", "Route & schedule": "⌖", Earnings: "$", "Help center": "?", "Service requests": "▣", "Incoming service requests": "▣", Technicians: "♙", "Active jobs": "⚒", Customers: "♧", Reports: "▥", Settings: "⚙", Companies: "▦", Branches: "⌖", "System settings": "⚙" };
@@ -31,7 +33,117 @@ function setProfile() {
 function greeting() { const hour = new Date().getHours(); return hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening"; }
 function buildNav() {
   $("opsNav").innerHTML = config.nav.map((item, index) => `<a href="#${item.toLowerCase().replaceAll(/[^a-z0-9]+/g, "-")}" class="nav-link ${index === 0 ? "active" : ""}"><span class="nav-icon">${icons[item] || "•"}</span>${safe(item)}${item === "Service requests" ? `<span class="nav-count">${requests.length}</span>` : ""}</a>`).join("");
-  document.querySelectorAll(".nav-link").forEach((link) => link.addEventListener("click", (event) => { event.preventDefault(); document.querySelectorAll(".nav-link").forEach((item) => item.classList.remove("active")); link.classList.add("active"); $("crumbTitle").textContent = link.textContent.trim(); }));
+  document.querySelectorAll(".nav-link").forEach((link) => link.addEventListener("click", (event) => { event.preventDefault(); document.querySelectorAll(".nav-link").forEach((item) => item.classList.remove("active")); link.classList.add("active"); loadAdminPageData(link.textContent.trim()); document.querySelector(".ops-sidebar").classList.remove("open"); }));
+}
+function renderPage(page) {
+  $("crumbTitle").textContent = page;
+  const admin = role === "admin";
+  $("addCompanyButton").hidden = !(admin && page === "Companies");
+  $("exportButton").hidden = page === "System settings" || page === "Companies";
+  if (admin && page === "Companies") { renderCompanies(); return; }
+  if (admin && ["Branches", "Technicians", "Customers"].includes(page)) { renderDirectory(page); return; }
+  if (admin && page === "Service requests") { renderRequestDirectory(); return; }
+  if (admin && page === "Reports") { renderReports(); return; }
+  if (admin && page === "System settings") { renderSettings(); return; }
+  const titles = { Overview: "Platform service activity", Branches: "Branches", Technicians: "Technicians", Customers: "Customers", "Service requests": "Service requests", Reports: "Platform reports", "System settings": "System settings" };
+  $("pageContent").hidden = false;
+  $("metricGrid").hidden = false;
+  $("metricGrid").innerHTML = "";
+  $("requestHead").innerHTML = "";
+  $("requestRows").innerHTML = `<tr><td class="empty-row" colspan="7">${page === "Overview" ? "Platform overview is ready. Use the navigation to explore Servora records." : `${safe(page)} data is not available through the current API yet.`}</td></tr>`;
+  $("tableTitle").textContent = titles[page] || page;
+  $("tableSubtitle").textContent = page === "Overview" ? "A snapshot of service activity across Servora." : `Browse ${page.toLowerCase()} across the Servora platform.`;
+  $("sidePanelTitle").textContent = page === "Reports" ? "Report summary" : "Platform health";
+  $("healthContent").innerHTML = `<div class="section-empty">${safe(page)} workspace</div>`;
+  $("activityContent").innerHTML = `<div class="section-empty">${safe(page)} insights will appear here as platform records are connected.</div>`;
+  $("resourceGrid").innerHTML = "";
+  $("bottomTitle").textContent = `${page} workspace`;
+  $("bottomSubtitle").textContent = "Platform administration tools";
+}
+function renderCompanies() {
+  $("pageContent").hidden = false;
+  $("metricGrid").hidden = true;
+  $("tableTitle").textContent = "Companies on Servora";
+  $("tableSubtitle").textContent = "Manage platform partners and their company portal access.";
+  $("sidePanelTitle").textContent = "Company access";
+  $("healthContent").innerHTML = `<div class="section-empty"><strong>${companies.length}</strong> partner companies are listed on Servora.</div>`;
+  $("activityContent").innerHTML = `<div class="section-empty">Create a company account, then send its portal credentials to the administrator email.</div>`;
+  $("bottomTitle").textContent = "Company directory";
+  $("bottomSubtitle").textContent = "Company portal accounts registered on Servora.";
+  $("requestHead").innerHTML = ["Company", "Administrator email", "Phone", "Address", "Portal", "Action"].map((name) => `<th>${name}</th>`).join("");
+  $("requestRows").innerHTML = companies.length ? companies.map((company) => `<tr><td><div class="customer-cell"><span class="customer-avatar">${safe(company.name.split(/\s+/).map((part) => part[0]).slice(0, 2).join(""))}</span><span class="customer-name">${safe(company.name)}<small>${safe(company.id)}</small></span></div></td><td>${safe(company.email)}</td><td>${safe(company.phone)}</td><td>${safe(company.address || "—")}</td><td><span class="status-pill completed">Company portal</span></td><td><button class="table-action" data-send-credentials="${safe(company.id)}">Send login details →</button></td></tr>`).join("") : `<tr><td class="empty-row" colspan="6">No companies yet. Add your first company to get started.</td></tr>`;
+  document.querySelectorAll("[data-send-credentials]").forEach((button) => button.addEventListener("click", async () => {
+    const company = companies.find((item) => item.id === button.dataset.sendCredentials);
+    if (!company || !window.confirm(`Send company portal login details to ${company.email}? This will generate a new temporary password.`)) return;
+    button.disabled = true; button.textContent = "Sending…";
+    try { await adminApi("/companies/send-credentials", { method: "POST", body: JSON.stringify({ company_id: company.id }) }); showToast(`Login details sent to ${company.email}.`); }
+    catch (error) { showToast(error.message, "error"); }
+    finally { button.disabled = false; button.textContent = "Send login details →"; }
+  }));
+}
+async function adminApi(path, options = {}) {
+  const response = await fetch(`${API_BASE_URL}/api/admin${path}`, { ...options, credentials: "include", headers: { "Content-Type": "application/json", ...options.headers } });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.detail || "Could not complete the request.");
+  return data;
+}
+async function loadAdminPageData(page) {
+  if (role !== "admin") return;
+  const roles = { Branches: "branch", Technicians: "technician", Customers: "customer" };
+  try {
+    if (roles[page]) directoryRows = await adminApi(`/directory/${roles[page]}`);
+    if (page === "Companies") companies = await adminApi("/companies");
+  } catch (error) { directoryRows = []; showToast(error.message, "error"); }
+  renderPage(page);
+}
+function renderDirectory(page) {
+  $("metricGrid").hidden = true; $("requestSearch").placeholder = `Search ${page.toLowerCase()}`;
+  $("tableTitle").textContent = page; $("tableSubtitle").textContent = `All ${page.toLowerCase()} accounts registered on Servora.`;
+  $("sidePanelTitle").textContent = `${page} directory`;
+  $("healthContent").innerHTML = `<div class="section-empty"><strong>${directoryRows.length}</strong> ${page.toLowerCase()} accounts</div>`;
+  $("activityContent").innerHTML = `<div class="section-empty">Directory records are loaded from the Servora account database.</div>`;
+  $("requestHead").innerHTML = ["Name", "Email", "Phone", "Address", "Account type"].map((label) => `<th>${label}</th>`).join("");
+  const query = $("requestSearch").value.trim().toLowerCase(); const filtered = directoryRows.filter((item) => [item.name, item.email, item.phone, item.address].join(" ").toLowerCase().includes(query));
+  $("requestRows").innerHTML = filtered.length ? filtered.map((item) => `<tr><td>${safe(item.name)}</td><td>${safe(item.email)}</td><td>${safe(item.phone)}</td><td>${safe(item.address || "—")}</td><td><span class="status-pill">${safe(item.role)}</span></td></tr>`).join("") : `<tr><td class="empty-row" colspan="5">No ${page.toLowerCase()} accounts found.</td></tr>`;
+  $("requestCount").textContent = `${filtered.length} ${page.toLowerCase()} shown`; $("resourceGrid").innerHTML = "";
+  $("bottomTitle").textContent = `${page} directory`; $("bottomSubtitle").textContent = "Registered platform accounts";
+}
+function renderRequestDirectory() {
+  $("metricGrid").hidden = true; $("requestSearch").placeholder = "Search service requests";
+  $("tableTitle").textContent = "Service requests"; $("tableSubtitle").textContent = "Service activity across all Servora accounts.";
+  $("requestHead").innerHTML = ["Request ID", "Customer", "Appliance", "Issue", "Status", "Date"].map((label) => `<th>${label}</th>`).join("");
+  const query = $("requestSearch").value.trim().toLowerCase(); const filtered = requests.filter((item) => [item.id, item.customer_name, item.appliance_name, item.issue, item.status_badge].join(" ").toLowerCase().includes(query));
+  $("requestRows").innerHTML = filtered.length ? filtered.map((item) => `<tr><td>${safe(item.id)}</td><td>${safe(item.customer_name)}</td><td>${safe(item.appliance_name)}</td><td>${safe(item.issue)}</td><td><span class="status-pill ${statusClass(item.status_badge)}">${safe(item.status_badge)}</span></td><td>${safe(item.appointment_date)}</td></tr>`).join("") : `<tr><td class="empty-row" colspan="6">No service requests found.</td></tr>`;
+  $("requestCount").textContent = `${filtered.length} service requests shown`; $("sidePanelTitle").textContent = "Request status";
+  $("healthContent").innerHTML = `<div class="section-empty"><strong>${requests.length}</strong> total service requests</div>`;
+  $("activityContent").innerHTML = `<div class="section-empty">${requests.filter((item) => item.status_badge !== "Completed").length} requests are currently active.</div>`;
+  $("resourceGrid").innerHTML = ""; $("bottomTitle").textContent = "Service request directory"; $("bottomSubtitle").textContent = "Current request records";
+}
+function renderReports() {
+  $("metricGrid").hidden = false; $("metricGrid").innerHTML = `<article class="metric-card"><div class="metric-label">Service requests</div><div class="metric-value">${requests.length}</div><div class="metric-bottom">All recorded requests</div></article><article class="metric-card"><div class="metric-label">Completed</div><div class="metric-value">${requests.filter((item) => item.status_badge === "Completed").length}</div><div class="metric-bottom">Requests marked complete</div></article><article class="metric-card"><div class="metric-label">Active</div><div class="metric-value">${requests.filter((item) => !["Completed", "Cancelled"].includes(item.status_badge)).length}</div><div class="metric-bottom">Open requests</div></article><article class="metric-card"><div class="metric-label">Companies</div><div class="metric-value">${companies.length}</div><div class="metric-bottom">Partner accounts</div></article>`;
+  $("tableTitle").textContent = "Reports"; $("tableSubtitle").textContent = "Export current Servora platform service data.";
+  $("requestHead").innerHTML = ["Report", "Coverage", "Records", "Action"].map((label) => `<th>${label}</th>`).join("");
+  $("requestRows").innerHTML = `<tr><td>Service requests</td><td>All platform activity</td><td>${requests.length}</td><td><button class="table-action" id="downloadRequests">Download CSV →</button></td></tr><tr><td>Company directory</td><td>Registered partner accounts</td><td>${companies.length}</td><td><button class="table-action" id="downloadCompanies">Download CSV →</button></td></tr>`;
+  $("requestCount").textContent = "2 reports available"; $("sidePanelTitle").textContent = "Report coverage";
+  $("healthContent").innerHTML = `<div class="section-empty">Reports include current service request and company account records.</div>`;
+  $("activityContent").innerHTML = `<div class="section-empty">Use the Download CSV actions to export a snapshot.</div>`;
+  $("resourceGrid").innerHTML = ""; $("bottomTitle").textContent = "Available reports"; $("bottomSubtitle").textContent = "Download a CSV snapshot";
+  $("downloadRequests").addEventListener("click", () => downloadCsv("servora-service-requests.csv", [["Request ID", "Customer", "Appliance", "Issue", "Status", "Date"], ...requests.map((item) => [item.id, item.customer_name, item.appliance_name, item.issue, item.status_badge, item.appointment_date])]));
+  $("downloadCompanies").addEventListener("click", () => downloadCsv("servora-companies.csv", [["Company", "Email", "Phone", "Address"], ...companies.map((item) => [item.name, item.email, item.phone, item.address || ""]) ]));
+}
+function renderSettings() {
+  $("metricGrid").hidden = true; $("tableTitle").textContent = "System settings";
+  $("tableSubtitle").textContent = "Platform connection and email delivery configuration.";
+  $("requestHead").innerHTML = ["Setting", "Configuration", "Status"].map((label) => `<th>${label}</th>`).join("");
+  $("requestRows").innerHTML = `<tr><td>Servora API</td><td>${safe(API_BASE_URL)}</td><td><span class="status-pill completed">Connected when API is reachable</span></td></tr><tr><td>Company credential email</td><td>Brevo SMTP API</td><td><span class="status-pill">Configured on backend</span></td></tr><tr><td>Administrator access</td><td>Signed-in admin account</td><td><span class="status-pill completed">Protected</span></td></tr>`;
+  $("requestCount").textContent = "3 platform settings"; $("sidePanelTitle").textContent = "Email delivery";
+  $("healthContent").innerHTML = `<div class="section-empty">Company invitation emails are sent through Brevo. API keys and sender identity are stored on the backend.</div>`;
+  $("activityContent").innerHTML = `<div class="section-empty">Set BREVO_API_KEY and BREVO_SENDER_EMAIL in the backend environment to enable delivery.</div>`;
+  $("resourceGrid").innerHTML = ""; $("bottomTitle").textContent = "Platform configuration"; $("bottomSubtitle").textContent = "Runtime settings are managed through the backend environment.";
+}
+function downloadCsv(filename, rows) {
+  const csv = rows.map((row) => row.map((cell) => `"${String(cell ?? "").replaceAll('"', '""')}"`).join(",")).join("\n");
+  const link = document.createElement("a"); link.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" })); link.download = filename; link.click(); URL.revokeObjectURL(link.href);
 }
 function setMetrics() {
   const total = requests.length;
@@ -94,16 +206,17 @@ async function loadDashboard() {
     if (userResponse.ok) { user = (await userResponse.json()).user; localStorage.setItem("servora_user", JSON.stringify(user)); }
     const response = await fetch(`${API_BASE_URL}/api/requests`, { credentials: "include" });
     if (response.ok) requests = await response.json();
+    if (role === "admin") companies = await adminApi("/companies");
   } catch (error) { showToast("Could not reach the Servora API. Showing available workspace data.", "error"); }
   setProfile(); buildNav(); setMetrics(); renderRequests(); renderInsights(); renderResources();
+  if (role === "admin") { renderPage("Overview"); }
   if (user?.role && user.role !== role) showToast(`Signed in as ${user.role}; this is the ${role} workspace.`, "error");
 }
-$("requestSearch").addEventListener("input", renderRequests);
-$("statusFilter").addEventListener("change", renderRequests);
+$("requestSearch").addEventListener("input", () => { const page = $("crumbTitle").textContent; if (role === "admin" && page === "Companies") renderCompanies(); else if (role === "admin" && ["Branches", "Technicians", "Customers"].includes(page)) renderDirectory(page); else if (role === "admin" && page === "Service requests") renderRequestDirectory(); else renderRequests(); });
+$("statusFilter").addEventListener("change", () => { if (role === "admin" && $("crumbTitle").textContent === "Service requests") renderRequestDirectory(); else renderRequests(); });
 $("exportButton").addEventListener("click", () => {
   const rows = [["Request ID", "Customer", "Appliance", "Issue", "Status", "Date"], ...requests.map((item) => [item.id, item.customer_name, item.appliance_name, item.issue, item.status_badge, item.appointment_date])];
-  const csv = rows.map((row) => row.map((cell) => `"${String(cell ?? "").replaceAll('"', '""')}"`).join(",")).join("\n");
-  const link = document.createElement("a"); link.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" })); link.download = `servora-${role}-requests.csv`; link.click(); URL.revokeObjectURL(link.href);
+  downloadCsv(`servora-${role}-requests.csv`, rows);
 });
 $("logoutBtn").addEventListener("click", async () => {
   try { await fetch(`${API_BASE_URL}/api/auth/logout`, { method: "POST", credentials: "include" }); } catch { /* local sign-out still completes */ }
@@ -111,3 +224,14 @@ $("logoutBtn").addEventListener("click", async () => {
 });
 $("menuToggle").addEventListener("click", () => $("opsNav").closest(".ops-sidebar").classList.toggle("open"));
 document.addEventListener("DOMContentLoaded", () => { document.title = `${config.title} — Servora`; $("crumbTitle").textContent = config.title; $("workspaceKicker").textContent = config.kicker; $("tableTitle").textContent = config.tableTitle; $("tableSubtitle").textContent = config.tableSubtitle; $("sidePanelTitle").textContent = config.sideTitle; $("bottomTitle").textContent = config.bottomTitle; loadDashboard(); });
+$("addCompanyButton").addEventListener("click", () => { $("companyFormMessage").textContent = ""; $("companyDialog").showModal(); });
+$("closeCompanyDialog").addEventListener("click", () => $("companyDialog").close());
+$("cancelCompany").addEventListener("click", () => $("companyDialog").close());
+$("companyForm").addEventListener("submit", async (event) => {
+  event.preventDefault(); const form = event.currentTarget; const submit = form.querySelector('[type="submit"]');
+  submit.disabled = true; $("companyFormMessage").textContent = "Creating company…";
+  const payload = Object.fromEntries(new FormData(form).entries());
+  try { const created = await adminApi("/companies", { method: "POST", body: JSON.stringify(payload) }); companies.push(created); form.reset(); $("companyDialog").close(); renderPage("Companies"); showToast(`${created.name} added to Servora.`); }
+  catch (error) { $("companyFormMessage").textContent = error.message; }
+  finally { submit.disabled = false; }
+});

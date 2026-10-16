@@ -23,6 +23,15 @@ class LoginRequest(BaseModel):
     password: str = Field(min_length=1)
     role: Optional[str] = None
 
+class CompanyCreate(BaseModel):
+    name: str = Field(min_length=2, max_length=128)
+    email: str
+    phone: str = Field(min_length=5, max_length=32)
+    address: Optional[str] = None
+
+class CompanyCredentialsEmail(BaseModel):
+    company_id: str
+
 class ApplianceBase(BaseModel):
     id: str
     brand: str
