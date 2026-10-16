@@ -2,7 +2,8 @@ import { API_BASE_URL } from "./config.js";
 
 let initialUser = null;
 try { initialUser = JSON.parse(localStorage.getItem("servora_user") || "null"); } catch { initialUser = null; }
-let role = initialUser?.role || document.body.dataset.role || "company";
+const isAdminRoute = /(?:^|\/)admin-dashboard(?:\.html)?\/?$/i.test(window.location.pathname);
+let role = isAdminRoute ? "admin" : (initialUser?.role || document.body.dataset.role || "company");
 const roleConfig = {
   technician: { title: "Technician workspace", kicker: "FIELD SERVICE", nav: ["My jobs", "Job history", "Route & schedule", "Earnings", "Help center"], columns: ["Ticket", "Customer", "Appliance", "Appointment", "Status", "Action"], tableTitle: "My assigned jobs", tableSubtitle: "Your service calls and the next step for each job.", bottomTitle: "Today's schedule", sideTitle: "My performance", resources: [["Assigned today", "Jobs on your schedule", "▤"], ["Completed", "Jobs closed this week", "✓"], ["Customer rating", "From recent service visits", "☆"], ["Service area", "Your assigned territory", "⌖"]] },
   franchise: { title: "Franchise workspace", kicker: "BRANCH OPERATIONS", nav: ["Dashboard", "Service requests", "Technicians", "Active jobs", "Customers", "Reports", "Settings"], columns: ["Request ID", "Customer", "Appliance", "Issue", "Technician", "Status", "Action"], tableTitle: "Incoming service requests", tableSubtitle: "Review requests and coordinate local service work.", bottomTitle: "Branch resources", sideTitle: "Branch performance", resources: [["Technicians", "Available in this branch", "♙"], ["Active jobs", "Assigned and in progress", "⚒"], ["Service area", "Local coverage", "⌖"], ["Response time", "Average first response", "◷"]] },
@@ -258,10 +259,23 @@ $("exportButton").addEventListener("click", () => {
   const rows = [["Request ID", "Customer", "Appliance", "Issue", "Status", "Date"], ...requests.map((item) => [item.id, item.customer_name, item.appliance_name, item.issue, item.status_badge, item.appointment_date])];
   downloadCsv(`servora-${role}-requests.csv`, rows);
 });
-$("logoutBtn").addEventListener("click", async () => {
-  try { await fetch(`${API_BASE_URL}/api/auth/logout`, { method: "POST", credentials: "include", headers: authHeaders() }); } catch { /* local sign-out still completes */ }
+$("logoutBtn").addEventListener("click", () => {
+  const isAdmin = role === "admin" || isAdminRoute || document.body.dataset.role === "admin";
+  const headers = authHeaders();
+  // Clear the browser-side session immediately; a slow/unavailable API must not
+  // leave the user appearing signed in or prevent the login-page redirect.
   localStorage.removeItem("servora_user");
-  window.location.href = role === "admin" ? "./admin-login.html" : "./index.html";
+  const loginPath = isAdmin ? "/admin-login.html" : "/index.html";
+  const logoutController = new AbortController();
+  const timeout = window.setTimeout(() => logoutController.abort(), 3000);
+  fetch(`${API_BASE_URL}/api/auth/logout`, {
+    method: "POST",
+    credentials: "include",
+    headers,
+    signal: logoutController.signal,
+    keepalive: true,
+  }).catch(() => {}).finally(() => window.clearTimeout(timeout));
+  window.location.replace(loginPath);
 });
 $("menuToggle").addEventListener("click", () => $("opsNav").closest(".ops-sidebar").classList.toggle("open"));
 document.addEventListener("DOMContentLoaded", () => { document.title = `${config.title} — Servora`; $("crumbTitle").textContent = config.title; $("workspaceKicker").textContent = config.kicker; $("tableTitle").textContent = config.tableTitle; $("tableSubtitle").textContent = config.tableSubtitle; $("sidePanelTitle").textContent = config.sideTitle; $("bottomTitle").textContent = config.bottomTitle; loadDashboard(); });
