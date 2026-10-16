@@ -3,7 +3,7 @@
 const DEFAULT_LOCAL_API = "http://127.0.0.1:8000";
 // When you deploy your backend to Render, replace this with your actual Render URL:
 // Example: https://servora-backend.onrender.com
-const DEFAULT_RENDER_API = "https://servora-backend.onrender.com";
+const DEFAULT_RENDER_API = "https://servora-3v6b.onrender.com";
 
 // Auto-detect environment
 const isLocalhost = window.location.hostname === "localhost" || 
