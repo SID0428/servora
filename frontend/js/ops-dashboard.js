@@ -1,6 +1,8 @@
 import { API_BASE_URL } from "./config.js";
 
-let role = document.body.dataset.role || "company";
+let initialUser = null;
+try { initialUser = JSON.parse(localStorage.getItem("servora_user") || "null"); } catch { initialUser = null; }
+let role = initialUser?.role || document.body.dataset.role || "company";
 const roleConfig = {
   technician: { title: "Technician workspace", kicker: "FIELD SERVICE", nav: ["My jobs", "Job history", "Route & schedule", "Earnings", "Help center"], columns: ["Ticket", "Customer", "Appliance", "Appointment", "Status", "Action"], tableTitle: "My assigned jobs", tableSubtitle: "Your service calls and the next step for each job.", bottomTitle: "Today's schedule", sideTitle: "My performance", resources: [["Assigned today", "Jobs on your schedule", "▤"], ["Completed", "Jobs closed this week", "✓"], ["Customer rating", "From recent service visits", "☆"], ["Service area", "Your assigned territory", "⌖"]] },
   franchise: { title: "Franchise workspace", kicker: "BRANCH OPERATIONS", nav: ["Dashboard", "Service requests", "Technicians", "Active jobs", "Customers", "Reports", "Settings"], columns: ["Request ID", "Customer", "Appliance", "Issue", "Technician", "Status", "Action"], tableTitle: "Incoming service requests", tableSubtitle: "Review requests and coordinate local service work.", bottomTitle: "Branch resources", sideTitle: "Branch performance", resources: [["Technicians", "Available in this branch", "♙"], ["Active jobs", "Assigned and in progress", "⚒"], ["Service area", "Local coverage", "⌖"], ["Response time", "Average first response", "◷"]] },
@@ -24,9 +26,10 @@ function showToast(message, type = "info") {
 }
 function setProfile() {
   const name = user?.name || "Servora user";
-  $("userName").textContent = name; $("userRole").textContent = role === "admin" ? "Platform administrator" : config.title;
+  const displayName = role === "admin" ? "Siddharth" : name;
+  $("userName").textContent = displayName; $("userRole").textContent = role === "admin" ? "Platform administrator" : config.title;
   $("userAvatar").textContent = name.split(/\s+/).map((part) => part[0]).slice(0, 2).join("").toUpperCase();
-  $("welcomeTitle").textContent = `${greeting()}, ${name.split(/\s+/)[0]}`;
+  $("welcomeTitle").textContent = `${greeting()}, ${displayName.split(/\s+/)[0]}`;
   $("welcomeSubtitle").textContent = role === "technician" ? "Here are your service calls and today's priorities." : "Here is your service operation at a glance.";
   $("todayLabel").textContent = new Intl.DateTimeFormat("en-IN", { dateStyle: "medium" }).format(new Date());
 }
@@ -61,6 +64,7 @@ function renderPage(page) {
   $("bottomSubtitle").textContent = "Platform administration tools";
 }
 function renderCompanies() {
+  $("addCompanyButton").hidden = false;
   $("pageContent").hidden = false;
   $("metricGrid").hidden = true;
   $("tableTitle").textContent = "Companies on Servora";
@@ -219,8 +223,7 @@ async function loadDashboard() {
   } catch (error) { showToast("Could not reach the Servora API. Showing available workspace data.", "error"); }
   setProfile(); buildNav(); setMetrics(); renderRequests(); renderInsights(); renderResources();
   if (role !== "admin") { $("addCompanyButton").hidden = true; }
-  if (role === "admin") { $("crumbTitle").textContent = "Overview"; }
-  if (role === "admin") { renderPage("Overview"); }
+  if (role === "admin") { $("crumbTitle").textContent = "Overview"; renderPage("Overview"); }
   if (user?.role && user.role !== role) showToast(`Signed in as ${user.role}; this is the ${role} workspace.`, "error");
 }
 $("requestSearch").addEventListener("input", () => { const page = $("crumbTitle").textContent; if (role === "admin" && page === "Companies") renderCompanies(); else if (role === "admin" && ["Branches", "Technicians", "Customers"].includes(page)) renderDirectory(page); else if (role === "admin" && page === "Service requests") renderRequestDirectory(); else renderRequests(); });
