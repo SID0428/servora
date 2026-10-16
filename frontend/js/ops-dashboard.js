@@ -41,8 +41,8 @@ function buildNav() {
 function renderPage(page) {
   $("crumbTitle").textContent = page;
   const admin = role === "admin";
-  $("addCompanyButton").hidden = !(admin && page === "Companies");
-  $("companyInlineAdd").hidden = !(admin && page === "Companies");
+  $("addCompanyButton").hidden = !admin;
+  $("companyInlineAdd").hidden = !admin || page !== "Companies";
   $("exportButton").hidden = page === "System settings" || page === "Companies";
   if (admin && page === "Companies") { renderCompanies(); return; }
   if (admin && ["Branches", "Technicians", "Customers"].includes(page)) { renderDirectory(page); return; }
@@ -100,7 +100,18 @@ async function loadAdminPageData(page) {
   try {
     if (roles[page]) directoryRows = await adminApi(`/directory/${roles[page]}`);
     if (page === "Companies") companies = await adminApi("/companies");
-  } catch (error) { directoryRows = []; showToast(error.message, "error"); }
+  } catch (error) {
+    directoryRows = [];
+    if (page === "Companies") {
+      companies = [];
+      renderCompanies();
+      $("requestRows").innerHTML = `<tr><td class="empty-row" colspan="6">${safe(error.message)}. Check the Servora API connection and try again.</td></tr>`;
+      $("requestCount").textContent = "Could not load company records";
+      showToast(`Companies could not load: ${error.message}`, "error");
+      return;
+    }
+    showToast(error.message, "error");
+  }
   renderPage(page);
 }
 function renderDirectory(page) {
