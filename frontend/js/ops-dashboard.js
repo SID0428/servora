@@ -25,6 +25,7 @@ let config = roleConfig[role] || roleConfig.company;
 const $ = (id) => document.getElementById(id);
 let requests = [];
 let companies = [];
+let branches = [];
 let directoryRows = [];
 let user = null;
 
@@ -52,12 +53,13 @@ function setProfile() {
 function greeting() { const hour = new Date().getHours(); return hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening"; }
 function buildNav() {
   $("opsNav").innerHTML = config.nav.map((item, index) => `<a href="#${item.toLowerCase().replaceAll(/[^a-z0-9]+/g, "-")}" data-page="${safe(item)}" class="nav-link ${index === 0 ? "active" : ""}"><span class="nav-icon">${icons[item] || "•"}</span>${safe(item)}${item === "Service requests" ? `<span class="nav-count">${requests.length}</span>` : ""}</a>`).join("");
-  document.querySelectorAll(".nav-link").forEach((link) => link.addEventListener("click", (event) => { event.preventDefault(); document.querySelectorAll(".nav-link").forEach((item) => item.classList.remove("active")); link.classList.add("active"); loadAdminPageData(link.dataset.page); document.querySelector(".ops-sidebar").classList.remove("open"); }));
+  document.querySelectorAll(".nav-link").forEach((link) => link.addEventListener("click", (event) => { event.preventDefault(); document.querySelectorAll(".nav-link").forEach((item) => item.classList.remove("active")); link.classList.add("active"); loadWorkspacePageData(link.dataset.page); document.querySelector(".ops-sidebar").classList.remove("open"); }));
 }
 function renderPage(page) {
   $("crumbTitle").textContent = page;
   const admin = role === "admin";
   $("addCompanyButton").hidden = !admin;
+  $("addBranchButton").hidden = !(role === "company" && page === "Branches");
   $("companyInlineAdd").hidden = !admin || page !== "Companies";
   $("exportButton").hidden = page === "System settings" || page === "Companies";
   if (admin && page === "Companies") { renderCompanies(); return; }
@@ -79,6 +81,28 @@ function renderPage(page) {
   $("resourceGrid").innerHTML = "";
   $("bottomTitle").textContent = `${page} workspace`;
   $("bottomSubtitle").textContent = "Platform administration tools";
+}
+function renderCompanyBranches() {
+  $("crumbTitle").textContent = "Branches";
+  $("addCompanyButton").hidden = true;
+  $("addBranchButton").hidden = false;
+  $("companyInlineAdd").hidden = true;
+  $("exportButton").hidden = true;
+  $("pageContent").hidden = false;
+  $("metricGrid").hidden = true;
+  $("tableTitle").textContent = "Company branches";
+  $("tableSubtitle").textContent = "Branches added to your company, with their owner or manager contact details.";
+  $("sidePanelTitle").textContent = "Branch directory";
+  $("healthContent").innerHTML = `<div class="section-empty"><strong>${branches.length}</strong> branches in your company</div>`;
+  $("activityContent").innerHTML = `<div class="section-empty">Branch records are visible only to your company account.</div>`;
+  $("bottomTitle").textContent = "Company branches";
+  $("bottomSubtitle").textContent = "Branch contacts registered by your company.";
+  $("requestHead").innerHTML = ["Branch", "Franchise owner or manager", "Email", "Mobile number", "Address", "Pincode"].map((name) => `<th>${safe(name)}</th>`).join("");
+  const query = $("requestSearch").value.trim().toLowerCase();
+  const filtered = branches.filter((branch) => [branch.branch_name, branch.manager_name, branch.email, branch.mobile, branch.address, branch.pincode].join(" ").toLowerCase().includes(query));
+  $("requestRows").innerHTML = filtered.length ? filtered.map((branch) => `<tr><td><strong>${safe(branch.branch_name)}</strong></td><td>${safe(branch.manager_name)}</td><td>${safe(branch.email)}</td><td>${safe(branch.mobile)}</td><td>${safe(branch.address)}</td><td>${safe(branch.pincode)}</td></tr>`).join("") : `<tr><td class="empty-row" colspan="6">${query ? "No branches match your search." : "No branches yet. Add your first branch to get started."}</td></tr>`;
+  $("requestCount").textContent = `${filtered.length} branch${filtered.length === 1 ? "" : "es"} shown`;
+  $("resourceGrid").innerHTML = "";
 }
 function renderCompanies() {
   $("addCompanyButton").hidden = false;
@@ -113,6 +137,28 @@ async function adminApi(path, options = {}) {
   const data = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(data.detail || "Could not complete the request.");
   return data;
+}
+async function companyApi(path, options = {}) {
+  const response = await fetch(`${API_BASE_URL}/api/company${path}`, { ...options, credentials: "include", headers: { "Content-Type": "application/json", ...authHeaders(), ...options.headers } });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.detail || "Could not complete the request.");
+  return data;
+}
+async function loadCompanyBranches() {
+  try {
+    branches = await companyApi("/branches");
+    renderCompanyBranches();
+  } catch (error) {
+    renderCompanyBranches();
+    $("requestRows").innerHTML = `<tr><td class="empty-row" colspan="6">${safe(error.message)}. Try again after confirming your company session.</td></tr>`;
+    $("requestCount").textContent = "Could not load branches";
+    showToast(`Branches could not load: ${error.message}`, "error");
+  }
+}
+async function loadWorkspacePageData(page) {
+  if (role === "admin") { await loadAdminPageData(page); return; }
+  if (role === "company" && page === "Branches") { await loadCompanyBranches(); return; }
+  renderPage(page);
 }
 async function loadAdminPageData(page) {
   if (role !== "admin") return;
@@ -280,7 +326,7 @@ async function loadDashboard() {
   if (role === "admin") { $("crumbTitle").textContent = "Overview"; renderPage("Overview"); }
   if (user?.role && user.role !== role) showToast(`Signed in as ${user.role}; this is the ${role} workspace.`, "error");
 }
-$("requestSearch").addEventListener("input", () => { const page = $("crumbTitle").textContent; if (role === "admin" && page === "Companies") renderCompanies(); else if (role === "admin" && ["Branches", "Technicians", "Customers"].includes(page)) renderDirectory(page); else if (role === "admin" && page === "Service requests") renderRequestDirectory(); else renderRequests(); });
+$("requestSearch").addEventListener("input", () => { const page = $("crumbTitle").textContent; if (role === "admin" && page === "Companies") renderCompanies(); else if (role === "company" && page === "Branches") renderCompanyBranches(); else if (role === "admin" && ["Branches", "Technicians", "Customers"].includes(page)) renderDirectory(page); else if (role === "admin" && page === "Service requests") renderRequestDirectory(); else renderRequests(); });
 $("statusFilter").addEventListener("change", () => { if (role === "admin" && $("crumbTitle").textContent === "Service requests") renderRequestDirectory(); else renderRequests(); });
 $("exportButton").addEventListener("click", () => {
   const rows = [["Request ID", "Customer", "Appliance", "Issue", "Status", "Date"], ...requests.map((item) => [item.id, item.customer_name, item.appliance_name, item.issue, item.status_badge, item.appointment_date])];
@@ -313,13 +359,26 @@ $("menuToggle").addEventListener("click", () => $("opsNav").closest(".ops-sideba
 document.addEventListener("DOMContentLoaded", () => { document.title = `${config.title} — Servora`; $("crumbTitle").textContent = config.title; $("workspaceKicker").textContent = config.kicker; $("tableTitle").textContent = config.tableTitle; $("tableSubtitle").textContent = config.tableSubtitle; $("sidePanelTitle").textContent = config.sideTitle; $("bottomTitle").textContent = config.bottomTitle; loadDashboard(); });
 $("addCompanyButton").addEventListener("click", () => { $("companyFormMessage").textContent = ""; $("companyDialog").showModal(); });
 $("companyInlineAdd").addEventListener("click", () => { $("companyFormMessage").textContent = ""; $("companyDialog").showModal(); });
+$("addBranchButton").addEventListener("click", () => { $("branchFormMessage").textContent = ""; $("branchDialog").showModal(); });
 $("closeCompanyDialog").addEventListener("click", () => $("companyDialog").close());
 $("cancelCompany").addEventListener("click", () => $("companyDialog").close());
+$("closeBranchDialog").addEventListener("click", () => $("branchDialog").close());
+$("cancelBranch").addEventListener("click", () => $("branchDialog").close());
 $("companyForm").addEventListener("submit", async (event) => {
   event.preventDefault(); const form = event.currentTarget; const submit = form.querySelector('[type="submit"]');
   submit.disabled = true; $("companyFormMessage").textContent = "Creating company…";
   const payload = Object.fromEntries(new FormData(form).entries());
   try { const created = await adminApi("/companies", { method: "POST", body: JSON.stringify(payload) }); companies.push(created); form.reset(); $("companyDialog").close(); renderPage("Companies"); showToast(`Company added. Password setup link sent to ${created.email}.`); }
   catch (error) { $("companyFormMessage").textContent = error.message; }
+  finally { submit.disabled = false; }
+});
+$("branchForm").addEventListener("submit", async (event) => {
+  event.preventDefault(); const form = event.currentTarget; const submit = form.querySelector('[type="submit"]');
+  submit.disabled = true; $("branchFormMessage").textContent = "Saving branch…";
+  const payload = Object.fromEntries(new FormData(form).entries());
+  try {
+    const created = await companyApi("/branches", { method: "POST", body: JSON.stringify(payload) });
+    branches.push(created); form.reset(); $("branchDialog").close(); renderCompanyBranches(); showToast(`${created.branch_name} added to your branches.`);
+  } catch (error) { $("branchFormMessage").textContent = error.message; }
   finally { submit.disabled = false; }
 });

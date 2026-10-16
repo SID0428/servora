@@ -29,6 +29,14 @@ class CompanyCreate(BaseModel):
     phone: str = Field(min_length=5, max_length=32)
     address: Optional[str] = None
 
+class CompanyBranchCreate(BaseModel):
+    branch_name: str = Field(min_length=2, max_length=128)
+    manager_name: str = Field(min_length=2, max_length=128)
+    email: str = Field(min_length=5, max_length=128)
+    mobile: str = Field(min_length=7, max_length=32)
+    address: str = Field(min_length=5, max_length=512)
+    pincode: str = Field(min_length=6, max_length=10)
+
 class CompanyCredentialsEmail(BaseModel):
     company_id: str
 

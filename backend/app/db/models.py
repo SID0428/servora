@@ -1,4 +1,5 @@
-from sqlalchemy import Column, String, Float, Integer, Boolean, Text, ForeignKey, DateTime
+from sqlalchemy import Column, String, Float, Integer, Boolean, Text, ForeignKey, DateTime, UniqueConstraint
+from datetime import datetime
 from app.db.session import Base
 
 class UserModel(Base):
@@ -30,6 +31,20 @@ class CompanyOnboardingModel(Base):
     otp_hash = Column(String(64), nullable=True)
     otp_expires_at = Column(DateTime, nullable=True)
     password_set_at = Column(DateTime, nullable=True)
+
+class CompanyBranchModel(Base):
+    __tablename__ = "company_branches"
+    __table_args__ = (UniqueConstraint("company_id", "email", name="uq_company_branch_email"),)
+
+    id = Column(String(64), primary_key=True, index=True)
+    company_id = Column(String(64), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    branch_name = Column(String(128), nullable=False)
+    manager_name = Column(String(128), nullable=False)
+    email = Column(String(128), nullable=False)
+    mobile = Column(String(32), nullable=False)
+    address = Column(Text, nullable=False)
+    pincode = Column(String(10), nullable=False)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
 
 class TechnicianModel(Base):
     __tablename__ = "technicians"

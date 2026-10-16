@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.db.session import SessionLocal
 from app.seeds import seed_database
-from app.routes import auth, appliances, requests as requests_route, admin
+from app.routes import auth, appliances, requests as requests_route, admin, company
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -39,6 +39,7 @@ app.include_router(appliances.router)
 app.include_router(requests_route.router)
 app.include_router(admin.router)
 app.include_router(admin.onboarding_router)
+app.include_router(company.router)
 
 @app.get("/")
 def root():
