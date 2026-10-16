@@ -126,8 +126,12 @@ def create_company_branch(payload: CompanyBranchCreate, request: Request, db: Se
         password_hash=None,
     )
     onboarding = BranchOnboardingModel(branch_id=branch_id)
-    db.add_all([branch, branch_user, onboarding])
+    # The onboarding row references users.id. Flush the franchise user first
+    # because SQLAlchemy has no ORM relationship to infer this insert order.
+    db.add(branch_user)
     try:
+        db.flush()
+        db.add_all([branch, onboarding])
         db.flush()
         issue_franchise_invite(branch, onboarding, company)
         db.commit()
@@ -169,6 +173,8 @@ def resend_franchise_setup_link(payload: BranchCredentialsEmail, request: Reques
                 password_hash=None,
             )
             db.add(branch_user)
+            # branch_onboarding.branch_id is a foreign key to users.id.
+            db.flush()
 
         if not onboarding:
             onboarding = BranchOnboardingModel(branch_id=branch.id)
