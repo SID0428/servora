@@ -1,42 +1,25 @@
 {
-  "version": 2,
+  "$schema": "https://openapi.vercel.sh/vercel.json",
   "cleanUrls": true,
   "trailingSlash": false,
-  "routes": [
-    { "src": "/login", "dest": "/index.html" },
-    { "src": "/company", "dest": "/company-login.html" },
-    { "src": "/franchise", "dest": "/franchise-login.html" },
-    { "src": "/technician", "dest": "/technician-login.html" },
-    { "src": "/admin", "dest": "/admin-login.html" },
-    { "src": "/technician-dashboard", "dest": "/ops-dashboard.html" },
-    { "src": "/franchise-dashboard", "dest": "/ops-dashboard.html" },
-    { "src": "/company-dashboard", "dest": "/ops-dashboard.html" },
-    { "src": "/admin-dashboard", "dest": "/ops-dashboard.html" },
-    {
-      "src": "/dashboard",
-      "dest": "/dashboard.html"
-    },
-    {
-      "src": "/(.*)",
-      "dest": "/$1"
-    }
+  "rewrites": [
+    { "source": "/login", "destination": "/index" },
+    { "source": "/company", "destination": "/company-login" },
+    { "source": "/franchise", "destination": "/franchise-login" },
+    { "source": "/technician", "destination": "/technician-login" },
+    { "source": "/admin", "destination": "/admin-login" },
+    { "source": "/technician-dashboard", "destination": "/ops-dashboard" },
+    { "source": "/franchise-dashboard", "destination": "/ops-dashboard" },
+    { "source": "/company-dashboard", "destination": "/ops-dashboard" },
+    { "source": "/admin-dashboard", "destination": "/ops-dashboard" }
   ],
   "headers": [
     {
       "source": "/(.*)",
       "headers": [
-        {
-          "key": "X-Content-Type-Options",
-          "value": "nosniff"
-        },
-        {
-          "key": "X-Frame-Options",
-          "value": "DENY"
-        },
-        {
-          "key": "X-XSS-Protection",
-          "value": "1; mode=block"
-        }
+        { "key": "X-Content-Type-Options", "value": "nosniff" },
+        { "key": "X-Frame-Options", "value": "DENY" },
+        { "key": "X-XSS-Protection", "value": "1; mode=block" }
       ]
     }
   ]
