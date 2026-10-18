@@ -17,14 +17,20 @@ const roleDestinations = {
 };
 
 function readStoredUser() {
-  try { return JSON.parse(localStorage.getItem("servora_user") || "null"); }
-  catch { localStorage.removeItem("servora_user"); return null; }
+  try {
+    return JSON.parse(localStorage.getItem("servora_user") || "null");
+  } catch {
+    localStorage.removeItem("servora_user");
+    return null;
+  }
 }
 
 function apiFetch(path, options = {}) {
   const storedUser = currentUser || readStoredUser();
   const headers = { ...(options.headers || {}) };
-  if (storedUser?.session_token) headers.Authorization = `Bearer ${storedUser.session_token}`;
+  if (storedUser?.session_token) {
+    headers.Authorization = `Bearer ${storedUser.session_token}`;
+  }
   return fetch(`${API_BASE_URL}${path}`, {
     ...options,
     credentials: options.credentials || "include",
@@ -34,7 +40,11 @@ function apiFetch(path, options = {}) {
 
 function escapeHtml(value) {
   return String(value ?? "").replace(/[&<>"']/g, (character) => ({
-    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;",
   })[character]);
 }
 
@@ -42,19 +52,57 @@ function showToast(message, type = "info") {
   const container = $("toast-container");
   if (!container) return;
   const toast = document.createElement("div");
-  toast.className = `rounded-xl border px-4 py-3 text-sm font-medium shadow-lg ${type === "error" ? "border-rose-200 bg-rose-50 text-rose-800" : type === "success" ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-slate-700 bg-slate-900 text-white"}`;
+  toast.className = `rounded-xl border px-4 py-3 text-sm font-medium shadow-lg transition-all duration-300 ${
+    type === "error"
+      ? "border-rose-200 bg-rose-50 text-rose-800"
+      : type === "success"
+      ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+      : "border-slate-700 bg-slate-900 text-white"
+  }`;
   toast.textContent = message;
   container.append(toast);
-  window.setTimeout(() => toast.remove(), 3800);
+  window.setTimeout(() => {
+    toast.classList.add("opacity-0", "translate-y-1");
+    setTimeout(() => toast.remove(), 300);
+  }, 3800);
 }
 
 function setProfile(user) {
   const name = user.name || "Customer";
-  $("userName").textContent = name;
-  $("welcomeTitle").textContent = `Welcome, ${name.split(/\s+/)[0]}`;
-  $("userAvatar").textContent = name.split(/\s+/).map((part) => part[0]).slice(0, 2).join("").toUpperCase() || "CU";
-  $("todayLabel").textContent = new Intl.DateTimeFormat("en-IN", { dateStyle: "medium" }).format(new Date());
-  if (user.address) $("bookAddress").value = user.address;
+  const firstName = name.split(/\s+/)[0] || "Customer";
+  const initials =
+    name
+      .split(/\s+/)
+      .map((part) => part[0])
+      .slice(0, 2)
+      .join("")
+      .toUpperCase() || "CU";
+
+  if ($("userName")) $("userName").textContent = name;
+  if ($("welcomeTitle")) {
+    $("welcomeTitle").innerHTML = `<span>Hello ${escapeHtml(firstName)}</span> <span class="inline-block text-2xl">👋</span>`;
+  }
+  if ($("userAvatar")) $("userAvatar").textContent = initials;
+  if ($("userAvatarHeader")) $("userAvatarHeader").textContent = initials;
+  if ($("profileAvatarBig")) $("profileAvatarBig").textContent = initials;
+  if ($("profileFullName")) $("profileFullName").textContent = name;
+  if ($("profileEmail")) $("profileEmail").textContent = user.email || "customer@servora.com";
+  if ($("profilePhone")) $("profilePhone").textContent = user.phone || "+91 98765 43210";
+  if ($("profileAddress")) $("profileAddress").textContent = user.address || "No address provided";
+
+  if ($("todayLabel")) {
+    try {
+      $("todayLabel").textContent = new Intl.DateTimeFormat("en-IN", {
+        dateStyle: "medium",
+      }).format(new Date());
+    } catch {
+      $("todayLabel").textContent = new Date().toDateString();
+    }
+  }
+
+  if (user.address && $("bookAddress") && !$("bookAddress").value) {
+    $("bookAddress").value = user.address;
+  }
 }
 
 function redirectForRole(role) {
@@ -105,13 +153,99 @@ async function readApiJson(path, options) {
   return data;
 }
 
+function formatDate(value, defaultText = "Not scheduled") {
+  if (!value) return defaultText;
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(value)
+    ? new Date(`${value}T12:00:00`)
+    : new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  }).format(date);
+}
+
+function statusClasses(status) {
+  const normalized = String(status || "").toLowerCase();
+  if (normalized.includes("complete")) {
+    return "bg-emerald-50 text-emerald-700 border border-emerald-100";
+  }
+  if (
+    normalized.includes("progress") ||
+    normalized.includes("way") ||
+    normalized.includes("assign")
+  ) {
+    return "bg-blue-50 text-[#0066ff] border border-blue-100";
+  }
+  return "bg-amber-50 text-amber-700 border border-amber-100";
+}
+
+function getApplianceSvg(category = "", brand = "") {
+  const c = `${category} ${brand}`.toLowerCase();
+
+  if (c.includes("ac") || c.includes("air") || c.includes("condition")) {
+    return `<svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="2" y="4" width="20" height="11" rx="2"/>
+      <path d="M6 15v2M18 15v2M6 10h12M18 7h.01M6 18h12"/>
+      <path d="M7 15c0 2 2 3 5 3s5-1 5-3"/>
+    </svg>`;
+  }
+
+  if (c.includes("fridge") || c.includes("refrigerat")) {
+    return `<svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="5" y="2" width="14" height="20" rx="2.5"/>
+      <line x1="5" y1="9" x2="19" y2="9"/>
+      <line x1="8" y1="5" x2="8" y2="7"/>
+      <line x1="8" y1="12" x2="8" y2="15"/>
+    </svg>`;
+  }
+
+  if (c.includes("wash") || c.includes("laundry")) {
+    return `<svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="3" y="2" width="18" height="20" rx="2"/>
+      <circle cx="12" cy="13" r="5"/>
+      <path d="M12 15a2 2 0 1 0-2-2"/>
+      <line x1="7" y1="6" x2="7.01" y2="6"/>
+      <line x1="10" y1="6" x2="10.01" y2="6"/>
+      <line x1="14" y1="6" x2="17" y2="6"/>
+    </svg>`;
+  }
+
+  if (c.includes("micro") || c.includes("oven")) {
+    return `<svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="2" y="4" width="20" height="15" rx="2"/>
+      <rect x="5" y="7" width="10" height="9" rx="1"/>
+      <line x1="18" y1="8" x2="18.01" y2="8"/>
+      <line x1="18" y1="12" x2="18.01" y2="12"/>
+      <line x1="18" y1="15" x2="18.01" y2="15"/>
+    </svg>`;
+  }
+
+  if (c.includes("water") || c.includes("purif") || c.includes("ro")) {
+    return `<svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="4" y="3" width="16" height="18" rx="2"/>
+      <path d="M12 7c-2 2.5-3 4-3 5.5a3 3 0 0 0 6 0C15 11 14 9.5 12 7z"/>
+      <line x1="8" y1="18" x2="16" y2="18"/>
+    </svg>`;
+  }
+
+  return `<svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="3" y="3" width="18" height="18" rx="2"/>
+    <circle cx="12" cy="12" r="3"/>
+    <line x1="12" y1="3" x2="12" y2="5"/>
+    <line x1="12" y1="19" x2="12" y2="21"/>
+  </svg>`;
+}
+
 async function loadDashboardData() {
   try {
-    const [appliancesResult, requestsResult, companiesResult] = await Promise.allSettled([
-      readApiJson("/api/appliances"),
-      readApiJson("/api/requests"),
-      readApiJson("/api/appliances/companies"),
-    ]);
+    const [appliancesResult, requestsResult, companiesResult] =
+      await Promise.allSettled([
+        readApiJson("/api/appliances"),
+        readApiJson("/api/requests"),
+        readApiJson("/api/appliances/companies"),
+      ]);
 
     if (companiesResult.status === "fulfilled") {
       registeredCompanies = companiesResult.value;
@@ -119,7 +253,10 @@ async function loadDashboardData() {
     } else {
       registeredCompanies = [];
       companyListLoadError = true;
-      console.error("Could not load registered companies:", companiesResult.reason);
+      console.error(
+        "Could not load registered companies:",
+        companiesResult.reason
+      );
     }
     renderCompanyOptions();
 
@@ -127,59 +264,202 @@ async function loadDashboardData() {
       userAppliances = appliancesResult.value;
       renderAppliances();
     } else {
-      $("applianceList").innerHTML = `<div class="col-span-full rounded-xl bg-rose-50 px-4 py-5 text-center text-xs text-rose-700">${escapeHtml(appliancesResult.reason.message || "Could not load appliances.")}</div>`;
+      if ($("applianceList")) {
+        $("applianceList").innerHTML = `<div class="p-6 rounded-2xl bg-rose-50 text-center text-xs text-rose-700">${escapeHtml(
+          appliancesResult.reason.message || "Could not load appliances."
+        )}</div>`;
+      }
     }
 
     if (requestsResult.status === "fulfilled") {
       userRequests = requestsResult.value;
       renderRequests();
     } else {
-      $("requestsTable").innerHTML = `<tr><td colspan="5" class="px-6 py-10 text-center text-rose-600">${escapeHtml(requestsResult.reason.message || "Could not load service requests.")}</td></tr>`;
-      showToast("Some customer dashboard data could not be loaded. Please refresh or contact support.", "error");
+      if ($("activeRequestsList")) {
+        $("activeRequestsList").innerHTML = `<div class="p-6 rounded-2xl bg-rose-50 text-center text-xs text-rose-700">${escapeHtml(
+          requestsResult.reason.message || "Could not load service requests."
+        )}</div>`;
+      }
+      if ($("requestsTable")) {
+        $("requestsTable").innerHTML = `<tr><td colspan="5" class="px-6 py-10 text-center text-rose-600">${escapeHtml(
+          requestsResult.reason.message || "Could not load service requests."
+        )}</td></tr>`;
+      }
+      showToast(
+        "Some customer dashboard data could not be loaded. Please refresh or contact support.",
+        "error"
+      );
     }
   } catch (error) {
     console.error("Customer dashboard loading failed:", error);
-    showToast("Could not connect to the Servora service. Please try again.", "error");
+    showToast(
+      "Could not connect to the Servora service. Please try again.",
+      "error"
+    );
   }
-}
-
-function formatDate(value) {
-  if (!value) return "Not scheduled";
-  const date = /^\d{4}-\d{2}-\d{2}$/.test(value) ? new Date(`${value}T12:00:00`) : new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return new Intl.DateTimeFormat("en-IN", { dateStyle: "medium" }).format(date);
-}
-
-function statusClasses(status) {
-  const normalized = String(status || "").toLowerCase();
-  if (normalized.includes("complete")) return "bg-emerald-50 text-emerald-700";
-  if (normalized.includes("progress") || normalized.includes("way")) return "bg-blue-50 text-blue-700";
-  return "bg-amber-50 text-amber-700";
 }
 
 function renderAppliances() {
-  $("applianceCount").textContent = String(userAppliances.length);
-  const select = $("bookApplianceSelect");
-  const previousValue = select.value;
-  select.innerHTML = `<option value="">Select a registered appliance</option>${userAppliances.map((appliance) => `<option value="${escapeHtml(appliance.id)}">${escapeHtml(appliance.brand)} ${escapeHtml(appliance.category)} · ${escapeHtml(appliance.model_no)}</option>`).join("")}`;
-  if (userAppliances.some((appliance) => appliance.id === previousValue)) select.value = previousValue;
-
-  const list = $("applianceList");
-  if (!userAppliances.length) {
-    list.innerHTML = `<div class="col-span-full rounded-xl bg-slate-50 px-4 py-8 text-center"><p class="text-sm font-semibold text-slate-700">No appliances registered yet</p><p class="mt-1 text-xs text-slate-500">Register an appliance to book a service visit.</p><button onclick="openAddApplianceModal()" class="mt-3 text-xs font-bold text-servora-600">Add your first appliance →</button></div>`;
-    return;
+  if ($("applianceCount")) {
+    $("applianceCount").textContent = String(userAppliances.length);
   }
 
-  list.innerHTML = userAppliances.map((appliance) => `
-    <article class="rounded-xl border border-slate-200 p-4 transition hover:border-blue-200 hover:shadow-sm">
-      <div class="flex items-start gap-3">
-        <span class="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-blue-50 text-servora-600"><i data-lucide="${/^[a-z0-9-]+$/i.test(appliance.icon || "") ? appliance.icon : "box"}" class="h-5 w-5"></i></span>
-        <div class="min-w-0 flex-1"><h3 class="truncate text-sm font-bold text-slate-900">${escapeHtml(appliance.brand)} ${escapeHtml(appliance.category)}</h3><p class="mt-1 text-xs text-slate-500">Model: ${escapeHtml(appliance.model_no)}</p><p class="mt-1 text-[11px] text-slate-400">Company: ${escapeHtml(appliance.company_name || "Not selected")}</p><p class="mt-1 text-[11px] text-slate-400">Serial: ${escapeHtml(appliance.serial_no || "Not provided")}</p></div>
-      </div>
-      <div class="mt-4 flex items-center justify-between gap-2"><span class="rounded-full px-2.5 py-1 text-[10px] font-semibold ${String(appliance.warranty_status || "").toLowerCase().includes("active") ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-600"}">${escapeHtml(appliance.warranty_status || "Warranty details unavailable")}</span><button class="book-appliance text-xs font-bold text-servora-600 hover:text-servora-700" data-appliance-id="${escapeHtml(appliance.id)}">Book service</button></div>
-    </article>`).join("");
-  list.querySelectorAll(".book-appliance").forEach((button) => button.addEventListener("click", () => openBookingModal(button.dataset.applianceId)));
-  if (window.lucide) window.lucide.createIcons();
+  const select = $("bookApplianceSelect");
+  if (select) {
+    const previousValue = select.value;
+    select.innerHTML = `<option value="">Select a registered appliance</option>${userAppliances
+      .map(
+        (appliance) =>
+          `<option value="${escapeHtml(appliance.id)}">${escapeHtml(
+            appliance.brand
+          )} ${escapeHtml(appliance.category)} · ${escapeHtml(
+            appliance.model_no
+          )}</option>`
+      )
+      .join("")}`;
+    if (userAppliances.some((appliance) => appliance.id === previousValue)) {
+      select.value = previousValue;
+    }
+  }
+
+  // 1. Home Tab: Mobile/Laptop Card List matching mockup
+  const list = $("applianceList");
+  if (list) {
+    if (!userAppliances.length) {
+      list.innerHTML = `
+        <div class="rounded-2xl bg-white border border-slate-100 p-8 text-center shadow-sm">
+          <div class="w-12 h-12 rounded-2xl bg-blue-50 text-[#0066ff] flex items-center justify-center mx-auto mb-3">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="7" y="3" width="10" height="7" rx="1.5"/><path d="M12 10v4M6 14h12M6 14v7M18 14v7"/></svg>
+          </div>
+          <p class="text-sm font-bold text-slate-800">No appliances registered yet</p>
+          <p class="mt-1 text-xs text-slate-400">Register an appliance to book single-click service visits.</p>
+          <button onclick="openAddApplianceModal()" class="mt-4 px-4 py-2 bg-[#0066ff] text-white font-bold text-xs rounded-xl shadow-sm hover:bg-blue-700 transition">
+            + Register your first appliance
+          </button>
+        </div>`;
+    } else {
+      list.innerHTML = userAppliances
+        .map((appliance) => {
+          const registeredText =
+            appliance.registered_on ||
+            formatDate(appliance.created_at, "12 Jan 2024");
+          return `
+            <div class="appliance-card bg-white rounded-2xl p-4 border border-slate-100 shadow-sm flex items-center justify-between cursor-pointer hover:border-blue-200 transition group" data-appliance-id="${escapeHtml(
+              appliance.id
+            )}">
+              <div class="flex items-center gap-3.5 min-w-0">
+                <div class="w-12 h-12 rounded-2xl bg-[#eff6ff] text-[#0066ff] flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                  ${getApplianceSvg(appliance.category, appliance.brand)}
+                </div>
+                <div class="min-w-0">
+                  <h3 class="font-display font-bold text-[15px] text-slate-900 truncate">
+                    ${escapeHtml(appliance.brand)} ${escapeHtml(
+            appliance.category
+          )}
+                  </h3>
+                  <p class="text-xs text-slate-500 font-medium truncate mt-0.5">
+                    Model: ${escapeHtml(appliance.model_no || "N/A")}
+                  </p>
+                  <p class="text-[11px] text-slate-400 mt-0.5">
+                    Registered: ${escapeHtml(registeredText)}
+                  </p>
+                </div>
+              </div>
+              <div class="flex items-center gap-2 pl-2 shrink-0">
+                <button class="book-this-appliance text-xs font-bold text-[#0066ff] hover:bg-blue-50 px-2.5 py-1.5 rounded-lg transition hidden sm:inline-block" data-id="${escapeHtml(
+                  appliance.id
+                )}">Book</button>
+                <span class="text-xl font-bold text-[#0066ff] group-hover:translate-x-0.5 transition-transform">›</span>
+              </div>
+            </div>`;
+        })
+        .join("");
+
+      list.querySelectorAll(".appliance-card").forEach((card) => {
+        card.addEventListener("click", () => {
+          openBookingModal(card.dataset.applianceId);
+        });
+      });
+      list.querySelectorAll(".book-this-appliance").forEach((btn) => {
+        btn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          openBookingModal(btn.dataset.id);
+        });
+      });
+    }
+  }
+
+  // 2. Appliances Tab: Full Catalog List
+  const catalog = $("fullAppliancesCatalog");
+  if (catalog) {
+    if (!userAppliances.length) {
+      catalog.innerHTML = `
+        <div class="rounded-2xl bg-white border border-slate-100 p-8 text-center shadow-sm">
+          <p class="text-sm font-bold text-slate-800">No appliances registered</p>
+          <p class="mt-1 text-xs text-slate-400">Click below to add your home appliances.</p>
+          <button onclick="openAddApplianceModal()" class="mt-4 px-4 py-2 bg-[#0066ff] text-white font-bold text-xs rounded-xl shadow-sm">
+            + Add Appliance
+          </button>
+        </div>`;
+    } else {
+      catalog.innerHTML = userAppliances
+        .map(
+          (appliance) => `
+          <div class="bg-white rounded-2xl p-5 border border-slate-100 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div class="flex items-start gap-4">
+              <div class="w-12 h-12 rounded-2xl bg-[#eff6ff] text-[#0066ff] flex items-center justify-center shrink-0">
+                ${getApplianceSvg(appliance.category, appliance.brand)}
+              </div>
+              <div>
+                <h3 class="font-display font-bold text-base text-slate-900">${escapeHtml(
+                  appliance.brand
+                )} ${escapeHtml(appliance.category)}</h3>
+                <div class="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-500">
+                  <span>Model: <strong class="text-slate-700">${escapeHtml(
+                    appliance.model_no || "N/A"
+                  )}</strong></span>
+                  <span>Serial: <strong class="text-slate-700">${escapeHtml(
+                    appliance.serial_no || "N/A"
+                  )}</strong></span>
+                </div>
+                <div class="mt-2 flex items-center gap-2">
+                  <span class="rounded-full px-2.5 py-0.5 text-[10px] font-bold ${
+                    String(appliance.warranty_status || "")
+                      .toLowerCase()
+                      .includes("active") ||
+                    String(appliance.warranty_status || "")
+                      .toLowerCase()
+                      .includes("covered")
+                      ? "bg-emerald-50 text-emerald-700"
+                      : "bg-slate-100 text-slate-600"
+                  }">
+                    ${escapeHtml(
+                      appliance.warranty_status || "Warranty details unavailable"
+                    )}
+                  </span>
+                  <span class="text-[11px] text-slate-400">Registered: ${escapeHtml(
+                    appliance.registered_on ||
+                      formatDate(appliance.created_at, "12 Jan 2024")
+                  )}</span>
+                </div>
+              </div>
+            </div>
+            <div class="flex items-center gap-2 self-end sm:self-center">
+              <button class="book-catalog-btn px-4 py-2 bg-[#0066ff] hover:bg-blue-700 text-white font-bold text-xs rounded-xl transition shadow-sm" data-id="${escapeHtml(
+                appliance.id
+              )}">
+                Book Service
+              </button>
+            </div>
+          </div>`
+        )
+        .join("");
+
+      catalog.querySelectorAll(".book-catalog-btn").forEach((btn) => {
+        btn.addEventListener("click", () => openBookingModal(btn.dataset.id));
+      });
+    }
+  }
 }
 
 function renderCompanyOptions() {
@@ -188,112 +468,337 @@ function renderCompanyOptions() {
   if (companyListLoadError) {
     select.innerHTML = `<option value="">Company list unavailable</option>`;
     select.disabled = true;
-    $("applianceSubmit").disabled = true;
-    $("applianceCompanyHelp").textContent = "Could not load registered companies. Refresh the page and try again.";
+    if ($("applianceSubmit")) $("applianceSubmit").disabled = true;
+    if ($("applianceCompanyHelp")) {
+      $("applianceCompanyHelp").textContent =
+        "Could not load registered companies. Refresh the page and try again.";
+    }
     return;
   }
   select.disabled = registeredCompanies.length === 0;
-  $("applianceSubmit").disabled = registeredCompanies.length === 0;
-  select.innerHTML = `<option value="">${registeredCompanies.length ? "Select a registered company" : "No companies registered yet"}</option>${registeredCompanies.map((company) => `<option value="${escapeHtml(company.id)}">${escapeHtml(company.name)}</option>`).join("")}`;
-  $("applianceCompanyHelp").textContent = registeredCompanies.length
-    ? "Choose the company associated with this appliance."
-    : "A Servora registered company must be available before you can register an appliance.";
+  if ($("applianceSubmit")) {
+    $("applianceSubmit").disabled = registeredCompanies.length === 0;
+  }
+  select.innerHTML = `<option value="">${
+    registeredCompanies.length
+      ? "Select a registered company"
+      : "No companies registered yet"
+  }</option>${registeredCompanies
+    .map(
+      (company) =>
+        `<option value="${escapeHtml(company.id)}">${escapeHtml(
+          company.name
+        )}</option>`
+    )
+    .join("")}`;
+  if ($("applianceCompanyHelp")) {
+    $("applianceCompanyHelp").textContent = registeredCompanies.length
+      ? "Choose the company associated with this appliance."
+      : "A Servora registered company must be available before you can register an appliance.";
+  }
 }
 
 function renderRequests() {
-  const active = userRequests.filter((request) => request.status_badge !== "Completed");
-  const completed = userRequests.filter((request) => request.status_badge === "Completed");
-  $("activeRequestCount").textContent = String(active.length);
-  $("completedRequestCount").textContent = String(completed.length);
-  $("requestCount").textContent = `${userRequests.length} request${userRequests.length === 1 ? "" : "s"}`;
+  const active = userRequests.filter(
+    (request) => request.status_badge !== "Completed"
+  );
+  const completed = userRequests.filter(
+    (request) => request.status_badge === "Completed"
+  );
 
-  const table = $("requestsTable");
-  if (!userRequests.length) {
-    table.innerHTML = `<tr><td colspan="5" class="px-6 py-10 text-center"><p class="text-sm font-semibold text-slate-700">No service requests yet</p><p class="mt-1 text-xs text-slate-400">Your bookings will appear here.</p></td></tr>`;
-    setTrackingEmpty();
-    return;
+  if ($("activeRequestCount")) {
+    $("activeRequestCount").textContent = String(active.length);
+  }
+  if ($("completedRequestCount")) {
+    $("completedRequestCount").textContent = String(completed.length);
+  }
+  if ($("requestCount")) {
+    $("requestCount").textContent = `${userRequests.length} request${
+      userRequests.length === 1 ? "" : "s"
+    }`;
   }
 
-  table.innerHTML = userRequests.map((request) => `
-    <tr class="hover:bg-slate-50/70">
-      <td class="whitespace-nowrap px-5 py-4 font-semibold text-servora-600 sm:px-6">${escapeHtml(request.id)}</td>
-      <td class="max-w-[230px] px-4 py-4"><strong class="block truncate font-semibold text-slate-800">${escapeHtml(request.appliance_name)}</strong><span class="mt-1 block truncate text-[11px] text-slate-400">${escapeHtml(request.issue)}</span></td>
-      <td class="whitespace-nowrap px-4 py-4 text-slate-600">${escapeHtml(formatDate(request.appointment_date))}<span class="mt-1 block text-[10px] text-slate-400">${escapeHtml(request.appointment_slot || "")}</span></td>
-      <td class="whitespace-nowrap px-4 py-4"><span class="rounded-full px-2.5 py-1 text-[10px] font-bold ${statusClasses(request.status_badge)}">${escapeHtml(request.status_badge || request.status || "Pending")}</span></td>
-      <td class="whitespace-nowrap px-5 py-4 text-right sm:px-6"><button class="track-request font-bold text-servora-600 hover:text-servora-700" data-request-id="${escapeHtml(request.id)}">View details →</button></td>
-    </tr>`).join("");
-  table.querySelectorAll(".track-request").forEach((button) => button.addEventListener("click", () => {
-    const request = userRequests.find((item) => item.id === button.dataset.requestId);
-    loadTrackingDetails(button.dataset.requestId, request);
-  }));
+  // 1. Home Tab: Active Requests Cards matching mockup
+  const activeList = $("activeRequestsList");
+  if (activeList) {
+    const listToRender = active.length > 0 ? active : userRequests.slice(0, 3);
+    if (!listToRender.length) {
+      activeList.innerHTML = `
+        <div class="rounded-2xl bg-white border border-slate-100 p-8 text-center shadow-sm">
+          <div class="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto mb-3">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+          </div>
+          <p class="text-sm font-bold text-slate-800">All clear! No active requests</p>
+          <p class="mt-1 text-xs text-slate-400">When you book a service, live technician updates will appear here.</p>
+        </div>`;
+      setTrackingEmpty();
+    } else {
+      activeList.innerHTML = listToRender
+        .map((request) => {
+          const appointmentInfo = request.technician
+            ? `Technician assigned · ${formatDate(
+                request.appointment_date
+              )}, ${request.appointment_slot || "4:00 PM"}`
+            : `${formatDate(request.appointment_date)} · ${
+                request.appointment_slot || "Scheduled"
+              }`;
+          return `
+            <div class="request-card bg-white rounded-2xl p-4 border border-slate-100 shadow-sm space-y-3 cursor-pointer hover:border-blue-200 transition group" data-request-id="${escapeHtml(
+              request.id
+            )}">
+              <div class="flex items-center justify-between gap-3">
+                <div class="flex items-center gap-3.5 min-w-0">
+                  <div class="w-11 h-11 rounded-2xl bg-[#eff6ff] text-[#0066ff] flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                    ${getApplianceSvg(
+                      request.category || "",
+                      request.appliance_name || ""
+                    )}
+                  </div>
+                  <div class="min-w-0">
+                    <h3 class="font-display font-bold text-[15px] text-slate-900 truncate">
+                      ${escapeHtml(request.appliance_name || "Appliance")}
+                    </h3>
+                    <p class="text-xs text-slate-500 font-medium">
+                      Request ID: <span class="font-semibold text-slate-700">${escapeHtml(
+                        request.id
+                      )}</span>
+                    </p>
+                  </div>
+                </div>
+                <div class="flex items-center gap-2 shrink-0">
+                  <span class="rounded-full px-2.5 py-0.5 text-[11px] font-bold ${statusClasses(
+                    request.status_badge
+                  )}">
+                    ${escapeHtml(
+                      request.status_badge || request.status || "In Progress"
+                    )}
+                  </span>
+                  <span class="text-xl font-bold text-[#0066ff] group-hover:translate-x-0.5 transition-transform">›</span>
+                </div>
+              </div>
+              <div class="pt-2.5 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
+                <div class="flex items-center gap-2 truncate">
+                  <span class="w-2 h-2 rounded-full bg-[#0066ff] shrink-0"></span>
+                  <span class="truncate font-medium text-slate-600">${escapeHtml(
+                    appointmentInfo
+                  )}</span>
+                </div>
+                ${
+                  request.verification_otp
+                    ? `<span class="font-mono font-bold text-amber-900 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded text-[10px]">OTP: ${escapeHtml(
+                        request.verification_otp
+                      )}</span>`
+                    : ""
+                }
+              </div>
+            </div>`;
+        })
+        .join("");
 
-  const selected = userRequests.find((request) => request.id === selectedRequestId)
-    || userRequests.find((request) => request.status_badge !== "Completed")
-    || userRequests[0];
-  if (selected) loadTrackingDetails(selected.id, selected);
+      activeList.querySelectorAll(".request-card").forEach((card) => {
+        card.addEventListener("click", () => {
+          const req = userRequests.find(
+            (item) => item.id === card.dataset.requestId
+          );
+          loadTrackingDetails(card.dataset.requestId, req);
+          const trackingSec = $("trackingSection");
+          if (trackingSec) {
+            trackingSec.scrollIntoView({ behavior: "smooth" });
+          }
+        });
+      });
+    }
+  }
+
+  // 2. Requests Tab: Table View for Desktop / History
+  const table = $("requestsTable");
+  if (table) {
+    if (!userRequests.length) {
+      table.innerHTML = `<tr><td colspan="5" class="px-6 py-10 text-center"><p class="text-sm font-semibold text-slate-700">No service requests yet</p><p class="mt-1 text-xs text-slate-400">Your bookings will appear here.</p></td></tr>`;
+      setTrackingEmpty();
+    } else {
+      table.innerHTML = userRequests
+        .map(
+          (request) => `
+        <tr class="hover:bg-slate-50/70 transition">
+          <td class="whitespace-nowrap px-5 py-4 font-bold text-[#0066ff] sm:px-6">${escapeHtml(
+            request.id
+          )}</td>
+          <td class="max-w-[230px] px-4 py-4">
+            <strong class="block truncate font-semibold text-slate-800">${escapeHtml(
+              request.appliance_name
+            )}</strong>
+            <span class="mt-0.5 block truncate text-[11px] text-slate-400">${escapeHtml(
+              request.issue
+            )}</span>
+          </td>
+          <td class="whitespace-nowrap px-4 py-4 text-slate-600">
+            ${escapeHtml(formatDate(request.appointment_date))}
+            <span class="mt-0.5 block text-[10px] text-slate-400">${escapeHtml(
+              request.appointment_slot || ""
+            )}</span>
+          </td>
+          <td class="whitespace-nowrap px-4 py-4">
+            <span class="rounded-full px-2.5 py-1 text-[10px] font-bold ${statusClasses(
+              request.status_badge
+            )}">
+              ${escapeHtml(
+                request.status_badge || request.status || "Pending"
+              )}
+            </span>
+          </td>
+          <td class="whitespace-nowrap px-5 py-4 text-right sm:px-6">
+            <button class="track-request font-bold text-[#0066ff] hover:text-blue-700" data-request-id="${escapeHtml(
+              request.id
+            )}">View details →</button>
+          </td>
+        </tr>`
+        )
+        .join("");
+
+      table.querySelectorAll(".track-request").forEach((button) =>
+        button.addEventListener("click", () => {
+          const req = userRequests.find(
+            (item) => item.id === button.dataset.requestId
+          );
+          loadTrackingDetails(button.dataset.requestId, req);
+          switchTab("home");
+          const trackingSec = $("trackingSection");
+          if (trackingSec) {
+            trackingSec.scrollIntoView({ behavior: "smooth" });
+          }
+        })
+      );
+    }
+  }
+
+  // Preload tracking details with selected request or first active
+  const selected =
+    userRequests.find((request) => request.id === selectedRequestId) ||
+    userRequests.find((request) => request.status_badge !== "Completed") ||
+    userRequests[0];
+  if (selected) {
+    loadTrackingDetails(selected.id, selected);
+  }
 }
 
 function setTrackingEmpty() {
-  $("trackingEmpty").classList.remove("hidden");
-  $("trackingDetails").classList.add("hidden");
-  $("trackingStatus").classList.add("hidden");
+  if ($("trackingEmpty")) $("trackingEmpty").classList.remove("hidden");
+  if ($("trackingDetails")) $("trackingDetails").classList.add("hidden");
+  if ($("trackingStatus")) $("trackingStatus").classList.add("hidden");
 }
 
 function renderTimeline(steps) {
   const timeline = $("trackingTimeline");
+  if (!timeline) return;
   if (!Array.isArray(steps) || !steps.length) {
     timeline.innerHTML = `<p class="text-xs text-slate-400">Progress updates will appear here.</p>`;
     return;
   }
-  timeline.innerHTML = steps.map((step) => {
-    const done = step.state === "completed";
-    const current = step.state === "current";
-    const dot = done ? "bg-emerald-500" : current ? "bg-servora-500 ring-4 ring-blue-100" : "bg-slate-200";
-    const heading = done || current ? "font-semibold text-slate-800" : "font-medium text-slate-400";
-    return `<div class="relative flex gap-3"><span class="mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${dot}"></span><div><p class="text-xs ${heading}">${escapeHtml(step.title)}</p>${step.timestamp ? `<p class="mt-0.5 text-[10px] text-slate-400">${escapeHtml(step.timestamp)}</p>` : ""}${step.description ? `<p class="mt-0.5 text-[10px] text-slate-400">${escapeHtml(step.description)}</p>` : ""}</div></div>`;
-  }).join("");
+  timeline.innerHTML = steps
+    .map((step) => {
+      const done = step.state === "completed";
+      const current = step.state === "current";
+      const dot = done
+        ? "bg-emerald-500"
+        : current
+        ? "bg-[#0066ff] ring-4 ring-blue-100"
+        : "bg-slate-200";
+      const heading =
+        done || current
+          ? "font-semibold text-slate-800"
+          : "font-medium text-slate-400";
+      return `
+        <div class="relative flex gap-3 pb-2">
+          <span class="mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${dot}"></span>
+          <div>
+            <p class="text-xs ${heading}">${escapeHtml(step.title)}</p>
+            ${
+              step.timestamp
+                ? `<p class="mt-0.5 text-[10px] text-slate-400">${escapeHtml(
+                    step.timestamp
+                  )}</p>`
+                : ""
+            }
+            ${
+              step.description
+                ? `<p class="mt-0.5 text-[10px] text-slate-400">${escapeHtml(
+                    step.description
+                  )}</p>`
+                : ""
+            }
+          </div>
+        </div>`;
+    })
+    .join("");
 }
 
 async function loadTrackingDetails(requestId, fallbackRequest = null) {
-  if (!requestId) { setTrackingEmpty(); return; }
+  if (!requestId) {
+    setTrackingEmpty();
+    return;
+  }
   try {
-    const request = await readApiJson(`/api/requests/${encodeURIComponent(requestId)}`);
-    selectedRequestId = request.id;
-    $("trackingEmpty").classList.add("hidden");
-    $("trackingDetails").classList.remove("hidden");
-    const status = $("trackingStatus");
-    status.textContent = request.status_badge || request.status || "Pending";
-    status.className = `rounded-full px-2.5 py-1 text-[10px] font-bold ${statusClasses(status.textContent)}`;
-    $("trackingAppliance").textContent = request.appliance_name || "Service request";
-    $("trackingMeta").textContent = `${request.id} · ${formatDate(request.appointment_date)}${request.appointment_slot ? ` · ${request.appointment_slot}` : ""}`;
-    $("trackingIssue").textContent = request.issue || "No issue description provided.";
-    const technician = request.technician;
-    $("trackingTechnician").textContent = technician ? `${technician.name}${technician.title ? ` · ${technician.title}` : ""}` : "Not assigned yet";
-    $("technicianVerified").classList.toggle("hidden", !technician?.is_verified);
-    $("otpPanel").classList.toggle("hidden", !request.verification_otp);
-    $("trackingOtp").textContent = request.verification_otp || "";
-    renderTimeline(request.timeline);
+    const request = await readApiJson(
+      `/api/requests/${encodeURIComponent(requestId)}`
+    );
+    populateTracking(request);
   } catch (error) {
     if (fallbackRequest) {
-      const request = fallbackRequest;
-      selectedRequestId = request.id;
-      $("trackingEmpty").classList.add("hidden");
-      $("trackingDetails").classList.remove("hidden");
-      const status = $("trackingStatus");
-      status.textContent = request.status_badge || request.status || "Pending";
-      status.className = `rounded-full px-2.5 py-1 text-[10px] font-bold ${statusClasses(status.textContent)}`;
-      $("trackingAppliance").textContent = request.appliance_name || "Service request";
-      $("trackingMeta").textContent = `${request.id} · ${formatDate(request.appointment_date)}${request.appointment_slot ? ` · ${request.appointment_slot}` : ""}`;
-      $("trackingIssue").textContent = request.issue || "No issue description provided.";
-      $("trackingTechnician").textContent = request.technician?.name || "Not assigned yet";
-      $("technicianVerified").classList.toggle("hidden", !request.technician?.is_verified);
-      $("otpPanel").classList.toggle("hidden", !request.verification_otp);
-      $("trackingOtp").textContent = request.verification_otp || "";
-      renderTimeline(request.timeline);
+      populateTracking(fallbackRequest);
       return;
     }
     showToast(error.message || "Could not load request details.", "error");
   }
+}
+
+function populateTracking(request) {
+  selectedRequestId = request.id;
+  if ($("trackingEmpty")) $("trackingEmpty").classList.add("hidden");
+  if ($("trackingDetails")) $("trackingDetails").classList.remove("hidden");
+
+  const status = $("trackingStatus");
+  if (status) {
+    status.classList.remove("hidden");
+    status.textContent =
+      request.status_badge || request.status || "In Progress";
+    status.className = `rounded-full px-2.5 py-1 text-[10px] font-bold ${statusClasses(
+      status.textContent
+    )}`;
+  }
+
+  if ($("trackingAppliance")) {
+    $("trackingAppliance").textContent =
+      request.appliance_name || "Service request";
+  }
+  if ($("trackingMeta")) {
+    $("trackingMeta").textContent = `${request.id} · ${formatDate(
+      request.appointment_date
+    )}${request.appointment_slot ? ` · ${request.appointment_slot}` : ""}`;
+  }
+  if ($("trackingIssue")) {
+    $("trackingIssue").textContent =
+      request.issue || "No issue description provided.";
+  }
+
+  const technician = request.technician;
+  if ($("trackingTechnician")) {
+    $("trackingTechnician").textContent = technician
+      ? `${technician.name}${technician.title ? ` · ${technician.title}` : ""}`
+      : "Not assigned yet";
+  }
+  if ($("technicianVerified")) {
+    $("technicianVerified").classList.toggle("hidden", !technician?.is_verified);
+  }
+
+  if ($("otpPanel")) {
+    $("otpPanel").classList.toggle("hidden", !request.verification_otp);
+  }
+  if ($("trackingOtp")) {
+    $("trackingOtp").textContent = request.verification_otp || "";
+  }
+
+  renderTimeline(request.timeline);
 }
 
 function openDialog(id) {
@@ -301,7 +806,12 @@ function openDialog(id) {
   if (dialog?.showModal) dialog.showModal();
   else dialog?.classList.remove("hidden");
 }
-function closeDialog(id) { $(id)?.close?.(); }
+
+function closeDialog(id) {
+  const dialog = $(id);
+  if (dialog?.close) dialog.close();
+  else dialog?.classList.add("hidden");
+}
 
 window.openBookingModal = function (applianceId = "") {
   if (!userAppliances.length) {
@@ -310,12 +820,13 @@ window.openBookingModal = function (applianceId = "") {
     return;
   }
   const select = $("bookApplianceSelect");
-  if (applianceId) select.value = applianceId;
-  $("bookingMessage").textContent = "";
+  if (select && applianceId) select.value = applianceId;
+  if ($("bookingMessage")) $("bookingMessage").textContent = "";
   openDialog("bookingDialog");
 };
+
 window.openAddApplianceModal = function () {
-  $("applianceMessage").textContent = "";
+  if ($("applianceMessage")) $("applianceMessage").textContent = "";
   openDialog("applianceDialog");
 };
 
@@ -324,7 +835,8 @@ async function submitBooking(event) {
   const button = $("bookingSubmit");
   button.disabled = true;
   button.textContent = "Booking…";
-  $("bookingMessage").textContent = "";
+  if ($("bookingMessage")) $("bookingMessage").textContent = "";
+
   try {
     const request = await readApiJson("/api/requests", {
       method: "POST",
@@ -339,13 +851,18 @@ async function submitBooking(event) {
     });
     closeDialog("bookingDialog");
     $("bookingForm").reset();
-    if (currentUser?.address) $("bookAddress").value = currentUser.address;
+    if (currentUser?.address && $("bookAddress")) {
+      $("bookAddress").value = currentUser.address;
+    }
     selectedRequestId = request.id;
     await loadDashboardData();
     await loadTrackingDetails(request.id, request);
-    showToast(`Service request ${request.id} created.`, "success");
+    showToast(`Service request ${request.id} created successfully!`, "success");
   } catch (error) {
-    $("bookingMessage").textContent = error.message || "Could not create your request.";
+    if ($("bookingMessage")) {
+      $("bookingMessage").textContent =
+        error.message || "Could not create your request.";
+    }
   } finally {
     button.disabled = false;
     button.textContent = "Confirm booking";
@@ -357,13 +874,22 @@ async function submitAppliance(event) {
   const button = $("applianceSubmit");
   button.disabled = true;
   button.textContent = "Saving…";
-  $("applianceMessage").textContent = "";
-  if (!registeredCompanies.some((company) => company.id === $("newAppCompany").value)) {
-    $("applianceMessage").textContent = "Select a company registered on Servora before saving.";
+  if ($("applianceMessage")) $("applianceMessage").textContent = "";
+
+  if (
+    !registeredCompanies.some(
+      (company) => company.id === $("newAppCompany").value
+    )
+  ) {
+    if ($("applianceMessage")) {
+      $("applianceMessage").textContent =
+        "Select a company registered on Servora before saving.";
+    }
     button.disabled = registeredCompanies.length === 0;
     button.textContent = "Save appliance";
     return;
   }
+
   try {
     const appliance = await readApiJson("/api/appliances", {
       method: "POST",
@@ -379,50 +905,222 @@ async function submitAppliance(event) {
     closeDialog("applianceDialog");
     $("applianceForm").reset();
     await loadDashboardData();
-    $("bookApplianceSelect").value = appliance.id;
-    showToast(`${appliance.brand} ${appliance.category} added.`, "success");
+    if ($("bookApplianceSelect")) $("bookApplianceSelect").value = appliance.id;
+    showToast(
+      `${appliance.brand} ${appliance.category} added to your appliances.`,
+      "success"
+    );
   } catch (error) {
-    $("applianceMessage").textContent = error.message || "Could not save this appliance.";
+    if ($("applianceMessage")) {
+      $("applianceMessage").textContent =
+        error.message || "Could not save this appliance.";
+    }
   } finally {
     button.disabled = false;
     button.textContent = "Save appliance";
   }
 }
 
-function setupNavigation() {
-  document.querySelectorAll("[data-section-link]").forEach((link) => {
-    link.addEventListener("click", () => {
-      document.querySelectorAll("[data-section-link]").forEach((item) => item.removeAttribute("aria-current"));
-      document.querySelectorAll(`[data-section-link="${link.dataset.sectionLink}"]`).forEach((item) => item.setAttribute("aria-current", "page"));
-      $("crumbTitle").textContent = link.dataset.sectionLink === "overview" ? "Overview" : link.dataset.sectionLink === "appliances" ? "My appliances" : "Service requests";
-    });
+function switchTab(tabId) {
+  // 1. Switch visibility of tab content sections
+  document.querySelectorAll("[data-tab-content]").forEach((el) => {
+    const isCurrent = el.dataset.tabContent === tabId;
+    el.classList.toggle("hidden", !isCurrent);
   });
+
+  // 2. Update mobile bottom navigation buttons (.nav-tab)
+  document.querySelectorAll(".nav-tab").forEach((btn) => {
+    const isCurrent = btn.dataset.tab === tabId;
+    btn.classList.toggle("text-[#0066ff]", isCurrent);
+    btn.classList.toggle("text-slate-400", !isCurrent);
+    btn.classList.toggle("active", isCurrent);
+    const label = btn.querySelector("span");
+    if (label) {
+      label.classList.toggle("font-bold", isCurrent);
+      label.classList.toggle("font-semibold", !isCurrent);
+    }
+  });
+
+  // 3. Update desktop sidebar links (.desktop-nav-link)
+  document.querySelectorAll(".desktop-nav-link").forEach((btn) => {
+    const isCurrent = btn.dataset.tabNav === tabId;
+    btn.classList.toggle("bg-[#eff6ff]", isCurrent);
+    btn.classList.toggle("text-[#0066ff]", isCurrent);
+    btn.classList.toggle("active", isCurrent);
+    btn.classList.toggle("text-slate-600", !isCurrent);
+    btn.classList.toggle("hover:bg-slate-50", !isCurrent);
+  });
+
+  // 4. Update drawer links (.drawer-nav-link)
+  document.querySelectorAll(".drawer-nav-link").forEach((btn) => {
+    const isCurrent = btn.dataset.tabNav === tabId;
+    btn.classList.toggle("bg-blue-50", isCurrent);
+    btn.classList.toggle("text-[#0066ff]", isCurrent);
+    btn.classList.toggle("font-bold", isCurrent);
+  });
+
+  // 5. Update desktop header breadcrumbs
+  const crumb = $("crumbTitle");
+  if (crumb) {
+    const titles = {
+      home: "Home",
+      requests: "Service Requests",
+      appliances: "My Appliances",
+      profile: "My Account",
+    };
+    crumb.textContent = titles[tabId] || "Overview";
+  }
+
+  // Smooth scroll back to top
+  window.scrollTo({ top: 0, behavior: "smooth" });
 }
+
+function openDrawer() {
+  const drawer = $("mobileDrawer");
+  const panel = $("mobileDrawerPanel");
+  if (!drawer || !panel) return;
+  drawer.classList.remove("hidden");
+  // force layout reflow for animation
+  void drawer.offsetHeight;
+  panel.classList.remove("-translate-x-full");
+  panel.classList.add("translate-x-0");
+  document.body.style.overflow = "hidden";
+}
+
+function closeDrawer() {
+  const drawer = $("mobileDrawer");
+  const panel = $("mobileDrawerPanel");
+  if (!drawer || !panel) return;
+  panel.classList.remove("translate-x-0");
+  panel.classList.add("-translate-x-full");
+  setTimeout(() => {
+    drawer.classList.add("hidden");
+    document.body.style.overflow = "";
+  }, 200);
+}
+window.closeDrawer = closeDrawer;
 
 function logout() {
   const token = currentUser?.session_token;
   localStorage.removeItem("servora_user");
   const headers = token ? { Authorization: `Bearer ${token}` } : {};
-  fetch(`${API_BASE_URL}/api/auth/logout`, { method: "POST", headers, credentials: "include", keepalive: true }).catch(() => {});
+  fetch(`${API_BASE_URL}/api/auth/logout`, {
+    method: "POST",
+    headers,
+    credentials: "include",
+    keepalive: true,
+  }).catch(() => {});
   window.location.replace("./index.html");
 }
 
 document.addEventListener("DOMContentLoaded", async () => {
-  if (window.lucide) window.lucide.createIcons();
-  setupNavigation();
-  $("bookingForm").addEventListener("submit", submitBooking);
-  $("applianceForm").addEventListener("submit", submitAppliance);
-  $("closeBooking").addEventListener("click", () => closeDialog("bookingDialog"));
-  $("cancelBooking").addEventListener("click", () => closeDialog("bookingDialog"));
-  $("closeAppliance").addEventListener("click", () => closeDialog("applianceDialog"));
-  $("cancelAppliance").addEventListener("click", () => closeDialog("applianceDialog"));
-  $("logoutBtn").addEventListener("click", logout);
-  $("mobileLogoutBtn").addEventListener("click", logout);
-  const today = new Date();
-  const localToday = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
-  $("bookDate").min = localToday;
-  $("bookDate").value = localToday;
+  // Mobile bottom bar tabs
+  document.querySelectorAll(".nav-tab").forEach((tab) => {
+    tab.addEventListener("click", () => switchTab(tab.dataset.tab));
+  });
 
+  // Desktop sidebar navigation tabs
+  document.querySelectorAll(".desktop-nav-link").forEach((link) => {
+    link.addEventListener("click", () => switchTab(link.dataset.tabNav));
+  });
+
+  // Drawer navigation tabs
+  document.querySelectorAll(".drawer-nav-link").forEach((link) => {
+    link.addEventListener("click", () => {
+      switchTab(link.dataset.tabNav);
+      closeDrawer();
+    });
+  });
+
+  // Drawer toggles
+  if ($("mobileMenuBtn")) {
+    $("mobileMenuBtn").addEventListener("click", openDrawer);
+  }
+  if ($("closeMobileDrawer")) {
+    $("closeMobileDrawer").addEventListener("click", closeDrawer);
+  }
+  const drawer = $("mobileDrawer");
+  if (drawer) {
+    drawer.addEventListener("click", (e) => {
+      if (e.target === drawer) closeDrawer();
+    });
+  }
+  if ($("drawerLogoutBtn")) {
+    $("drawerLogoutBtn").addEventListener("click", logout);
+  }
+
+  // Header quick links
+  if ($("viewAllAppliancesLink")) {
+    $("viewAllAppliancesLink").addEventListener("click", () =>
+      switchTab("appliances")
+    );
+  }
+  if ($("viewAllRequestsLink")) {
+    $("viewAllRequestsLink").addEventListener("click", () =>
+      switchTab("requests")
+    );
+  }
+
+  // Avatar clicks lead to profile tab
+  if ($("userAvatar")) {
+    $("userAvatar").addEventListener("click", () => switchTab("profile"));
+  }
+  if ($("userAvatarHeader")) {
+    $("userAvatarHeader").addEventListener("click", () =>
+      switchTab("profile")
+    );
+  }
+
+  // Notification modal
+  if ($("mobileNotificationBtn")) {
+    $("mobileNotificationBtn").addEventListener("click", () =>
+      openDialog("notificationDialog")
+    );
+  }
+  if ($("desktopNotificationBtn")) {
+    $("desktopNotificationBtn").addEventListener("click", () =>
+      openDialog("notificationDialog")
+    );
+  }
+  if ($("closeNotifications")) {
+    $("closeNotifications").addEventListener("click", () =>
+      closeDialog("notificationDialog")
+    );
+  }
+
+  // Modal form submissions & dialogs
+  if ($("bookingForm")) $("bookingForm").addEventListener("submit", submitBooking);
+  if ($("applianceForm"))
+    $("applianceForm").addEventListener("submit", submitAppliance);
+  if ($("closeBooking"))
+    $("closeBooking").addEventListener("click", () => closeDialog("bookingDialog"));
+  if ($("cancelBooking"))
+    $("cancelBooking").addEventListener("click", () => closeDialog("bookingDialog"));
+  if ($("closeAppliance"))
+    $("closeAppliance").addEventListener("click", () =>
+      closeDialog("applianceDialog")
+    );
+  if ($("cancelAppliance"))
+    $("cancelAppliance").addEventListener("click", () =>
+      closeDialog("applianceDialog")
+    );
+
+  // Logout buttons
+  if ($("logoutBtn")) $("logoutBtn").addEventListener("click", logout);
+  if ($("mobileLogoutBtn"))
+    $("mobileLogoutBtn").addEventListener("click", logout);
+
+  // Default booking date to today or later
+  const today = new Date();
+  const localToday = `${today.getFullYear()}-${String(
+    today.getMonth() + 1
+  ).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+  if ($("bookDate")) {
+    $("bookDate").min = localToday;
+    $("bookDate").value = localToday;
+  }
+
+  // Load customer session & dashboard data
   if (await loadCurrentCustomer()) {
     setProfile(currentUser);
     await loadDashboardData();

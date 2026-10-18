@@ -1,166 +1,684 @@
 <!doctype html>
-<html lang="en" class="min-h-full bg-slate-50">
+<html lang="en" class="h-full bg-[#f8fafc]">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#f4f7fb">
-  <title>Customer portal — Servora</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#ffffff">
+  <title>Customer Dashboard — Servora</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
-    tailwind.config = { theme: { extend: { fontFamily: { sans: ['DM Sans', 'sans-serif'], display: ['Manrope', 'sans-serif'] }, colors: { servora: { 50: '#eff6ff', 100: '#dbeafe', 500: '#2878c8', 600: '#1d65ad', 700: '#1b4f87', 900: '#16314f' } } } } };
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['DM Sans', 'sans-serif'],
+            display: ['Manrope', 'sans-serif']
+          },
+          colors: {
+            brand: {
+              50: '#eff6ff',
+              100: '#dbeafe',
+              500: '#0066ff',
+              600: '#0052cc',
+              700: '#003d99',
+              900: '#0f2744'
+            }
+          }
+        }
+      }
+    };
   </script>
-  <script src="https://unpkg.com/lucide@latest"></script>
   <link rel="stylesheet" href="./css/style.css">
   <style>
-    body { font-family: 'DM Sans', sans-serif; }
-    h1, h2, h3, .font-display { font-family: 'Manrope', sans-serif; }
-    .portal-nav a { transition: background-color .18s ease, color .18s ease; }
-    .portal-nav a:hover, .portal-nav a[aria-current="page"] { background: #eaf3fc; color: #1d65ad; }
-    .portal-card { border: 1px solid #e4ebf2; box-shadow: 0 4px 18px rgba(22,49,79,.035); }
-    dialog::backdrop { background: rgba(15, 23, 42, .55); backdrop-filter: blur(3px); }
+    body { font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif; background-color: #f8fafc; }
+    h1, h2, h3, h4, .font-display { font-family: 'Manrope', -apple-system, BlinkMacSystemFont, sans-serif; }
+    dialog::backdrop { background: rgba(15, 23, 42, 0.45); backdrop-filter: blur(4px); }
+    .safe-bottom { padding-bottom: max(1rem, env(safe-area-inset-bottom)); }
+    .appliance-card, .request-card {
+      transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .appliance-card:active, .request-card:active {
+      transform: scale(0.985);
+    }
   </style>
   <script type="module" src="./js/dashboard.js"></script>
 </head>
-<body class="min-h-screen text-slate-800" data-role="customer">
-  <div id="toast-container" class="fixed right-4 top-4 z-[70] flex w-[min(92vw,380px)] flex-col gap-2" aria-live="polite"></div>
-  <div class="min-h-screen md:grid md:grid-cols-[248px_minmax(0,1fr)]">
-    <aside class="hidden border-r border-slate-200 bg-white md:fixed md:inset-y-0 md:flex md:w-[248px] md:flex-col">
-      <a href="./customer-dashboard.html" class="flex h-[86px] items-center gap-3 border-b border-slate-100 px-6" aria-label="Servora customer portal home">
-        <span class="grid h-11 w-11 place-items-center rounded-xl bg-servora-500 text-xl font-extrabold text-white shadow-lg shadow-blue-200">S</span>
-        <span><strong class="block font-display text-lg font-extrabold tracking-tight text-slate-900">SERVORA</strong><small class="text-xs text-slate-500">Service, connected.</small></span>
-      </a>
-      <div class="px-5 pt-7 text-[10px] font-bold tracking-[.18em] text-slate-400">YOUR ACCOUNT</div>
-      <nav class="portal-nav mt-3 space-y-1 px-3 text-sm font-semibold text-slate-600" aria-label="Customer navigation">
-        <a href="#overview" data-section-link="overview" aria-current="page" class="flex items-center gap-3 rounded-xl px-3 py-3"><i data-lucide="layout-dashboard" class="h-4 w-4"></i> Overview</a>
-        <a href="#appliances" data-section-link="appliances" class="flex items-center gap-3 rounded-xl px-3 py-3"><i data-lucide="refrigerator" class="h-4 w-4"></i> My appliances</a>
-        <a href="#requests" data-section-link="requests" class="flex items-center gap-3 rounded-xl px-3 py-3"><i data-lucide="clipboard-list" class="h-4 w-4"></i> Service requests</a>
-      </nav>
-      <div class="mt-auto p-4">
-        <div class="rounded-2xl bg-slate-50 p-4">
-          <span class="mb-3 grid h-9 w-9 place-items-center rounded-xl bg-blue-100 text-servora-600"><i data-lucide="sparkles" class="h-4 w-4"></i></span>
-          <strong class="block text-sm text-slate-800">Need a hand?</strong>
-          <p class="mt-1 text-xs leading-5 text-slate-500">Contact Servora support if you need help with a booking.</p>
-          <a class="mt-3 inline-block text-xs font-bold text-servora-600" href="mailto:help@servora.com">Contact support →</a>
-        </div>
-        <button id="logoutBtn" class="mt-3 flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm font-semibold text-slate-500 hover:bg-rose-50 hover:text-rose-700"><i data-lucide="log-out" class="h-4 w-4"></i> Sign out</button>
+<body class="min-h-screen text-slate-800 bg-[#f8fafc] flex flex-col md:flex-row antialiased selection:bg-blue-100 selection:text-blue-900" data-role="customer">
+
+  <!-- Toast Notification Container -->
+  <div id="toast-container" class="fixed right-4 top-4 z-[90] flex w-[min(92vw,380px)] flex-col gap-2" aria-live="polite"></div>
+
+  <!-- ============================================================== -->
+  <!-- 1. LAPTOP / DESKTOP SIDEBAR (hidden on mobile) -->
+  <!-- ============================================================== -->
+  <aside class="hidden md:flex md:w-[260px] md:flex-col md:fixed md:inset-y-0 border-r border-slate-200/80 bg-white z-40">
+    <div class="flex h-[76px] items-center gap-3 border-b border-slate-100 px-6">
+      <div class="w-10 h-10 rounded-xl bg-[#0066ff] text-white flex items-center justify-center font-display font-extrabold text-xl shadow-md shadow-blue-500/20">
+        S
       </div>
-    </aside>
+      <div>
+        <span class="block font-display text-[17px] font-extrabold tracking-tight text-[#11243d]">SERVORA</span>
+        <span class="block text-[11px] text-slate-400 font-medium -mt-1">Service, connected.</span>
+      </div>
+    </div>
 
-    <div class="min-w-0 md:col-start-2">
-      <header class="sticky top-0 z-30 flex h-[70px] items-center justify-between border-b border-slate-200 bg-white/95 px-4 backdrop-blur sm:px-7 lg:px-10">
-        <a href="./customer-dashboard.html" class="flex items-center gap-2 md:hidden">
-          <span class="grid h-9 w-9 place-items-center rounded-lg bg-servora-500 font-display text-lg font-extrabold text-white">S</span>
-          <span><strong class="block font-display text-sm font-extrabold tracking-wide text-slate-900">SERVORA</strong><small class="-mt-0.5 block text-[10px] text-slate-500">Customer portal</small></span>
-        </a>
-        <div class="hidden items-center gap-2 text-sm text-slate-400 md:flex"><span>Workspace</span><span>/</span><strong id="crumbTitle" class="font-semibold text-slate-700">Overview</strong></div>
-        <div class="flex items-center gap-3">
-          <span id="todayLabel" class="hidden text-xs text-slate-400 sm:block"></span>
-          <span class="grid h-9 w-9 place-items-center rounded-full bg-blue-50 text-xs font-bold text-servora-700" id="userAvatar">CU</span>
-          <div class="hidden sm:block"><strong id="userName" class="block text-xs font-bold text-slate-800">Customer</strong><span class="text-[11px] text-slate-400">Customer account</span></div>
-          <button id="mobileLogoutBtn" class="rounded-lg p-2 text-slate-400 hover:bg-rose-50 hover:text-rose-700 md:hidden" aria-label="Sign out"><i data-lucide="log-out" class="h-4 w-4"></i></button>
+    <!-- Sidebar Navigation Links -->
+    <div class="px-5 pt-6 text-[10px] font-bold tracking-[.18em] text-slate-400 uppercase">MENU</div>
+    <nav class="mt-2 space-y-1 px-3 text-sm font-semibold text-slate-600" aria-label="Desktop customer navigation">
+      <button data-tab-nav="home" class="desktop-nav-link active w-full flex items-center gap-3 rounded-xl px-3.5 py-3 text-left transition bg-[#eff6ff] text-[#0066ff]">
+        <svg class="w-4 h-4 shrink-0" fill="currentColor" viewBox="0 0 24 24"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>
+        <span>Home</span>
+      </button>
+
+      <button data-tab-nav="requests" class="desktop-nav-link w-full flex items-center gap-3 rounded-xl px-3.5 py-3 text-left transition text-slate-600 hover:bg-slate-50 hover:text-slate-900">
+        <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 7h6M9 11h6M9 15h4"/></svg>
+        <span>Service Requests</span>
+      </button>
+
+      <button data-tab-nav="appliances" class="desktop-nav-link w-full flex items-center gap-3 rounded-xl px-3.5 py-3 text-left transition text-slate-600 hover:bg-slate-50 hover:text-slate-900">
+        <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="7" y="3" width="10" height="7" rx="1.5"/><path d="M12 10v4M6 14h12M6 14v7M18 14v7"/></svg>
+        <span>My Appliances</span>
+      </button>
+
+      <button data-tab-nav="profile" class="desktop-nav-link w-full flex items-center gap-3 rounded-xl px-3.5 py-3 text-left transition text-slate-600 hover:bg-slate-50 hover:text-slate-900">
+        <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        <span>My Profile</span>
+      </button>
+    </nav>
+
+    <!-- Quick Action in Sidebar -->
+    <div class="px-4 mt-4">
+      <button onclick="openBookingModal()" class="w-full py-2.5 px-3 bg-[#0066ff] hover:bg-blue-700 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 shadow-sm transition">
+        <span>+ Book a Service</span>
+      </button>
+    </div>
+
+    <!-- Sidebar Bottom / Support & Sign out -->
+    <div class="mt-auto p-4 border-t border-slate-100">
+      <div class="rounded-xl bg-slate-50 p-3.5 text-xs text-slate-500">
+        <div class="flex items-center gap-2 font-bold text-slate-800 mb-1">
+          <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+          <span>Customer Support</span>
         </div>
-      </header>
+        <p class="text-[11px] leading-relaxed">Need help with an appliance or technician visit?</p>
+        <a href="mailto:help@servora.com" class="inline-block mt-2 font-bold text-[#0066ff] hover:underline">Contact Support →</a>
+      </div>
 
-      <main class="mx-auto max-w-[1500px] space-y-7 px-4 py-6 sm:px-7 sm:py-8 lg:px-10" id="overview">
-        <nav class="portal-nav -mx-1 flex gap-2 overflow-x-auto pb-1 text-xs font-semibold text-slate-500 md:hidden" aria-label="Customer navigation">
-          <a href="#overview" data-section-link="overview" aria-current="page" class="shrink-0 rounded-lg px-3 py-2">Overview</a>
-          <a href="#appliances" data-section-link="appliances" class="shrink-0 rounded-lg px-3 py-2">My appliances</a>
-          <a href="#requests" data-section-link="requests" class="shrink-0 rounded-lg px-3 py-2">Service requests</a>
-        </nav>
+      <button id="logoutBtn" class="mt-3 flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-xs font-bold text-slate-500 hover:bg-rose-50 hover:text-rose-700 transition">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>
+        <span>Sign Out</span>
+      </button>
+    </div>
+  </aside>
 
-        <section class="flex flex-col justify-between gap-5 sm:flex-row sm:items-end">
+  <!-- ============================================================== -->
+  <!-- 2. MAIN APPLICATION CONTAINER -->
+  <!-- ============================================================== -->
+  <div class="flex-1 min-w-0 md:ml-[260px] flex flex-col min-h-screen pb-20 md:pb-8">
+
+    <!-- A. MOBILE TOP HEADER (Pixel-perfect match to screenshot) -->
+    <header class="md:hidden sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-slate-100 px-4 h-16 flex items-center justify-between">
+      <!-- Hamburger Menu Icon -->
+      <button id="mobileMenuBtn" class="p-2 -ml-1.5 text-slate-700 hover:text-blue-600 focus:outline-none" aria-label="Open menu">
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16"/>
+        </svg>
+      </button>
+
+      <!-- Centered SERVORA Logo + Subtitle -->
+      <div class="flex flex-col items-center select-none">
+        <span class="font-display font-extrabold text-[19px] tracking-tight text-[#142944]">SERVORA</span>
+        <span class="text-[10px] text-slate-400 font-medium tracking-tight -mt-1">Service, connected.</span>
+      </div>
+
+      <!-- Right: Notification Bell + Profile Avatar Circle -->
+      <div class="flex items-center gap-2">
+        <button id="mobileNotificationBtn" class="relative p-2 text-slate-600 hover:text-blue-600 focus:outline-none" aria-label="Notifications">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/>
+          </svg>
+          <span class="absolute top-2 right-2 w-2 h-2 bg-blue-600 rounded-full ring-2 ring-white"></span>
+        </button>
+
+        <div id="userAvatar" class="w-8 h-8 rounded-full bg-[#152e4d] text-white font-bold text-xs flex items-center justify-center tracking-wider shadow-sm cursor-pointer" title="My Account">
+          SB
+        </div>
+      </div>
+    </header>
+
+    <!-- B. LAPTOP / DESKTOP HEADER (hidden on mobile) -->
+    <header class="hidden md:flex sticky top-0 z-30 h-[72px] items-center justify-between border-b border-slate-200/80 bg-white/95 px-8 backdrop-blur">
+      <div class="flex items-center gap-2 text-sm text-slate-400">
+        <span>Workspace</span>
+        <span>/</span>
+        <strong id="crumbTitle" class="font-semibold text-slate-700">Home</strong>
+      </div>
+
+      <div class="flex items-center gap-4">
+        <span id="todayLabel" class="text-xs text-slate-400"></span>
+        <button id="desktopNotificationBtn" class="relative p-2 text-slate-500 hover:text-blue-600 rounded-xl hover:bg-slate-50 transition" aria-label="Notifications">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/>
+          </svg>
+          <span class="absolute top-2 right-2 w-2 h-2 bg-blue-600 rounded-full ring-2 ring-white"></span>
+        </button>
+
+        <div class="flex items-center gap-3 pl-2 border-l border-slate-200">
+          <div class="w-9 h-9 rounded-full bg-[#152e4d] text-white font-bold text-xs flex items-center justify-center tracking-wider shadow-sm">
+            <span id="userAvatarHeader">SB</span>
+          </div>
           <div>
-            <div class="mb-2 text-[10px] font-bold tracking-[.2em] text-servora-600">CUSTOMER PORTAL</div>
-            <h1 id="welcomeTitle" class="font-display text-2xl font-extrabold tracking-tight text-slate-900 sm:text-3xl">Welcome to Servora</h1>
-            <p class="mt-2 max-w-2xl text-sm text-slate-500">Manage your registered appliances, book service, and follow every request in one place.</p>
+            <strong id="userName" class="block text-xs font-bold text-slate-800">Customer</strong>
+            <span class="text-[11px] text-slate-400">Customer Account</span>
           </div>
-          <div class="flex flex-wrap gap-2">
-            <button onclick="openBookingModal()" class="inline-flex items-center gap-2 rounded-xl bg-servora-500 px-4 py-3 text-sm font-bold text-white shadow-lg shadow-blue-200 hover:bg-servora-600"><i data-lucide="plus" class="h-4 w-4"></i> Book service</button>
-            <button onclick="openAddApplianceModal()" class="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700 hover:border-blue-300 hover:text-servora-600"><i data-lucide="package-plus" class="h-4 w-4"></i> Add appliance</button>
+        </div>
+      </div>
+    </header>
+
+    <!-- C. MAIN CONTENT AREA -->
+    <main class="mx-auto w-full max-w-5xl px-4 py-5 sm:px-6 lg:px-8 space-y-6 flex-1">
+
+      <!-- ========================================== -->
+      <!-- TAB 1: HOME (Pixel-perfect to screenshot) -->
+      <!-- ========================================== -->
+      <div id="tab-home" data-tab-content="home" class="space-y-6">
+
+        <!-- 1. GREETING HERO -->
+        <div class="pt-1">
+          <h1 id="welcomeTitle" class="text-2xl sm:text-3xl font-extrabold font-display text-slate-900 tracking-tight flex items-center gap-2">
+            <span>Hello Shreyansh</span> <span class="inline-block text-2xl">👋</span>
+          </h1>
+          <p class="text-[15px] text-[#71849a] font-normal mt-1">How can we help you today?</p>
+        </div>
+
+        <!-- 2. QUICK METRICS (Laptop only) -->
+        <div class="hidden md:grid grid-cols-3 gap-4 pt-1">
+          <div class="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex items-center gap-3.5">
+            <div class="w-11 h-11 rounded-xl bg-blue-50 text-[#0066ff] flex items-center justify-center font-bold text-lg">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="7" y="3" width="10" height="7" rx="1.5"/><path d="M12 10v4M6 14h12M6 14v7M18 14v7"/></svg>
+            </div>
+            <div>
+              <strong id="applianceCount" class="block text-xl font-display font-extrabold text-slate-900">0</strong>
+              <span class="text-xs text-slate-400 font-medium">Registered Appliances</span>
+            </div>
+          </div>
+
+          <div class="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex items-center gap-3.5">
+            <div class="w-11 h-11 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center font-bold text-lg">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            </div>
+            <div>
+              <strong id="activeRequestCount" class="block text-xl font-display font-extrabold text-slate-900">0</strong>
+              <span class="text-xs text-slate-400 font-medium">Open Service Requests</span>
+            </div>
+          </div>
+
+          <div class="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex items-center gap-3.5">
+            <div class="w-11 h-11 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold text-lg">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+            </div>
+            <div>
+              <strong id="completedRequestCount" class="block text-xl font-display font-extrabold text-slate-900">0</strong>
+              <span class="text-xs text-slate-400 font-medium">Completed Services</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 3. SECTION: REGISTERED APPLIANCES -->
+        <section class="space-y-3">
+          <div class="flex items-center justify-between px-0.5">
+            <h2 class="text-base font-bold text-slate-900 font-display">Registered Appliances</h2>
+            <button id="viewAllAppliancesLink" class="text-xs font-bold text-[#0066ff] hover:text-blue-700 flex items-center gap-0.5 transition">
+              <span>View all</span>
+              <span class="text-sm">›</span>
+            </button>
+          </div>
+
+          <!-- Appliances List (Dynamic cards matching screenshot) -->
+          <div id="applianceList" class="space-y-3">
+            <div class="p-8 text-center bg-white rounded-2xl border border-slate-100 text-xs text-slate-400">
+              Loading appliances…
+            </div>
           </div>
         </section>
 
-        <section class="grid gap-3 sm:grid-cols-3" aria-label="Account summary">
-          <article class="portal-card flex items-center gap-4 rounded-2xl bg-white p-5"><span class="grid h-11 w-11 place-items-center rounded-xl bg-blue-50 text-servora-600"><i data-lucide="refrigerator" class="h-5 w-5"></i></span><div><strong id="applianceCount" class="font-display text-2xl font-extrabold text-slate-900">—</strong><p class="text-xs text-slate-500">Registered appliances</p></div></article>
-          <article class="portal-card flex items-center gap-4 rounded-2xl bg-white p-5"><span class="grid h-11 w-11 place-items-center rounded-xl bg-amber-50 text-amber-600"><i data-lucide="clock-3" class="h-5 w-5"></i></span><div><strong id="activeRequestCount" class="font-display text-2xl font-extrabold text-slate-900">—</strong><p class="text-xs text-slate-500">Open service requests</p></div></article>
-          <article class="portal-card flex items-center gap-4 rounded-2xl bg-white p-5"><span class="grid h-11 w-11 place-items-center rounded-xl bg-emerald-50 text-emerald-600"><i data-lucide="circle-check" class="h-5 w-5"></i></span><div><strong id="completedRequestCount" class="font-display text-2xl font-extrabold text-slate-900">—</strong><p class="text-xs text-slate-500">Completed requests</p></div></article>
-        </section>
+        <!-- 4. CTA: BOOK SERVICE BUTTON (Prominent Blue Pill) -->
+        <div>
+          <button onclick="openBookingModal()" class="w-full py-3.5 sm:py-4 px-6 bg-[#0066ff] hover:bg-[#0055d4] active:scale-[0.99] text-white rounded-2xl font-bold text-[15px] sm:text-base flex items-center justify-center gap-2.5 shadow-lg shadow-blue-500/25 transition">
+            <span class="w-5 h-5 rounded-full border-2 border-white flex items-center justify-center text-xs font-black leading-none pb-0.5">+</span>
+            <span>Book Service</span>
+          </button>
+        </div>
 
-        <section class="grid items-start gap-5 xl:grid-cols-[minmax(0,1.7fr)_minmax(320px,.9fr)]">
-          <article class="portal-card min-w-0 overflow-hidden rounded-2xl bg-white" id="requests">
-            <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-5 py-5 sm:px-6">
-              <div><h2 class="font-display text-base font-bold text-slate-900">Your service requests</h2><p class="mt-1 text-xs text-slate-500">Track scheduled visits and service progress.</p></div>
-              <span class="rounded-full bg-slate-100 px-3 py-1 text-[11px] font-semibold text-slate-500" id="requestCount">Loading…</span>
-            </div>
-            <div class="overflow-x-auto">
-              <table class="w-full min-w-[680px] text-left text-xs">
-                <thead class="bg-slate-50 text-[10px] font-bold uppercase tracking-wider text-slate-400"><tr><th class="px-5 py-3 sm:px-6">Request</th><th class="px-4 py-3">Appliance & issue</th><th class="px-4 py-3">Appointment</th><th class="px-4 py-3">Status</th><th class="px-5 py-3 text-right sm:px-6">Action</th></tr></thead>
-                <tbody id="requestsTable" class="divide-y divide-slate-100"><tr><td colspan="5" class="px-6 py-10 text-center text-slate-400">Loading your requests…</td></tr></tbody>
-              </table>
-            </div>
-          </article>
-
-          <article class="portal-card rounded-2xl bg-white" aria-live="polite">
-            <div class="flex items-start justify-between border-b border-slate-100 px-5 py-5">
-              <div><h2 class="font-display text-base font-bold text-slate-900">Service tracking</h2><p class="mt-1 text-xs text-slate-500">Latest request details and progress.</p></div>
-              <span id="trackingStatus" class="hidden rounded-full px-2.5 py-1 text-[10px] font-bold"></span>
-            </div>
-            <div id="trackingEmpty" class="px-5 py-10 text-center">
-              <span class="mx-auto mb-3 grid h-11 w-11 place-items-center rounded-full bg-slate-100 text-slate-400"><i data-lucide="map-pin" class="h-5 w-5"></i></span>
-              <p class="text-sm font-semibold text-slate-700">No request selected</p><p class="mt-1 text-xs text-slate-400">Book a service or select a request to see its details.</p>
-            </div>
-            <div id="trackingDetails" class="hidden space-y-4 p-5">
-              <div><div id="trackingAppliance" class="font-display text-sm font-bold text-slate-900"></div><div id="trackingMeta" class="mt-1 text-[11px] text-slate-400"></div><p id="trackingIssue" class="mt-3 rounded-xl bg-slate-50 p-3 text-xs leading-5 text-slate-600"></p></div>
-              <div class="rounded-xl border border-slate-100 p-3"><div class="flex items-center justify-between gap-2"><span class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Assigned technician</span><span id="technicianVerified" class="hidden rounded-full bg-emerald-50 px-2 py-1 text-[9px] font-bold text-emerald-700">Verified</span></div><div id="trackingTechnician" class="mt-2 text-xs font-semibold text-slate-700">Not assigned yet</div></div>
-              <div id="otpPanel" class="hidden rounded-xl border border-amber-200 bg-amber-50 p-3"><div class="flex items-center justify-between"><span class="text-[10px] font-bold uppercase tracking-wider text-amber-800">Doorstep verification code</span><strong id="trackingOtp" class="font-mono text-lg text-amber-950"></strong></div><p class="mt-1 text-[10px] leading-4 text-amber-800">Share this code only with your assigned technician when they arrive.</p></div>
-              <div><h3 class="mb-3 text-[10px] font-bold uppercase tracking-wider text-slate-400">Progress</h3><div id="trackingTimeline" class="space-y-3"></div></div>
-            </div>
-          </article>
-        </section>
-
-        <section id="appliances" class="portal-card rounded-2xl bg-white">
-          <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-5 py-5 sm:px-6">
-            <div><h2 class="font-display text-base font-bold text-slate-900">My appliances</h2><p class="mt-1 text-xs text-slate-500">Appliances registered to your customer account.</p></div>
-            <button onclick="openAddApplianceModal()" class="inline-flex items-center gap-1.5 text-xs font-bold text-servora-600 hover:text-servora-700"><i data-lucide="plus" class="h-4 w-4"></i> Register appliance</button>
+        <!-- 5. SECTION: ACTIVE REQUESTS -->
+        <section class="space-y-3">
+          <div class="flex items-center justify-between px-0.5">
+            <h2 class="text-base font-bold text-slate-900 font-display">Active Requests</h2>
+            <button id="viewAllRequestsLink" class="text-xs font-bold text-[#0066ff] hover:text-blue-700 flex items-center gap-0.5 transition">
+              <span>View all</span>
+              <span class="text-sm">›</span>
+            </button>
           </div>
-          <div id="applianceList" class="grid gap-3 p-4 sm:grid-cols-2 sm:p-5 xl:grid-cols-3"><div class="col-span-full py-8 text-center text-xs text-slate-400">Loading your appliances…</div></div>
+
+          <!-- Active Requests Cards List (Dynamic cards matching screenshot) -->
+          <div id="activeRequestsList" class="space-y-3">
+            <div class="p-8 text-center bg-white rounded-2xl border border-slate-100 text-xs text-slate-400">
+              Loading active requests…
+            </div>
+          </div>
         </section>
 
-        <footer class="flex flex-wrap justify-between gap-2 pb-3 text-[11px] text-slate-400"><span>© 2026 Servora · Service, connected.</span><span><a href="mailto:help@servora.com" class="hover:text-servora-600">Help center</a> · Privacy</span></footer>
-      </main>
+        <!-- 6. SERVICE TRACKING SECTION (Desktop view / Mobile view expandable) -->
+        <section id="trackingSection" class="mt-8 bg-white rounded-2xl border border-slate-100 p-5 sm:p-6 shadow-sm">
+          <div class="flex items-center justify-between border-b border-slate-100 pb-4 mb-4">
+            <div>
+              <h2 class="font-display text-base font-bold text-slate-900">Service Tracking</h2>
+              <p class="text-xs text-slate-400 mt-0.5">Real-time status of your service visit</p>
+            </div>
+            <span id="trackingStatus" class="hidden rounded-full px-3 py-1 text-xs font-semibold"></span>
+          </div>
+
+          <!-- Tracking Empty State -->
+          <div id="trackingEmpty" class="py-8 text-center">
+            <div class="w-12 h-12 mx-auto mb-2 rounded-2xl bg-blue-50 text-[#0066ff] flex items-center justify-center">
+              <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 22s-8-4.5-8-11.8A8 8 0 0 1 12 2a8 8 0 0 1 8 8.2c0 7.3-8 11.8-8 11.8z"/><circle cx="12" cy="10" r="3"/></svg>
+            </div>
+            <p class="text-sm font-semibold text-slate-700">No request selected</p>
+            <p class="text-xs text-slate-400 mt-0.5">Select an active request above to track its live status.</p>
+          </div>
+
+          <!-- Tracking Details Content -->
+          <div id="trackingDetails" class="hidden space-y-5">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3.5 bg-slate-50 rounded-xl">
+              <div>
+                <h3 id="trackingAppliance" class="font-display text-sm font-bold text-slate-900"></h3>
+                <p id="trackingMeta" class="text-xs text-slate-500 mt-0.5"></p>
+              </div>
+              <p id="trackingIssue" class="text-xs font-medium text-slate-600 max-w-sm"></p>
+            </div>
+
+            <!-- Assigned Technician -->
+            <div class="rounded-xl border border-slate-100 p-3.5 flex items-center justify-between gap-3">
+              <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-xl bg-blue-50 text-[#0066ff] flex items-center justify-center font-bold text-sm">
+                  🔧
+                </div>
+                <div>
+                  <div class="flex items-center gap-1.5">
+                    <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Assigned Specialist</span>
+                    <span id="technicianVerified" class="hidden bg-emerald-50 text-emerald-700 text-[9px] font-bold px-2 py-0.5 rounded-full">Verified</span>
+                  </div>
+                  <strong id="trackingTechnician" class="block text-xs font-bold text-slate-800 mt-0.5">Not assigned yet</strong>
+                </div>
+              </div>
+            </div>
+
+            <!-- Doorstep Verification OTP -->
+            <div id="otpPanel" class="hidden rounded-xl border border-amber-200 bg-amber-50/80 p-3.5">
+              <div class="flex items-center justify-between">
+                <div>
+                  <span class="text-[10px] font-bold text-amber-800 uppercase tracking-wider block">Doorstep Safety Code</span>
+                  <p class="text-[11px] text-amber-700 mt-0.5">Share with your technician only when they arrive.</p>
+                </div>
+                <strong id="trackingOtp" class="font-mono text-xl text-amber-950 bg-white px-3 py-1 rounded-lg border border-amber-200 tracking-widest"></strong>
+              </div>
+            </div>
+
+            <!-- Progress Timeline -->
+            <div>
+              <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-3">Service Timeline</span>
+              <div id="trackingTimeline" class="space-y-3.5 pl-1"></div>
+            </div>
+          </div>
+        </section>
+
+      </div>
+
+      <!-- ========================================== -->
+      <!-- TAB 2: REQUESTS (Full List & History) -->
+      <!-- ========================================== -->
+      <div id="tab-requests" data-tab-content="requests" class="hidden space-y-5">
+        <div class="flex items-center justify-between pt-1">
+          <div>
+            <h1 class="text-2xl font-extrabold font-display text-slate-900 tracking-tight">Service Requests</h1>
+            <p class="text-xs text-slate-400 mt-0.5">All scheduled, in-progress, and past service visits</p>
+          </div>
+          <button onclick="openBookingModal()" class="py-2.5 px-4 bg-[#0066ff] hover:bg-blue-700 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 shadow-sm transition">
+            <span>+ Book Service</span>
+          </button>
+        </div>
+
+        <div class="bg-white rounded-2xl border border-slate-100 overflow-hidden shadow-sm">
+          <div class="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+            <span class="text-xs font-bold text-slate-800">Request History</span>
+            <span id="requestCount" class="text-xs font-semibold text-slate-400">Loading…</span>
+          </div>
+
+          <!-- Table View for Desktop / Card List for Mobile -->
+          <div class="overflow-x-auto">
+            <table class="w-full text-left text-xs">
+              <thead class="bg-slate-50 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                <tr>
+                  <th class="px-5 py-3">Request ID</th>
+                  <th class="px-4 py-3">Appliance & Issue</th>
+                  <th class="px-4 py-3">Appointment</th>
+                  <th class="px-4 py-3">Status</th>
+                  <th class="px-5 py-3 text-right">Action</th>
+                </tr>
+              </thead>
+              <tbody id="requestsTable" class="divide-y divide-slate-100">
+                <tr><td colspan="5" class="px-6 py-8 text-center text-slate-400">Loading your requests…</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ========================================== -->
+      <!-- TAB 3: APPLIANCES (Catalog & Register) -->
+      <!-- ========================================== -->
+      <div id="tab-appliances" data-tab-content="appliances" class="hidden space-y-5">
+        <div class="flex items-center justify-between pt-1">
+          <div>
+            <h1 class="text-2xl font-extrabold font-display text-slate-900 tracking-tight">My Appliances</h1>
+            <p class="text-xs text-slate-400 mt-0.5">Manage your registered household devices</p>
+          </div>
+          <button onclick="openAddApplianceModal()" class="py-2.5 px-4 bg-[#0066ff] hover:bg-blue-700 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 shadow-sm transition">
+            <span>+ Add Appliance</span>
+          </button>
+        </div>
+
+        <div id="fullAppliancesCatalog" class="space-y-3">
+          <!-- Populated from dashboard.js -->
+        </div>
+      </div>
+
+      <!-- ========================================== -->
+      <!-- TAB 4: PROFILE (Account & Address) -->
+      <!-- ========================================== -->
+      <div id="tab-profile" data-tab-content="profile" class="hidden space-y-5">
+        <div class="pt-1">
+          <h1 class="text-2xl font-extrabold font-display text-slate-900 tracking-tight">My Account</h1>
+          <p class="text-xs text-slate-400 mt-0.5">Personal information and service preferences</p>
+        </div>
+
+        <div class="bg-white rounded-2xl border border-slate-100 p-6 shadow-sm space-y-6">
+          <div class="flex items-center gap-4 pb-6 border-b border-slate-100">
+            <div class="w-16 h-16 rounded-2xl bg-[#152e4d] text-white flex items-center justify-center font-display font-extrabold text-xl shadow-md">
+              <span id="profileAvatarBig">SB</span>
+            </div>
+            <div>
+              <h2 id="profileFullName" class="text-lg font-bold font-display text-slate-900">Customer</h2>
+              <span class="inline-block mt-0.5 text-xs text-[#0066ff] bg-blue-50 px-2.5 py-0.5 rounded-full font-semibold">Verified Customer</span>
+            </div>
+          </div>
+
+          <div class="grid sm:grid-cols-2 gap-4 text-xs">
+            <div class="p-4 bg-slate-50 rounded-xl">
+              <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">Email Address</span>
+              <strong id="profileEmail" class="text-slate-800 text-sm font-semibold">customer@servora.com</strong>
+            </div>
+
+            <div class="p-4 bg-slate-50 rounded-xl">
+              <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">Phone Number</span>
+              <strong id="profilePhone" class="text-slate-800 text-sm font-semibold">+91 98765 43210</strong>
+            </div>
+
+            <div class="p-4 bg-slate-50 rounded-xl sm:col-span-2">
+              <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">Service Address</span>
+              <strong id="profileAddress" class="text-slate-800 text-sm font-semibold leading-relaxed">Not provided</strong>
+            </div>
+          </div>
+
+          <div class="pt-4 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3">
+            <button onclick="openBookingModal()" class="text-xs font-bold text-[#0066ff] hover:underline">Book a new service visit →</button>
+            <button id="mobileLogoutBtn" class="py-2.5 px-4 bg-rose-50 text-rose-700 hover:bg-rose-100 font-bold text-xs rounded-xl flex items-center gap-2 transition">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>
+              <span>Sign Out of Account</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+    </main>
+
+    <!-- FOOTER (Desktop) -->
+    <footer class="hidden md:flex mx-auto w-full max-w-5xl px-8 py-4 justify-between items-center text-[11px] text-slate-400 border-t border-slate-200/60 mt-auto">
+      <span>© 2026 Servora Platform · Service, connected.</span>
+      <div class="flex gap-4">
+        <a href="mailto:help@servora.com" class="hover:text-blue-600">Help Center</a>
+        <a href="#" class="hover:text-blue-600">Privacy Policy</a>
+        <a href="#" class="hover:text-blue-600">Terms of Service</a>
+      </div>
+    </footer>
+  </div>
+
+  <!-- ============================================================== -->
+  <!-- 3. MOBILE BOTTOM FIXED NAVIGATION (Pixel-perfect match) -->
+  <!-- ============================================================== -->
+  <nav class="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-md border-t border-slate-200/70 px-4 py-2 flex items-center justify-around shadow-[0_-4px_20px_rgba(0,0,0,0.04)] safe-bottom" aria-label="Mobile Navigation">
+    <button class="nav-tab active flex flex-col items-center gap-1 py-1 px-3 text-[#0066ff] transition" data-tab="home">
+      <svg class="w-5 h-5 shrink-0" fill="currentColor" viewBox="0 0 24 24"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>
+      <span class="text-[11px] font-bold">Home</span>
+    </button>
+
+    <button class="nav-tab flex flex-col items-center gap-1 py-1 px-3 text-slate-400 hover:text-slate-700 transition" data-tab="requests">
+      <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 7h6M9 11h6M9 15h4"/></svg>
+      <span class="text-[11px] font-semibold">Requests</span>
+    </button>
+
+    <button class="nav-tab flex flex-col items-center gap-1 py-1 px-3 text-slate-400 hover:text-slate-700 transition" data-tab="appliances">
+      <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="7" y="3" width="10" height="7" rx="1.5"/><path d="M12 10v4M6 14h12M6 14v7M18 14v7"/></svg>
+      <span class="text-[11px] font-semibold">Appliances</span>
+    </button>
+
+    <button class="nav-tab flex flex-col items-center gap-1 py-1 px-3 text-slate-400 hover:text-slate-700 transition" data-tab="profile">
+      <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+      <span class="text-[11px] font-semibold">Profile</span>
+    </button>
+  </nav>
+
+  <!-- ============================================================== -->
+  <!-- 4. MOBILE SLIDE-OUT DRAWER (Triggered by Hamburger Menu) -->
+  <!-- ============================================================== -->
+  <div id="mobileDrawer" class="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm hidden transition-opacity duration-200">
+    <div id="mobileDrawerPanel" class="fixed inset-y-0 left-0 w-[290px] bg-white p-5 flex flex-col justify-between shadow-2xl transition-transform duration-200 -translate-x-full">
+      <div>
+        <div class="flex items-center justify-between pb-4 border-b border-slate-100">
+          <div class="flex items-center gap-2.5">
+            <div class="w-9 h-9 rounded-xl bg-[#0066ff] text-white flex items-center justify-center font-display font-bold text-base">S</div>
+            <div>
+              <span class="font-display font-extrabold text-base tracking-tight text-slate-900 block">SERVORA</span>
+              <span class="text-[10px] text-slate-400 font-medium block -mt-1">Service, connected.</span>
+            </div>
+          </div>
+          <button id="closeMobileDrawer" class="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg" aria-label="Close menu">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12"/></svg>
+          </button>
+        </div>
+
+        <div class="mt-5 space-y-1 text-sm font-semibold text-slate-700">
+          <button class="drawer-nav-link w-full flex items-center gap-3 p-3 rounded-xl hover:bg-slate-50 text-left" data-tab-nav="home">
+            <svg class="w-4 h-4 text-[#0066ff]" fill="currentColor" viewBox="0 0 24 24"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>
+            <span>Home</span>
+          </button>
+          <button class="drawer-nav-link w-full flex items-center gap-3 p-3 rounded-xl hover:bg-slate-50 text-left" data-tab-nav="requests">
+            <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 7h6M9 11h6M9 15h4"/></svg>
+            <span>Service Requests</span>
+          </button>
+          <button class="drawer-nav-link w-full flex items-center gap-3 p-3 rounded-xl hover:bg-slate-50 text-left" data-tab-nav="appliances">
+            <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="7" y="3" width="10" height="7" rx="1.5"/><path d="M12 10v4M6 14h12M6 14v7M18 14v7"/></svg>
+            <span>My Appliances</span>
+          </button>
+          <button class="drawer-nav-link w-full flex items-center gap-3 p-3 rounded-xl hover:bg-slate-50 text-left" data-tab-nav="profile">
+            <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            <span>Profile & Settings</span>
+          </button>
+        </div>
+
+        <div class="mt-6 pt-5 border-t border-slate-100 space-y-2">
+          <button onclick="openBookingModal(); closeDrawer();" class="w-full py-2.5 bg-[#0066ff] text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2">
+            + Book Service
+          </button>
+          <button onclick="openAddApplianceModal(); closeDrawer();" class="w-full py-2.5 bg-slate-100 text-slate-700 font-bold text-xs rounded-xl flex items-center justify-center gap-2">
+            + Add Appliance
+          </button>
+        </div>
+      </div>
+
+      <div class="pt-4 border-t border-slate-100">
+        <button id="drawerLogoutBtn" class="flex items-center gap-2 text-xs font-bold text-rose-600 hover:text-rose-800">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>
+          <span>Sign Out</span>
+        </button>
+      </div>
     </div>
   </div>
 
+  <!-- ============================================================== -->
+  <!-- 5. NOTIFICATIONS POPUP MODAL -->
+  <!-- ============================================================== -->
+  <dialog id="notificationDialog" class="w-[min(92vw,420px)] rounded-2xl border-0 p-0 shadow-2xl">
+    <div class="p-5 space-y-4">
+      <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+        <div class="flex items-center gap-2">
+          <span class="w-2 h-2 rounded-full bg-blue-600"></span>
+          <h2 class="font-display text-base font-bold text-slate-900">Notifications</h2>
+        </div>
+        <button type="button" id="closeNotifications" class="rounded-lg p-1 text-slate-400 hover:bg-slate-100">✕</button>
+      </div>
+
+      <div class="space-y-2.5 text-xs">
+        <div class="p-3 bg-blue-50/70 border border-blue-100 rounded-xl">
+          <strong class="text-blue-900 block font-semibold">Service Scheduled</strong>
+          <p class="text-blue-700 mt-0.5">Your Crompton AC service request SR-7845 is scheduled for today at 4:00 PM.</p>
+        </div>
+        <div class="p-3 bg-slate-50 border border-slate-100 rounded-xl">
+          <strong class="text-slate-800 block font-semibold">Technician Assigned</strong>
+          <p class="text-slate-500 mt-0.5">Rahul Sharma (Authorized Specialist) has been dispatched.</p>
+        </div>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- ============================================================== -->
+  <!-- 6. BOOK SERVICE MODAL DIALOG (Preserved functionality) -->
+  <!-- ============================================================== -->
   <dialog id="bookingDialog" class="w-[min(94vw,540px)] rounded-2xl border-0 p-0 shadow-2xl">
     <form id="bookingForm" class="space-y-4 p-5 sm:p-7">
-      <div class="flex items-start justify-between border-b border-slate-100 pb-4"><div><div class="text-[10px] font-bold tracking-[.16em] text-servora-600">SERVICE REQUEST</div><h2 class="mt-1 font-display text-lg font-extrabold text-slate-900">Book a service visit</h2><p class="mt-1 text-xs text-slate-500">Choose an appliance and tell us what needs attention.</p></div><button type="button" id="closeBooking" class="rounded-lg p-1 text-xl text-slate-400 hover:bg-slate-100" aria-label="Close">×</button></div>
-      <label class="block text-xs font-semibold text-slate-700">Appliance<select id="bookApplianceSelect" required class="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm"><option value="">Select a registered appliance</option></select></label>
-      <label class="block text-xs font-semibold text-slate-700">Describe the issue<input id="bookIssue" required maxlength="500" class="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm" placeholder="For example: cooling is weak"></label>
-      <div class="grid gap-3 sm:grid-cols-2"><label class="block text-xs font-semibold text-slate-700">Preferred date<input type="date" id="bookDate" required class="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm"></label><label class="block text-xs font-semibold text-slate-700">Time slot<select id="bookSlot" class="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm"><option>10:00 AM - 12:00 PM</option><option>01:00 PM - 03:00 PM</option><option selected>04:00 PM - 06:00 PM</option><option>06:00 PM - 08:00 PM</option></select></label></div>
-      <label class="block text-xs font-semibold text-slate-700">Service address<input id="bookAddress" maxlength="512" class="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm" placeholder="Enter the address for this visit"></label>
+      <div class="flex items-start justify-between border-b border-slate-100 pb-4">
+        <div>
+          <div class="text-[10px] font-bold tracking-[.16em] text-[#0066ff] uppercase">SERVICE REQUEST</div>
+          <h2 class="mt-1 font-display text-lg font-extrabold text-slate-900">Book a service visit</h2>
+          <p class="mt-0.5 text-xs text-slate-500">Choose an appliance and tell us what needs attention.</p>
+        </div>
+        <button type="button" id="closeBooking" class="rounded-lg p-1.5 text-xl text-slate-400 hover:bg-slate-100" aria-label="Close">×</button>
+      </div>
+
+      <label class="block text-xs font-semibold text-slate-700">
+        Appliance
+        <select id="bookApplianceSelect" required class="mt-1.5 w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
+          <option value="">Select a registered appliance</option>
+        </select>
+      </label>
+
+      <label class="block text-xs font-semibold text-slate-700">
+        Describe the issue
+        <input id="bookIssue" required maxlength="500" class="mt-1.5 w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500" placeholder="For example: cooling is weak or rattling noise">
+      </label>
+
+      <div class="grid gap-3 sm:grid-cols-2">
+        <label class="block text-xs font-semibold text-slate-700">
+          Preferred date
+          <input type="date" id="bookDate" required class="mt-1.5 w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
+        </label>
+        <label class="block text-xs font-semibold text-slate-700">
+          Time slot
+          <select id="bookSlot" class="mt-1.5 w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
+            <option>10:00 AM - 12:00 PM</option>
+            <option>01:00 PM - 03:00 PM</option>
+            <option selected>04:00 PM - 06:00 PM</option>
+            <option>06:00 PM - 08:00 PM</option>
+          </select>
+        </label>
+      </div>
+
+      <label class="block text-xs font-semibold text-slate-700">
+        Service address
+        <input id="bookAddress" maxlength="512" class="mt-1.5 w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500" placeholder="Enter the doorstep visit address">
+      </label>
+
       <p id="bookingMessage" class="min-h-4 text-xs text-rose-600" role="status"></p>
-      <div class="flex justify-end gap-2"><button type="button" id="cancelBooking" class="rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-100">Cancel</button><button id="bookingSubmit" type="submit" class="rounded-xl bg-servora-500 px-5 py-2.5 text-sm font-bold text-white hover:bg-servora-600">Confirm booking</button></div>
+
+      <div class="flex justify-end gap-2.5 pt-2">
+        <button type="button" id="cancelBooking" class="rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-100">Cancel</button>
+        <button id="bookingSubmit" type="submit" class="rounded-xl bg-[#0066ff] hover:bg-blue-700 px-5 py-2.5 text-sm font-bold text-white transition shadow-sm">Confirm booking</button>
+      </div>
     </form>
   </dialog>
 
+  <!-- ============================================================== -->
+  <!-- 7. ADD APPLIANCE MODAL DIALOG (Preserved functionality) -->
+  <!-- ============================================================== -->
   <dialog id="applianceDialog" class="w-[min(94vw,540px)] rounded-2xl border-0 p-0 shadow-2xl">
     <form id="applianceForm" class="space-y-4 p-5 sm:p-7">
-      <div class="flex items-start justify-between border-b border-slate-100 pb-4"><div><div class="text-[10px] font-bold tracking-[.16em] text-servora-600">MY APPLIANCES</div><h2 class="mt-1 font-display text-lg font-extrabold text-slate-900">Register an appliance</h2><p class="mt-1 text-xs text-slate-500">Add its details so you can book service faster.</p></div><button type="button" id="closeAppliance" class="rounded-lg p-1 text-xl text-slate-400 hover:bg-slate-100" aria-label="Close">×</button></div>
-      <label class="block text-xs font-semibold text-slate-700">Company<select id="newAppCompany" required class="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm"><option value="">Loading registered companies…</option></select></label>
-      <p id="applianceCompanyHelp" class="-mt-3 text-[11px] text-slate-500" role="status"></p>
-      <label class="block text-xs font-semibold text-slate-700">Category<select id="newAppCategory" required class="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm"><option>Air Conditioner</option><option>Refrigerator</option><option>Washing Machine</option><option>Microwave Oven</option><option>Water Purifier</option><option>Chimney</option><option>Dishwasher</option></select></label>
-      <div class="grid gap-3 sm:grid-cols-2"><label class="block text-xs font-semibold text-slate-700">Brand<input id="newAppBrand" required maxlength="128" class="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm" placeholder="Brand name"></label><label class="block text-xs font-semibold text-slate-700">Model number<input id="newAppModel" required maxlength="128" class="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm" placeholder="Model number"></label></div>
-      <label class="block text-xs font-semibold text-slate-700">Serial number <span class="font-normal text-slate-400">(optional)</span><input id="newAppSerial" maxlength="128" class="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm" placeholder="Serial number"></label>
+      <div class="flex items-start justify-between border-b border-slate-100 pb-4">
+        <div>
+          <div class="text-[10px] font-bold tracking-[.16em] text-[#0066ff] uppercase">MY APPLIANCES</div>
+          <h2 class="mt-1 font-display text-lg font-extrabold text-slate-900">Register an appliance</h2>
+          <p class="mt-0.5 text-xs text-slate-500">Save appliance details for single-click service dispatch.</p>
+        </div>
+        <button type="button" id="closeAppliance" class="rounded-lg p-1.5 text-xl text-slate-400 hover:bg-slate-100" aria-label="Close">×</button>
+      </div>
+
+      <label class="block text-xs font-semibold text-slate-700">
+        Company / Brand Partner
+        <select id="newAppCompany" required class="mt-1.5 w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
+          <option value="">Loading registered companies…</option>
+        </select>
+      </label>
+      <p id="applianceCompanyHelp" class="-mt-2.5 text-[11px] text-slate-500" role="status"></p>
+
+      <label class="block text-xs font-semibold text-slate-700">
+        Category
+        <select id="newAppCategory" required class="mt-1.5 w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
+          <option>Air Conditioner</option>
+          <option>Refrigerator</option>
+          <option>Washing Machine</option>
+          <option>Microwave Oven</option>
+          <option>Water Purifier</option>
+          <option>Chimney</option>
+          <option>Dishwasher</option>
+        </select>
+      </label>
+
+      <div class="grid gap-3 sm:grid-cols-2">
+        <label class="block text-xs font-semibold text-slate-700">
+          Brand
+          <input id="newAppBrand" required maxlength="128" class="mt-1.5 w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500" placeholder="e.g. Crompton, LG">
+        </label>
+        <label class="block text-xs font-semibold text-slate-700">
+          Model number
+          <input id="newAppModel" required maxlength="128" class="mt-1.5 w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500" placeholder="e.g. OU-S292">
+        </label>
+      </div>
+
+      <label class="block text-xs font-semibold text-slate-700">
+        Serial number <span class="font-normal text-slate-400">(optional)</span>
+        <input id="newAppSerial" maxlength="128" class="mt-1.5 w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500" placeholder="e.g. CR-AC-2024-8841">
+      </label>
+
       <p id="applianceMessage" class="min-h-4 text-xs text-rose-600" role="status"></p>
-      <div class="flex justify-end gap-2"><button type="button" id="cancelAppliance" class="rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-100">Cancel</button><button id="applianceSubmit" type="submit" class="rounded-xl bg-servora-500 px-5 py-2.5 text-sm font-bold text-white hover:bg-servora-600 disabled:cursor-not-allowed disabled:opacity-50">Save appliance</button></div>
+
+      <div class="flex justify-end gap-2.5 pt-2">
+        <button type="button" id="cancelAppliance" class="rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-100">Cancel</button>
+        <button id="applianceSubmit" type="submit" class="rounded-xl bg-[#0066ff] hover:bg-blue-700 px-5 py-2.5 text-sm font-bold text-white transition shadow-sm disabled:cursor-not-allowed disabled:opacity-50">Save appliance</button>
+      </div>
     </form>
   </dialog>
 
-  <script>
-    if (window.lucide) window.lucide.createIcons();
-  </script>
 </body>
 </html>
