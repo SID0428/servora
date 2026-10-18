@@ -16,7 +16,7 @@ class Settings:
     ALLOWED_ORIGINS: list[str] = [
         origin.strip() for origin in os.getenv(
             "ALLOWED_ORIGINS",
-            "http://localhost:3000,http://localhost:5173,http://127.0.0.1:5500,https://servora.vercel.app",
+            "http://localhost:3000,http://localhost:5173,http://127.0.0.1:5500,https://servora.vercel.app,https://servora-frontend-xi.vercel.app",
         ).split(",") if origin.strip()
     ]
 

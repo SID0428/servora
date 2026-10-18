@@ -10,6 +10,11 @@ def seed_database(db: Session):
 
     # Existing production databases need an explicit migration because
     # create_all() does not add columns to tables that already exist.
+    user_columns = {column["name"] for column in inspect(engine).get_columns("users")}
+    if "password_hash" not in user_columns:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE users ADD COLUMN password_hash VARCHAR(255) NULL"))
+
     appliance_columns = {column["name"] for column in inspect(engine).get_columns("appliances")}
     if "company_id" not in appliance_columns:
         with engine.begin() as connection:

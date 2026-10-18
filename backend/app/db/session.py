@@ -26,6 +26,7 @@ else:
         connect_args["ssl"] = {}
     else:
         url = url.set(query=query)
+    connect_args["connect_timeout"] = 10
     # Use the cleaned URL. Keeping settings.DATABASE_URL here would pass
     # ssl-mode/ssl_mode through to PyMySQL and raise an unexpected-keyword error.
     database_url = url

@@ -18,10 +18,21 @@ function setMessage(message, success = false, target = "formMessage") {
   node.classList.toggle("success", success);
 }
 
-function updateApiStatus(online, label) {
+let backendCheckTimer = null;
+let isBackendOnline = false;
+
+function updateApiStatus(state, label) {
   const dot = byId("backendDot");
   const text = byId("backendStatusText");
-  if (dot) dot.className = `connection-dot ${online ? "online" : "offline"}`;
+  if (dot) {
+    dot.className = "connection-dot";
+    if (state === "online" || state === true) {
+      dot.classList.add("online");
+    } else if (state === "offline") {
+      dot.classList.add("offline");
+    }
+    // Default class .connection-dot without modifiers renders an amber dot for "waking"
+  }
   if (text) text.textContent = label;
 }
 
@@ -31,13 +42,25 @@ window.promptApiUrl = function () {
   if (next !== null) setCustomApiUrl(next.trim());
 };
 
-async function checkBackend() {
+async function checkBackend(isRetry = false) {
+  if (!isBackendOnline && !isRetry) {
+    updateApiStatus("pending", "Connecting to service…");
+  }
   try {
-    const response = await fetch(`${API_BASE_URL}/health`, { signal: AbortSignal.timeout(8000) });
+    const response = await fetch(`${API_BASE_URL}/health`, { signal: AbortSignal.timeout(12000) });
     if (!response.ok) throw new Error("Backend unavailable");
-    updateApiStatus(true, "Service connected");
+    isBackendOnline = true;
+    updateApiStatus("online", "Service connected");
+    if (backendCheckTimer) {
+      clearTimeout(backendCheckTimer);
+      backendCheckTimer = null;
+    }
   } catch {
-    updateApiStatus(false, "Service unavailable");
+    isBackendOnline = false;
+    updateApiStatus("waking", "Waking up service… (takes ~45s)");
+    // Render free tier spins down when idle. Poll every 4 seconds until awake.
+    clearTimeout(backendCheckTimer);
+    backendCheckTimer = setTimeout(() => checkBackend(true), 4000);
   }
 }
 
@@ -55,7 +78,7 @@ async function handleLogin(event) {
       credentials: "include",
       body: JSON.stringify({ identifier: byId("identifier").value.trim(), password: byId("password").value, role }),
     });
-    const data = await response.json();
+    const data = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(data.detail || "Unable to sign in. Check your details and try again.");
     localStorage.setItem("servora_user", JSON.stringify({ ...data.user, session_token: data.session_token }));
     setMessage(`Welcome back, ${data.user.name}.`, true);
@@ -63,7 +86,12 @@ async function handleLogin(event) {
     // interrupt the redirect timer after a successful response.
     window.location.assign(config.destination);
   } catch (error) {
-    setMessage(error.message || "Could not connect to the service. Please try again.");
+    const isNetwork = error.name === "TypeError" || (error.message && error.message.toLowerCase().includes("fetch"));
+    if (isNetwork && !isBackendOnline) {
+      setMessage("Render server is currently spinning up from sleep. Please wait a few seconds and try again.");
+    } else {
+      setMessage(error.message || "Could not connect to the service. Please try again.");
+    }
     button.disabled = false;
     button.innerHTML = original;
   }
