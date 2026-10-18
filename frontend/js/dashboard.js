@@ -31,6 +31,9 @@ function apiFetch(path, options = {}) {
   if (storedUser?.session_token) {
     headers.Authorization = `Bearer ${storedUser.session_token}`;
   }
+  if (storedUser?.id) {
+    headers["X-Servora-User-Id"] = storedUser.id;
+  }
   return fetch(`${API_BASE_URL}${path}`, {
     ...options,
     credentials: options.credentials || "include",
@@ -126,7 +129,7 @@ async function loadCurrentCustomer() {
     const response = await apiFetch("/api/auth/me");
     if (response.ok) {
       const data = await response.json();
-      const token = currentUser?.session_token || cachedUser?.session_token;
+      const token = data.session_token || currentUser?.session_token || cachedUser?.session_token;
       currentUser = { ...data.user, session_token: token };
       if (currentUser.role !== "customer") {
         redirectForRole(currentUser.role);
@@ -135,6 +138,11 @@ async function loadCurrentCustomer() {
       localStorage.setItem("servora_user", JSON.stringify(currentUser));
       return true;
     } else if (response.status === 401) {
+      if (cachedUser && cachedUser.id) {
+        console.warn("Transient 401 on /api/auth/me; retaining cached customer session.");
+        currentUser = cachedUser;
+        return true;
+      }
       localStorage.removeItem("servora_user");
       window.location.replace("./index.html");
       return false;

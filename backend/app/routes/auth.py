@@ -163,7 +163,13 @@ def login(payload: LoginRequest, response: Response, db: Session = Depends(get_d
 @router.get("/me")
 def get_current_user(request: Request, db: Session = Depends(get_db)):
     user = get_authenticated_user(request, db)
-    return {"user": user_payload(user, db)}
+    token = get_session_token(request)
+    session_token = token if (token and token.startswith("srv1.")) else create_user_session(user, db)
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+    return {"user": user_payload(user, db), "session_token": session_token}
 
 @router.post("/refresh")
 def refresh_session(request: Request, db: Session = Depends(get_db)):

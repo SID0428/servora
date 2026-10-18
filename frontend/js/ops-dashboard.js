@@ -29,14 +29,24 @@ let branches = [];
 let technicians = [];
 let directoryRows = [];
 let companyCustomers = [];
-let user = null;
+let user = initialUser;
+
+try {
+  requests = JSON.parse(localStorage.getItem(`servora_cache_requests_${role}`) || "[]");
+  technicians = JSON.parse(localStorage.getItem("servora_cache_techs") || "[]");
+  branches = JSON.parse(localStorage.getItem("servora_cache_branches") || "[]");
+  companies = JSON.parse(localStorage.getItem("servora_cache_companies") || "[]");
+  companyCustomers = JSON.parse(localStorage.getItem("servora_cache_customers") || "[]");
+} catch {}
 
 const icons = { Dashboard: "⌂", Overview: "⌂", "My jobs": "▤", "Job history": "◷", "Route & schedule": "⌖", Earnings: "$", "Help center": "?", "Service requests": "▣", "Incoming service requests": "▣", Technicians: "♙", "Active jobs": "⚒", Customers: "♧", Reports: "▥", Settings: "⚙", Companies: "▦", Branches: "⌖", "System settings": "⚙" };
 function safe(value) { const node = document.createElement("span"); node.textContent = value ?? ""; return node.innerHTML; }
 function authHeaders(extraHeaders = {}) {
   const token = user?.session_token || initialUser?.session_token;
+  const uid = user?.id || initialUser?.id;
   const headers = { ...extraHeaders };
   if (token) headers["Authorization"] = `Bearer ${token}`;
+  if (uid) headers["X-Servora-User-Id"] = uid;
   return headers;
 }
 function jsonHeaders(extraHeaders = {}) {
@@ -115,24 +125,305 @@ function renderPage(page) {
   $("addBranchButton").hidden = !(role === "company" && page === "Branches");
   $("addTechnicianButton").hidden = !(role === "franchise" && page === "Technicians");
   $("companyInlineAdd").hidden = !admin || page !== "Companies";
-  $("exportButton").hidden = page === "System settings" || page === "Companies";
+  $("exportButton").hidden = page === "System settings" || page === "Companies" || page === "Settings";
+
+  // Admin routes
   if (admin && page === "Companies") { renderCompanies(); return; }
-  if (role === "franchise" && page === "Technicians") { renderFranchiseTechnicians(); return; }
   if (admin && ["Branches", "Technicians", "Customers"].includes(page)) { renderDirectory(page); return; }
   if (admin && page === "Service requests") { renderRequestDirectory(); return; }
   if (admin && page === "Reports") { renderReports(); return; }
   if (admin && page === "System settings") { renderSettings(); return; }
-  const titles = { Overview: "Platform service activity", Branches: "Branches", Technicians: "Technicians", Customers: "Customers", "Service requests": "Service requests", Reports: "Platform reports", "System settings": "System settings" };
+
+  // Company routes
+  if (role === "company" && page === "Branches") { renderCompanyBranches(); return; }
+  if (role === "company" && page === "Customers") { renderCompanyCustomers(); return; }
+
+  // Franchise routes
+  if (role === "franchise" && page === "Technicians") { renderFranchiseTechnicians(); return; }
+  if (role === "franchise" && page === "Customers") { renderFranchiseCustomers(); return; }
+
+  // Common or role-specific views
+  if (["Dashboard", "Overview", "My jobs"].includes(page)) {
+    renderMainDashboardView();
+    return;
+  }
+  if (page === "Service requests" || page === "Incoming service requests") {
+    renderAllServiceRequestsView();
+    return;
+  }
+  if (page === "Active jobs") {
+    renderActiveJobsView();
+    return;
+  }
+  if (page === "Job history") {
+    renderJobHistoryView();
+    return;
+  }
+  if (page === "Route & schedule" || page === "Route Map") {
+    window.openTechRouteMap();
+    renderMainDashboardView();
+    return;
+  }
+  if (page === "Earnings") {
+    renderEarningsView();
+    return;
+  }
+  if (page === "Help center") {
+    renderHelpCenterView();
+    return;
+  }
+  if (page === "Reports") {
+    renderReports();
+    return;
+  }
+  if (page === "Settings" || page === "System settings") {
+    renderSettings();
+    return;
+  }
+
+  renderMainDashboardView();
+}
+
+function renderMainDashboardView() {
+  const tableEl = $("requestRows").closest("table");
+  const techContainer = $("techJobCardsContainer");
+  if (role === "technician") {
+    tableEl.style.display = "none";
+    if (techContainer) techContainer.style.display = "block";
+  } else {
+    tableEl.style.display = "";
+    if (techContainer) techContainer.style.display = "none";
+  }
+  $("tableTitle").textContent = config.tableTitle;
+  $("tableSubtitle").textContent = config.tableSubtitle;
   $("pageContent").hidden = false;
   $("metricGrid").hidden = false;
-  $("metricGrid").innerHTML = "";
-  $("requestHead").innerHTML = "";
-  $("requestRows").innerHTML = `<tr><td class="empty-row" colspan="7">${page === "Overview" ? "Platform overview is ready. Use the navigation to explore Servora records." : `${safe(page)} data is not available through the current API yet.`}</td></tr>`;
-  $("tableTitle").textContent = titles[page] || page;
-  $("tableSubtitle").textContent = page === "Overview" ? "A snapshot of service activity across Servora." : `Browse ${page.toLowerCase()} across the Servora platform.`;
-  $("sidePanelTitle").textContent = page === "Reports" ? "Report summary" : "Platform health";
-  $("healthContent").innerHTML = `<div class="section-empty">${safe(page)} workspace</div>`;
-  $("activityContent").innerHTML = `<div class="section-empty">${safe(page)} insights will appear here as platform records are connected.</div>`;
+  $("statusFilter").value = "all";
+  setMetrics();
+  renderRequests();
+  renderInsights();
+  renderResources();
+}
+
+function renderAllServiceRequestsView() {
+  const tableEl = $("requestRows").closest("table");
+  const techContainer = $("techJobCardsContainer");
+  if (role === "technician") {
+    tableEl.style.display = "none";
+    if (techContainer) techContainer.style.display = "block";
+  } else {
+    tableEl.style.display = "";
+    if (techContainer) techContainer.style.display = "none";
+  }
+  $("tableTitle").textContent = role === "franchise" ? "All Incoming Service Requests" : "All Service Requests";
+  $("tableSubtitle").textContent = role === "franchise" ? "Track, triage, and coordinate service calls across your territory." : "Complete record of customer service calls across your operations.";
+  $("pageContent").hidden = false;
+  $("metricGrid").hidden = false;
+  $("statusFilter").value = "all";
+  setMetrics();
+  renderRequests();
+  renderInsights();
+  renderResources();
+}
+
+function renderActiveJobsView() {
+  const tableEl = $("requestRows").closest("table");
+  const techContainer = $("techJobCardsContainer");
+  if (role === "technician") {
+    tableEl.style.display = "none";
+    if (techContainer) techContainer.style.display = "block";
+  } else {
+    tableEl.style.display = "";
+    if (techContainer) techContainer.style.display = "none";
+  }
+  $("tableTitle").textContent = "Active Field Jobs";
+  $("tableSubtitle").textContent = "Service requests currently assigned, dispatched, or under active resolution.";
+  $("pageContent").hidden = false;
+  $("metricGrid").hidden = false;
+  $("statusFilter").value = "In Progress";
+  setMetrics();
+  renderRequests();
+  renderInsights();
+  renderResources();
+}
+
+function renderFranchiseCustomers() {
+  $("crumbTitle").textContent = "Customers";
+  $("addCompanyButton").hidden = true;
+  $("addBranchButton").hidden = true;
+  $("addTechnicianButton").hidden = true;
+  $("companyInlineAdd").hidden = true;
+  $("exportButton").hidden = false;
+  $("pageContent").hidden = false;
+  $("metricGrid").hidden = true;
+  $("tableTitle").textContent = "Branch Customers";
+  $("tableSubtitle").textContent = "Customer profiles and service history within your franchise service area.";
+  $("sidePanelTitle").textContent = "Customer Directory";
+
+  const visibleReqs = requests.filter(requestForRole);
+  const customerMap = new Map();
+  visibleReqs.forEach((req) => {
+    const key = (req.customer_phone || req.customer_name || req.id).trim();
+    if (!customerMap.has(key)) {
+      customerMap.set(key, {
+        id: req.customer_id || req.id,
+        name: req.customer_name || "Customer",
+        phone: req.customer_phone || "—",
+        address: req.customer_address || "Customer doorstep address",
+        pincode: req.pincode || user?.pincode || "—",
+        appliance: req.appliance_name || req.brand || "Appliance",
+        count: 1,
+        last_date: req.appointment_date || "Recent"
+      });
+    } else {
+      customerMap.get(key).count += 1;
+    }
+  });
+
+  const custList = Array.from(customerMap.values());
+  $("healthContent").innerHTML = `<div class="section-empty"><strong>${custList.length}</strong> unique customers served by this branch.</div>`;
+  $("activityContent").innerHTML = `<div class="section-empty">Customers booking service in your PIN area appear here automatically with their contact and address.</div>`;
+  $("bottomTitle").textContent = "Branch customer reach";
+  $("bottomSubtitle").textContent = "Customers served in your authorized territory.";
+
+  $("requestHead").innerHTML = [
+    "Customer",
+    "Contact number",
+    "Service address",
+    "PIN code",
+    "Primary appliance",
+    "Total requests",
+    "Last service"
+  ].map((l) => `<th>${safe(l)}</th>`).join("");
+
+  const query = $("requestSearch").value.trim().toLowerCase();
+  $("requestSearch").placeholder = "Search customers by name, phone, or address";
+
+  const filtered = custList.filter((c) =>
+    [c.name, c.phone, c.address, c.pincode, c.appliance].join(" ").toLowerCase().includes(query)
+  );
+
+  $("requestRows").innerHTML = filtered.length
+    ? filtered.map((c) => {
+        const initials = safe((c.name || "CU").split(/\s+/).map((p) => p[0]).slice(0, 2).join("").toUpperCase());
+        return `
+          <tr>
+            <td>
+              <div class="customer-cell">
+                <span class="customer-avatar">${initials}</span>
+                <span class="customer-name"><strong>${safe(c.name)}</strong><small>ID: ${safe(c.id)}</small></span>
+              </div>
+            </td>
+            <td><strong>${safe(c.phone)}</strong></td>
+            <td class="max-w-[240px] text-xs text-slate-700">${safe(c.address)}</td>
+            <td><span class="font-mono font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded">${safe(c.pincode)}</span></td>
+            <td>${safe(c.appliance)}</td>
+            <td><span class="px-2 py-0.5 rounded-full bg-slate-100 font-bold text-xs">${c.count} call${c.count === 1 ? '' : 's'}</span></td>
+            <td>${safe(c.last_date)}</td>
+          </tr>
+        `;
+      }).join("")
+    : `<tr><td class="empty-row" colspan="7">${query ? "No customers match your search." : "No customers recorded in this branch yet."}</td></tr>`;
+
+  $("requestCount").textContent = `${filtered.length} customer${filtered.length === 1 ? "" : "s"} shown`;
+  $("resourceGrid").innerHTML = "";
+}
+
+function renderJobHistoryView() {
+  $("crumbTitle").textContent = "Job history";
+  const tableEl = $("requestRows").closest("table");
+  let techContainer = $("techJobCardsContainer");
+  tableEl.style.display = "none";
+  if (techContainer) techContainer.style.display = "block";
+
+  $("tableTitle").textContent = "Job History";
+  $("tableSubtitle").textContent = "Completed field service visits and resolved tickets.";
+  $("pageContent").hidden = false;
+  $("metricGrid").hidden = false;
+  $("statusFilter").value = "Completed";
+
+  const list = requests.filter(requestForRole);
+  const completed = list.filter((r) => r.status_badge === "Completed");
+
+  if (techContainer) {
+    techContainer.innerHTML = completed.length ? completed.map((item) => `
+      <article class="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 shadow-sm space-y-3">
+        <div class="flex items-start justify-between gap-3">
+          <div>
+            <span class="text-[11px] font-bold uppercase tracking-wider text-emerald-600 font-mono">${safe(item.id)}</span>
+            <h3 class="text-base font-bold text-slate-800 mt-0.5">${safe(item.appliance_name || item.brand)}</h3>
+            <p class="text-xs text-slate-500 mt-0.5">Issue: <span class="font-medium text-slate-700">${safe(item.issue)}</span></p>
+          </div>
+          <span class="status-pill completed">✓ Completed</span>
+        </div>
+        <div class="rounded-xl bg-slate-50 p-3 text-xs text-slate-600 space-y-1">
+          <div>👤 Customer: <strong>${safe(item.customer_name)}</strong> (${safe(item.customer_phone || '')})</div>
+          <div>📍 ${safe(item.customer_address || 'Customer doorstep')} (PIN: ${safe(item.pincode || '')})</div>
+          <div>🕒 Closed on: ${safe(item.appointment_date)}</div>
+        </div>
+      </article>
+    `).join("") : `<div class="p-8 text-center text-slate-400 text-sm">No completed jobs yet. When you mark service calls complete, they will appear here.</div>`;
+  }
+  $("requestCount").textContent = `${completed.length} completed job${completed.length === 1 ? '' : 's'}`;
+}
+
+function renderEarningsView() {
+  $("crumbTitle").textContent = "Earnings";
+  const tableEl = $("requestRows").closest("table");
+  let techContainer = $("techJobCardsContainer");
+  if (techContainer) techContainer.style.display = "none";
+  tableEl.style.display = "";
+
+  $("pageContent").hidden = false;
+  $("metricGrid").hidden = false;
+  const completed = requests.filter(requestForRole).filter((r) => r.status_badge === "Completed").length;
+  const baseRate = 450;
+  const totalEarned = completed * baseRate;
+
+  $("metricGrid").className = "metric-grid grid-cols-1 sm:grid-cols-3";
+  $("metricGrid").innerHTML = `
+    <article class="metric-card"><span class="metric-icon green">₹</span><div class="metric-label">Estimated Earnings</div><div class="metric-value">₹${totalEarned.toLocaleString('en-IN')}</div><div class="metric-bottom">From ${completed} completed visits</div></article>
+    <article class="metric-card"><span class="metric-icon blue">✓</span><div class="metric-label">Completed Jobs</div><div class="metric-value">${completed}</div><div class="metric-bottom">Verified by branch</div></article>
+    <article class="metric-card"><span class="metric-icon amber">⏱</span><div class="metric-label">Payout Status</div><div class="metric-value text-base font-bold text-emerald-600">Weekly Cycle</div><div class="metric-bottom">Direct to bank account</div></article>
+  `;
+
+  $("tableTitle").textContent = "Earnings & Settlements";
+  $("tableSubtitle").textContent = "Service visit payouts and compensation statement.";
+  $("requestHead").innerHTML = ["Payout item", "Rate per visit", "Completed units", "Total", "Status"].map((l) => `<th>${safe(l)}</th>`).join("");
+  $("requestRows").innerHTML = `
+    <tr><td>Standard Doorstep Diagnosis & Repair</td><td>₹450.00</td><td>${completed}</td><td><strong>₹${totalEarned.toLocaleString('en-IN')}</strong></td><td><span class="status-pill completed">Accruing</span></td></tr>
+    <tr><td>Travel / Conveyance Allowance</td><td>Included</td><td>${completed}</td><td>—</td><td><span class="status-pill completed">Active</span></td></tr>
+  `;
+  $("requestCount").textContent = "Statement updated today";
+  $("sidePanelTitle").textContent = "Payout Details";
+  $("healthContent").innerHTML = `<div class="section-empty">Bank payouts are settled weekly by your authorized branch. Contact branch manager for bank detail updates.</div>`;
+  $("activityContent").innerHTML = `<div class="section-empty">All service jobs completed and confirmed with customer OTP qualify for payout.</div>`;
+  $("resourceGrid").innerHTML = "";
+}
+
+function renderHelpCenterView() {
+  $("crumbTitle").textContent = "Help center";
+  const tableEl = $("requestRows").closest("table");
+  let techContainer = $("techJobCardsContainer");
+  if (techContainer) techContainer.style.display = "none";
+  tableEl.style.display = "";
+
+  $("pageContent").hidden = false;
+  $("metricGrid").hidden = true;
+  $("tableTitle").textContent = "Help Center & Field Support";
+  $("tableSubtitle").textContent = "Emergency helpline, safety SOPs, and franchise supervisor contacts.";
+  $("requestHead").innerHTML = ["Support resource", "Contact / Details", "Hours", "Action"].map((l) => `<th>${safe(l)}</th>`).join("");
+  $("requestRows").innerHTML = `
+    <tr><td>Franchise Branch Supervisor</td><td>${safe(user?.branch_name || 'Assigned Branch')}</td><td>8:00 AM – 8:00 PM</td><td><a href="tel:+919876543210" class="table-action font-semibold text-blue-600">📞 Call branch →</a></td></tr>
+    <tr><td>Technical Parts & Spare Support</td><td>Spares Desk · Crompton / LG / Whirlpool</td><td>9:00 AM – 6:00 PM</td><td><a href="mailto:spares@servora.com" class="table-action font-semibold text-blue-600">✉ Email desk →</a></td></tr>
+    <tr><td>Emergency Field Hotline</td><td>Safety & roadside assistance</td><td>24x7 Available</td><td><a href="tel:112" class="table-action font-semibold text-rose-600">🚨 112 / Emergency</a></td></tr>
+  `;
+  $("requestCount").textContent = "3 support channels active";
+  $("sidePanelTitle").textContent = "Field Guidelines";
+  $("healthContent").innerHTML = `<div class="section-empty">Always carry your Servora digital ID card, verified tool kit, and wear shoe covers during customer doorstep visits.</div>`;
+  $("activityContent").innerHTML = `<div class="section-empty">Confirm diagnosis and price estimate with the customer prior to replacing any spare parts.</div>`;
+  $("resourceGrid").innerHTML = "";
+}
   $("resourceGrid").innerHTML = "";
   $("bottomTitle").textContent = `${page} workspace`;
   $("bottomSubtitle").textContent = "Platform administration tools";
@@ -553,6 +844,7 @@ async function loadWorkspacePageData(page) {
   if (role === "company" && page === "Branches") { await loadCompanyBranches(); return; }
   if (role === "company" && page === "Customers") { await loadCompanyCustomers(); return; }
   if (role === "franchise" && page === "Technicians") { await loadFranchiseTechnicians(); return; }
+  if (role === "franchise" && page === "Customers") { renderFranchiseCustomers(); return; }
   renderPage(page);
 }
 async function loadAdminPageData(page) {
@@ -807,7 +1099,7 @@ function renderRequests() {
 
   let head = config.columns;
   if (role === "franchise") {
-    head = ["Request ID", "Customer", "Appliance", "Issue", "Priority", "Action"];
+    head = ["Request ID", "Customer", "Appliance", "Issue", "Assigned Technician", "Priority", "Status", "Action"];
   } else if (role === "company") {
     head = ["Request ID", "Customer", "PIN Code", "Routed Branch", "Status", "Action"];
   }
@@ -817,11 +1109,38 @@ function renderRequests() {
     const customer = `<div class="customer-cell"><span class="customer-avatar">${safe((item.customer_name || "U").split(/\s+/).map((part) => part[0]).slice(0, 2).join(""))}</span><span class="customer-name">${safe(item.customer_name)}<small>${safe(item.customer_phone || "Servora customer")}</small></span></div>`;
 
     if (role === "franchise") {
+      const assignedTech = technicians.find(t => t.id === item.technician_id || t.name === item.technician_name) || item.technician;
+      const techName = assignedTech?.name || item.technician_name;
+      const techTitle = assignedTech?.title || "Field Technician";
+      const isAssigned = Boolean(techName);
+
+      let techCell = "";
+      if (isAssigned) {
+        techCell = `
+          <div class="flex items-center gap-2">
+            <span class="w-7 h-7 rounded-full bg-blue-100 text-blue-700 font-bold text-xs flex items-center justify-center flex-none">👷</span>
+            <div class="min-w-0">
+              <strong class="text-xs text-slate-800 block truncate">${safe(techName)}</strong>
+              <small class="text-[10px] text-slate-400 block truncate">${safe(techTitle)}</small>
+            </div>
+          </div>
+        `;
+      } else {
+        techCell = `<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 border border-amber-200 text-[11px] font-semibold">⏳ Unassigned</span>`;
+      }
+
       const priorityBadge = `<span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${priorityClass(item.priority || 'Medium')}">${safe(item.priority || 'Medium')}</span>`;
-      const isDispatched = item.status === "Technician on the Way" || item.technician_id;
-      const trackBtn = isDispatched ? `<button class="table-action px-2.5 py-1 rounded bg-indigo-50 text-indigo-700 hover:bg-indigo-100 font-semibold text-xs ml-1.5" onclick="openTechRouteMap('${safe(item.id)}')">Track 📍</button>` : '';
-      const assignBtn = `<button class="table-action px-3 py-1 rounded bg-blue-50 text-blue-700 hover:bg-blue-100 font-semibold text-xs" onclick="selectRequestForAssignment('${safe(item.id)}')">Assign →</button>`;
-      const cells = [safe(item.id), customer, safe(item.appliance_name), safe(item.issue), priorityBadge, `<div class="flex items-center gap-1">${assignBtn}${trackBtn}</div>`];
+      const statusPill = `<span class="status-pill ${statusClass(item.status_badge || item.status)}">${safe(item.status_badge || item.status || "Pending")}</span>`;
+
+      const isDispatched = item.status === "Technician on the Way" || (isAssigned && item.status !== "Completed");
+      const trackBtn = isDispatched ? `<button class="table-action px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 font-semibold text-xs ml-1" onclick="openTechRouteMap('${safe(item.id)}')">Track 📍</button>` : '';
+
+      const assignBtn = isAssigned
+        ? `<button class="table-action px-2.5 py-1 rounded-lg bg-amber-50 text-amber-800 hover:bg-amber-100 border border-amber-300 font-semibold text-xs flex items-center gap-1" onclick="selectRequestForAssignment('${safe(item.id)}')"><span>↺</span> Reassign</button>`
+        : `<button class="table-action px-3 py-1 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs shadow-sm flex items-center gap-1" onclick="selectRequestForAssignment('${safe(item.id)}')"><span>⚡</span> Assign →</button>`;
+
+      const actionCell = `<div class="flex items-center gap-1.5">${assignBtn}${trackBtn}</div>`;
+      const cells = [safe(item.id), customer, safe(item.appliance_name), safe(item.issue), techCell, priorityBadge, statusPill, actionCell];
       return `<tr>${cells.map((cell) => `<td>${cell}</td>`).join("")}</tr>`;
     }
 
@@ -854,19 +1173,25 @@ function renderInsights() {
   const completed = visible.filter((item) => item.status_badge === "Completed").length;
 
   if (role === "franchise") {
-    $("sidePanelTitle").textContent = "Assign Technician";
+    $("sidePanelTitle").textContent = "Technician Dispatch & Assignment";
     const pendingReqs = visible.filter((r) => r.status_badge !== "Completed");
 
     $("healthContent").innerHTML = `
       <div class="p-4 space-y-3">
+        <div id="reassignInfoBanner" class="hidden p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-900 leading-snug">
+        </div>
         <div>
           <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">Select Service Request</label>
-          <select id="assignReqSelect" class="w-full text-xs rounded-lg border border-slate-200 p-2 bg-white text-slate-800 focus:outline-blue-500">
-            ${pendingReqs.map(r => `<option value="${safe(r.id)}">${safe(r.id)} - ${safe(r.customer_name)} (${safe(r.appliance_name)})</option>`).join('') || '<option value="">No pending requests</option>'}
+          <select id="assignReqSelect" onchange="window.updateAssignmentPanelState()" class="w-full text-xs rounded-lg border border-slate-200 p-2 bg-white text-slate-800 focus:outline-blue-500">
+            ${pendingReqs.map(r => {
+              const assignedName = r.technician?.name || r.technician_name;
+              const labelSuffix = assignedName ? `[Assigned: ${safe(assignedName)}]` : `[Unassigned]`;
+              return `<option value="${safe(r.id)}">${safe(r.id)} - ${safe(r.customer_name)} (${labelSuffix})</option>`;
+            }).join('') || '<option value="">No pending requests</option>'}
           </select>
         </div>
         <div>
-          <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">Available Technician</label>
+          <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">Select Technician</label>
           <select id="assignTechSelect" class="w-full text-xs rounded-lg border border-slate-200 p-2 bg-white text-slate-800 focus:outline-blue-500">
             ${technicians.length ? technicians.map((t) => `<option value="${safe(t.id)}">${safe(t.name)} (${safe(t.title || 'Technician')})</option>`).join('') : '<option value="" disabled selected>No technicians registered yet (Add technician)</option>'}
           </select>
@@ -879,11 +1204,12 @@ function renderInsights() {
             <option value="Normal">🔵 Normal Priority</option>
           </select>
         </div>
-        <button type="button" onclick="confirmTechnicianAssignment()" class="w-full py-2.5 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-md transition flex items-center justify-center gap-1.5" ${technicians.length === 0 ? "disabled" : ""}>
+        <button id="confirmAssignBtn" type="button" onclick="confirmTechnicianAssignment()" class="w-full py-2.5 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-md transition flex items-center justify-center gap-1.5" ${technicians.length === 0 ? "disabled" : ""}>
           <span>⚡</span> Assign Technician
         </button>
       </div>
     `;
+    setTimeout(() => { if (typeof window.updateAssignmentPanelState === "function") window.updateAssignmentPanelState(); }, 0);
 
     const ongoingJobs = visible.filter((r) => r.status_badge === "In Progress" || r.status === "Technician on the Way" || r.status === "Service In Progress");
     $("activityContent").innerHTML = `
@@ -1196,12 +1522,57 @@ window.openTechRouteMap = function(requestId) {
   }, 250);
 };
 
+window.updateAssignmentPanelState = function() {
+  const reqSel = document.getElementById("assignReqSelect");
+  const techSel = document.getElementById("assignTechSelect");
+  const prioSel = document.getElementById("assignPrioritySelect");
+  const btn = document.getElementById("confirmAssignBtn");
+  const banner = document.getElementById("reassignInfoBanner");
+  if (!reqSel || !btn) return;
+
+  const reqId = reqSel.value;
+  const req = requests.find((r) => r.id === reqId);
+  if (!req) return;
+
+  const assignedTechId = req.technician?.id || req.technician_id;
+  const assignedTechName = req.technician?.name || req.technician_name;
+
+  if (prioSel && req.priority) {
+    prioSel.value = req.priority;
+  }
+
+  if (assignedTechName) {
+    if (techSel && assignedTechId) {
+      techSel.value = assignedTechId;
+    }
+    btn.innerHTML = `<span>↺</span> Reassign Technician`;
+    btn.className = "w-full py-2.5 px-4 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shadow-md transition flex items-center justify-center gap-1.5";
+    if (banner) {
+      banner.classList.remove("hidden");
+      banner.innerHTML = `<span>🔄 Currently assigned to <strong>${safe(assignedTechName)}</strong>. Select a different technician below to reassign.</span>`;
+    }
+  } else {
+    btn.innerHTML = `<span>⚡</span> Assign Technician`;
+    btn.className = "w-full py-2.5 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-md transition flex items-center justify-center gap-1.5";
+    if (banner) {
+      banner.classList.add("hidden");
+    }
+  }
+};
+
 window.selectRequestForAssignment = function(requestId) {
   const reqSel = document.getElementById("assignReqSelect");
   if (reqSel) {
     reqSel.value = requestId;
+    window.updateAssignmentPanelState();
     reqSel.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    showToast(`Selected request ${requestId} for assignment.`);
+    const req = requests.find(r => r.id === requestId);
+    const techName = req?.technician?.name || req?.technician_name;
+    if (techName) {
+      showToast(`Selected ${requestId} (Assigned to ${techName}). Choose a new technician to reassign.`);
+    } else {
+      showToast(`Selected request ${requestId} for assignment.`);
+    }
   }
 };
 
@@ -1212,8 +1583,12 @@ window.confirmTechnicianAssignment = async function() {
     showToast("Please select both a request and a technician.", "error");
     return;
   }
+  const req = requests.find((r) => r.id === reqId);
+  const isReassign = Boolean(req?.technician?.name || req?.technician_name);
+  const priority = document.getElementById("assignPrioritySelect")?.value || "Medium";
+
   try {
-    showToast("Assigning technician…");
+    showToast(isReassign ? "Reassigning technician…" : "Assigning technician…");
     const res = await fetch(`${API_BASE_URL}/api/requests/${reqId}/assign`, {
       method: "POST",
       credentials: "include",
@@ -1221,7 +1596,7 @@ window.confirmTechnicianAssignment = async function() {
       body: JSON.stringify({
         request_id: reqId,
         technician_id: techId,
-        priority: document.getElementById("assignPrioritySelect")?.value || "Medium"
+        priority
       })
     });
     const data = await res.json().catch(() => ({}));
@@ -1230,7 +1605,13 @@ window.confirmTechnicianAssignment = async function() {
     }
     const idx = requests.findIndex((r) => r.id === reqId);
     if (idx !== -1) requests[idx] = data;
-    showToast(`Technician assigned to ${reqId}!`);
+
+    try { localStorage.setItem(`servora_cache_requests_${role}`, JSON.stringify(requests)); } catch {}
+
+    const assignedTechObj = technicians.find(t => t.id === techId) || data.technician;
+    const techName = assignedTechObj?.name || "Technician";
+
+    showToast(isReassign ? `Successfully reassigned ${reqId} to ${techName}!` : `Technician ${techName} assigned to ${reqId}!`);
     setMetrics();
     renderRequests();
     renderInsights();
@@ -1259,18 +1640,24 @@ async function loadDashboard() {
   try {
     const userResponse = await fetch(`${API_BASE_URL}/api/auth/me`, { credentials: "include", headers: authHeaders() });
     if (userResponse.ok) {
-      const authenticated = (await userResponse.json()).user;
+      const resData = await userResponse.json();
+      const authenticated = resData.user;
       if (dashboardRouteRole && !roleMatches(authenticated.role, dashboardRouteRole)) {
         localStorage.removeItem("servora_user");
         window.location.replace(portalLoginPaths[dashboardRouteRole]);
         return;
       }
-      user = { ...authenticated, session_token: user?.session_token || initialUser?.session_token };
+      const token = resData.session_token || user?.session_token || initialUser?.session_token;
+      user = { ...authenticated, session_token: token };
       localStorage.setItem("servora_user", JSON.stringify(user));
     } else if (userResponse.status === 401) {
-      localStorage.removeItem("servora_user");
-      window.location.replace(portalLoginPaths[dashboardRouteRole || role] || "/index.html");
-      return;
+      if (stored && user?.id) {
+        console.warn("Transient 401 on /api/auth/me; retaining stored ops session.");
+      } else {
+        localStorage.removeItem("servora_user");
+        window.location.replace(portalLoginPaths[dashboardRouteRole || role] || "/index.html");
+        return;
+      }
     } else if (stored) {
       user = JSON.parse(stored);
     }
@@ -1290,19 +1677,34 @@ async function loadDashboard() {
     $("sidePanelTitle").textContent = config.sideTitle;
     $("bottomTitle").textContent = config.bottomTitle;
     const response = await fetch(`${API_BASE_URL}/api/requests`, { credentials: "include", headers: authHeaders() });
-    if (response.status === 401) throw new Error("Your admin session was not accepted. Sign out and sign in again.");
-    if (response.ok) requests = await response.json();
-    if (role === "admin") companies = await adminApi("/companies");
+    if (response.status === 401 && !stored) throw new Error("Your session was not accepted. Sign out and sign in again.");
+    if (response.ok) {
+      requests = await response.json();
+      try { localStorage.setItem(`servora_cache_requests_${role}`, JSON.stringify(requests)); } catch {}
+    }
+    if (role === "admin") {
+      companies = await adminApi("/companies");
+      try { localStorage.setItem("servora_cache_companies", JSON.stringify(companies)); } catch {}
+    }
     if (role === "company") {
-      try { companyCustomers = await companyApi("/customers"); } catch { companyCustomers = []; }
-      try { branches = await companyApi("/branches"); } catch { branches = []; }
+      try {
+        companyCustomers = await companyApi("/customers");
+        localStorage.setItem("servora_cache_customers", JSON.stringify(companyCustomers));
+      } catch { companyCustomers = []; }
+      try {
+        branches = await companyApi("/branches");
+        localStorage.setItem("servora_cache_branches", JSON.stringify(branches));
+      } catch { branches = []; }
     }
     if (role === "franchise") {
-      try { technicians = await franchiseApi("/technicians"); } catch { technicians = []; }
+      try {
+        technicians = await franchiseApi("/technicians");
+        localStorage.setItem("servora_cache_techs", JSON.stringify(technicians));
+      } catch { technicians = []; }
     }
   } catch (error) {
-    const detail = error instanceof TypeError ? "Could not connect to the Servora API." : error.message;
-    showToast(`${detail} Showing available workspace data.`, "error");
+    const detail = error instanceof TypeError ? "Connecting to Servora API…" : error.message;
+    console.warn("API notice:", detail);
   }
   setProfile(); buildNav(); setMetrics(); renderRequests(); renderInsights(); renderResources();
   if (role !== "admin") { $("addCompanyButton").hidden = true; }
@@ -1315,6 +1717,7 @@ $("requestSearch").addEventListener("input", () => {
   else if (role === "company" && page === "Branches") renderCompanyBranches();
   else if (role === "company" && page === "Customers") renderCompanyCustomers();
   else if (role === "franchise" && page === "Technicians") renderFranchiseTechnicians();
+  else if (role === "franchise" && page === "Customers") renderFranchiseCustomers();
   else if (role === "admin" && ["Branches", "Technicians", "Customers"].includes(page)) renderDirectory(page);
   else if (role === "admin" && page === "Service requests") renderRequestDirectory();
   else renderRequests();
@@ -1333,14 +1736,21 @@ $("exportButton").addEventListener("click", () => {
     downloadCsv(`servora-company-customers.csv`, rows);
     return;
   }
+  if (role === "franchise" && page === "Customers") {
+    const visibleReqs = requests.filter(requestForRole);
+    const rows = [
+      ["Customer Name", "Contact Phone", "Service Address", "PIN Code", "Appliance", "Appointment Date"],
+      ...visibleReqs.map((r) => [r.customer_name, r.customer_phone || "", r.customer_address || "", r.pincode || "", r.appliance_name || "", r.appointment_date || ""])
+    ];
+    downloadCsv(`servora-franchise-customers.csv`, rows);
+    return;
+  }
   const rows = [["Request ID", "Customer", "Appliance", "Issue", "Status", "Date"], ...requests.map((item) => [item.id, item.customer_name, item.appliance_name, item.issue, item.status_badge, item.appointment_date])];
   downloadCsv(`servora-${role}-requests.csv`, rows);
 });
 $("logoutBtn").addEventListener("click", () => {
   const logoutRole = dashboardRouteRole || role;
   const headers = authHeaders();
-  // Clear the browser-side session immediately; a slow/unavailable API must not
-  // leave the user appearing signed in or prevent the login-page redirect.
   localStorage.removeItem("servora_user");
   const loginPath = {
     admin: "/admin-login.html",
@@ -1360,7 +1770,22 @@ $("logoutBtn").addEventListener("click", () => {
   window.location.replace(loginPath);
 });
 $("menuToggle").addEventListener("click", () => $("opsNav").closest(".ops-sidebar").classList.toggle("open"));
-document.addEventListener("DOMContentLoaded", () => { document.title = `${config.title} — Servora`; $("crumbTitle").textContent = config.title; $("workspaceKicker").textContent = config.kicker; $("tableTitle").textContent = config.tableTitle; $("tableSubtitle").textContent = config.tableSubtitle; $("sidePanelTitle").textContent = config.sideTitle; $("bottomTitle").textContent = config.bottomTitle; loadDashboard(); });
+document.addEventListener("DOMContentLoaded", () => {
+  document.title = `${config.title} — Servora`;
+  $("crumbTitle").textContent = config.title;
+  $("workspaceKicker").textContent = config.kicker;
+  $("tableTitle").textContent = config.tableTitle;
+  $("tableSubtitle").textContent = config.tableSubtitle;
+  $("sidePanelTitle").textContent = config.sideTitle;
+  $("bottomTitle").textContent = config.bottomTitle;
+  setProfile();
+  buildNav();
+  setMetrics();
+  renderRequests();
+  renderInsights();
+  renderResources();
+  loadDashboard();
+});
 $("addCompanyButton").addEventListener("click", () => { $("companyFormMessage").textContent = ""; $("companyDialog").showModal(); });
 $("companyInlineAdd").addEventListener("click", () => { $("companyFormMessage").textContent = ""; $("companyDialog").showModal(); });
 $("addBranchButton").addEventListener("click", () => { $("branchFormMessage").textContent = ""; $("branchDialog").showModal(); });
