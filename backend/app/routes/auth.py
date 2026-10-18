@@ -3,7 +3,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from uuid import uuid4
 from app.db.session import get_db
-from app.db.models import BranchOnboardingModel, CompanyOnboardingModel, TechnicianOnboardingModel, UserModel
+from app.db.models import BranchOnboardingModel, CompanyOnboardingModel, TechnicianOnboardingModel, UserModel, CompanyBranchModel, TechnicianModel
 from app.security import create_user_session, get_authenticated_user, revoke_user_session
 from app.schemas import CustomerAddressUpdate, CustomerRegistration, LoginRequest, UserProfileUpdate
 import hashlib
@@ -19,8 +19,8 @@ def make_password_hash(password: str) -> str:
     return f"pbkdf2_sha256${rounds}${salt.hex()}${digest}"
 
 
-def user_payload(user: UserModel) -> dict:
-    return {
+def user_payload(user: UserModel, db: Session = None) -> dict:
+    data = {
         "id": user.id,
         "name": user.name,
         "email": user.email,
@@ -29,6 +29,31 @@ def user_payload(user: UserModel) -> dict:
         "avatar": user.avatar,
         "address": user.address,
     }
+    if db is not None:
+        if user.role in ("branch", "franchise"):
+            branch = db.query(CompanyBranchModel).filter(
+                (CompanyBranchModel.id == user.id) | (CompanyBranchModel.email == user.email)
+            ).first()
+            if branch:
+                data["branch_id"] = branch.id
+                data["branch_name"] = branch.branch_name
+                data["pincode"] = branch.pincode
+                data["company_id"] = branch.company_id
+                company = db.query(UserModel).filter(UserModel.id == branch.company_id).first()
+                if company:
+                    data["company_name"] = company.name
+        elif user.role == "technician":
+            tech = db.query(TechnicianModel).filter(
+                (TechnicianModel.id == user.id) | (TechnicianModel.name == user.name)
+            ).first()
+            if tech:
+                data["title"] = tech.title
+                data["company_branch"] = tech.company_branch
+                data["rating"] = tech.rating
+                data["total_jobs"] = tech.total_jobs
+                if tech.avatar:
+                    data["avatar"] = tech.avatar
+    return data
 
 
 @router.post("/register", status_code=201)
@@ -64,7 +89,7 @@ def register_customer(payload: CustomerRegistration, response: Response, db: Ses
         samesite="none",
         secure=True,
     )
-    return {"status": "success", "session_token": session_token, "user": user_payload(user)}
+    return {"status": "success", "session_token": session_token, "user": user_payload(user, db)}
 
 @router.post("/login")
 def login(payload: LoginRequest, response: Response, db: Session = Depends(get_db)):
@@ -132,13 +157,13 @@ def login(payload: LoginRequest, response: Response, db: Session = Depends(get_d
     return {
         "status": "success",
         "session_token": session_token,
-        "user": user_payload(user)
+        "user": user_payload(user, db)
     }
 
 @router.get("/me")
 def get_current_user(request: Request, db: Session = Depends(get_db)):
     user = get_authenticated_user(request, db)
-    return {"user": user_payload(user)}
+    return {"user": user_payload(user, db)}
 
 @router.post("/logout")
 def logout(request: Request, response: Response, db: Session = Depends(get_db)):
@@ -164,7 +189,7 @@ def update_user_address(payload: CustomerAddressUpdate, request: Request, db: Se
         "status": "success",
         "message": "Service address updated successfully",
         "address": formatted_address,
-        "user": user_payload(user),
+        "user": user_payload(user, db),
     }
 
 @router.put("/profile")
@@ -182,7 +207,7 @@ def update_user_profile(payload: UserProfileUpdate, request: Request, db: Sessio
     return {
         "status": "success",
         "message": "Profile updated successfully",
-        "user": user_payload(user),
+        "user": user_payload(user, db),
     }
 
 @router.get("/demo-users")

@@ -924,25 +924,35 @@ function populateTracking(request) {
     $("trackingTechnician").textContent = technician ? technician.name : "Not assigned yet";
   }
   if ($("trackingTechTitle")) {
-    $("trackingTechTitle").textContent = technician?.title || "Authorized Specialist";
+    $("trackingTechTitle").textContent = technician?.title || "Technician will be assigned soon";
   }
   if ($("trackingTechRating")) {
-    $("trackingTechRating").innerHTML = `★ ${technician?.rating || 4.8} <span class="text-slate-400 font-normal">(${technician?.total_jobs || 124} jobs completed)</span>`;
+    $("trackingTechRating").innerHTML = technician?.rating ? `★ ${technician.rating} <span class="text-slate-400 font-normal">(${technician.total_jobs || 0} jobs completed)</span>` : `<span class="text-slate-400 font-normal">Awaiting technician assignment</span>`;
   }
   if ($("trackingTechAvatar") && technician?.avatar) {
     $("trackingTechAvatar").src = technician.avatar;
   }
   if ($("techCallBtn")) {
-    $("techCallBtn").href = `tel:${technician?.phone || "+919811122334"}`;
+    if (technician?.phone) {
+      $("techCallBtn").style.display = "inline-flex";
+      $("techCallBtn").href = `tel:${technician.phone}`;
+    } else {
+      $("techCallBtn").style.display = "none";
+    }
   }
   if ($("techMessageBtn")) {
-    $("techMessageBtn").onclick = () => {
-      showToast(`Contacting technician at ${technician?.phone || "+91 98111 22334"}`);
-    };
+    if (technician?.phone) {
+      $("techMessageBtn").style.display = "inline-flex";
+      $("techMessageBtn").onclick = () => {
+        showToast(`Contacting technician at ${technician.phone}`);
+      };
+    } else {
+      $("techMessageBtn").style.display = "none";
+    }
   }
 
   if ($("trackingAppointmentText")) {
-    $("trackingAppointmentText").textContent = `Today, ${formatDate(request.appointment_date)} • ${request.appointment_slot || "04:00 PM - 06:00 PM"}`;
+    $("trackingAppointmentText").textContent = `${formatDate(request.appointment_date)} • ${request.appointment_slot || "Scheduled Slot"}`;
   }
   if ($("rescheduleBtn")) {
     $("rescheduleBtn").onclick = () => {
@@ -966,14 +976,14 @@ function populateTracking(request) {
 
 window.openLiveTrackingModal = function (requestId) {
   openDialog("liveTrackingMapDialog");
-  const req = userRequests.find((r) => r.id === requestId) || {
-    latitude: 28.4744,
-    longitude: 77.5040,
-    technician: { name: "Rahul Sharma" },
-  };
+  const req = userRequests.find((r) => r.id === requestId) || userRequests[0] || {};
+  const techName = req.technician?.name || "Assigned Technician";
+  if ($("liveMapTechEta")) {
+    $("liveMapTechEta").textContent = `${techName} is on the way · Real-time route`;
+  }
 
-  const customerLat = req.latitude || 28.4744;
-  const customerLng = req.longitude || 77.5040;
+  const customerLat = req.latitude || 28.5355;
+  const customerLng = req.longitude || 77.3910;
   const techLat = customerLat + 0.0095;
   const techLng = customerLng - 0.0078;
 

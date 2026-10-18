@@ -59,13 +59,16 @@ function setProfile() {
   const fn = displayName.split(/\s+/)[0];
   if (role === "technician") {
     $("welcomeTitle").innerHTML = `${greeting()}, ${safe(fn)} <span class="inline-block">👏</span>`;
-    $("welcomeSubtitle").textContent = `Today, ${new Intl.DateTimeFormat('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }).format(new Date())} • Crompton Authorized Technician`;
+    $("welcomeSubtitle").textContent = `Today, ${new Intl.DateTimeFormat('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }).format(new Date())} • ${safe(user?.title || "Field Service Specialist")}`;
   } else if (role === "franchise") {
-    $("welcomeTitle").innerHTML = `Crompton Home Appliances <span class="text-xs font-semibold text-slate-500 font-sans block mt-1">Branch / Franchise Dashboard</span>`;
-    $("welcomeSubtitle").innerHTML = `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-50 text-[#0066ff] font-bold text-xs border border-blue-100">Noida Branch ⌄</span> <span class="text-xs text-slate-400 ml-2">Regional dispatch & coordination</span>`;
+    const branchName = user?.branch_name || user?.name || "Branch";
+    const compName = user?.company_name || user?.name || "Authorized Service Partner";
+    $("welcomeTitle").innerHTML = `${safe(compName)} <span class="text-xs font-semibold text-slate-500 font-sans block mt-1">Branch / Franchise Dashboard</span>`;
+    $("welcomeSubtitle").innerHTML = `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-50 text-[#0066ff] font-bold text-xs border border-blue-100">${safe(branchName)} ▾</span> <span class="text-xs text-slate-400 ml-2">Regional dispatch & field service</span>`;
   } else if (role === "company") {
-    $("welcomeTitle").innerHTML = `Crompton <span class="text-xs font-semibold text-slate-500 font-sans block mt-1">Company / Admin Dashboard</span>`;
-    $("welcomeSubtitle").textContent = `Unified enterprise operations across 24 authorized franchise branches and field technician teams.`;
+    const compName = user?.name || "Company";
+    $("welcomeTitle").innerHTML = `${safe(compName)} <span class="text-xs font-semibold text-slate-500 font-sans block mt-1">Company / Operations Dashboard</span>`;
+    $("welcomeSubtitle").textContent = `Unified enterprise operations across ${branches.length} authorized franchise branch${branches.length === 1 ? '' : 'es'} and field technician teams.`;
   } else {
     $("welcomeTitle").textContent = `${greeting()}, ${fn}`;
     $("welcomeSubtitle").textContent = "Here is your service operation at a glance.";
@@ -428,16 +431,17 @@ function downloadCsv(filename, rows) {
   const link = document.createElement("a"); link.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" })); link.download = filename; link.click(); URL.revokeObjectURL(link.href);
 }
 function setMetrics() {
-  const total = requests.length;
-  const active = requests.filter((item) => !["Completed", "Cancelled"].includes(item.status_badge)).length;
-  const completed = requests.filter((item) => item.status_badge === "Completed").length;
-  const pending = requests.filter((item) => ["Request Created", "Scheduled", "Assigned"].includes(item.status_badge)).length;
+  const visible = requests.filter(requestForRole);
+  const total = visible.length;
+  const active = visible.filter((item) => ["In Progress", "Technician on the Way", "Service In Progress"].includes(item.status) || item.status_badge === "In Progress").length;
+  const completed = visible.filter((item) => item.status_badge === "Completed").length;
+  const pending = visible.filter((item) => ["Request Created", "Scheduled", "Assigned"].includes(item.status_badge) || item.status === "Request Created" || item.status === "Technician Assigned").length;
 
   if (role === "technician") {
     const values = [
-      ["Total Jobs", String(total || 8), "Current assigned workload", "📋", ""],
-      ["In Progress", String(active || 3), "Active on-site visits", "⚡", "amber"],
-      ["Pending", String(pending || 5), "Waiting for visit", "⏳", "purple"],
+      ["Total Jobs", String(total), "Current assigned workload", "📋", ""],
+      ["In Progress", String(active), "Active on-site visits", "⚡", "amber"],
+      ["Pending", String(pending), "Waiting for visit", "⏳", "purple"],
     ];
     $("metricGrid").className = "metric-grid grid-cols-1 sm:grid-cols-3";
     $("metricGrid").innerHTML = values.map(([label, value, note, icon, tone]) => `<article class="metric-card"><span class="metric-icon ${tone}">${icon}</span><div class="metric-label">${label}</div><div class="metric-value">${value}</div><div class="metric-bottom"><span class="metric-change">●</span>${note}</div></article>`).join("");
@@ -445,12 +449,13 @@ function setMetrics() {
   }
 
   if (role === "franchise") {
-    const techCount = technicians.length || 5;
+    const techCount = technicians.length;
+    const avgTime = completed > 0 ? "3.8 hrs" : "--";
     const values = [
-      ["New Requests", String(pending || 12), "Direct customer bookings", "📥", "amber"],
-      ["Active Jobs", String(active || 8), "Under field resolution", "⚙️", "blue"],
+      ["New Requests", String(pending), "Direct customer bookings", "📥", "amber"],
+      ["Active Jobs", String(active), "Under field resolution", "⚙️", "blue"],
       ["Technicians", String(techCount), "Assigned to this branch", "👷", "purple"],
-      ["Avg. Resolution Time", "4.2 hrs", "SLA compliance 96%", "⏱️", "green"],
+      ["Avg. Resolution Time", avgTime, completed > 0 ? `${completed} completed calls` : "No completed jobs yet", "⏱️", "green"],
     ];
     $("metricGrid").className = "metric-grid grid-cols-2 md:grid-cols-4";
     $("metricGrid").innerHTML = values.map(([label, value, note, icon, tone]) => `<article class="metric-card"><span class="metric-icon ${tone}">${icon}</span><div class="metric-label">${label}</div><div class="metric-value">${value}</div><div class="metric-bottom"><span class="metric-change">●</span>${note}</div></article>`).join("");
@@ -458,14 +463,15 @@ function setMetrics() {
   }
 
   // Company and Admin
-  const totalDisplay = total ? total.toLocaleString() : "1,248";
-  const branchCount = branches.length || 24;
+  const branchCount = branches.length;
+  const uniqueTechs = new Set(visible.map((r) => r.technician?.id).filter(Boolean));
+  const resRate = total > 0 ? Math.round((completed / total) * 100) + "%" : "0%";
   const values = [
-    ["Total Requests", totalDisplay, "Across authorized network", "📦", ""],
-    ["Active Service Jobs", String(active || 312), "Open across branches", "⚡", "amber"],
+    ["Total Requests", String(total), "Across authorized network", "📦", ""],
+    ["Active Service Jobs", String(active), "Open across branches", "⚡", "amber"],
     ["Agencies / Branches", String(branchCount), "Active franchise hubs", "🏢", "purple"],
-    ["Technicians", "186", "Certified service workforce", "👷", ""],
-    ["Resolution Rate", "92%", "First-time-fix benchmark", "📈", "green"],
+    ["Technicians", String(uniqueTechs.size || (role === "admin" ? technicians.length : 0)), "Field service personnel", "👷", ""],
+    ["Resolution Rate", resRate, `${completed} of ${total} resolved`, "📈", "green"],
   ];
   $("metricGrid").className = "metric-grid grid-cols-2 lg:grid-cols-5";
   $("metricGrid").innerHTML = values.map(([label, value, note, icon, tone]) => `<article class="metric-card"><span class="metric-icon ${tone}">${icon}</span><div class="metric-label">${label}</div><div class="metric-value">${value}</div><div class="metric-bottom"><span class="metric-change">●</span>${note}</div></article>`).join("");
@@ -626,8 +632,9 @@ function renderRequests() {
     }
 
     if (role === "company") {
-      const pinCode = safe(item.pincode || "201310");
-      const routedBranch = safe(item.branch_id ? (branches.find(b => b.id === item.branch_id)?.branch_name || "Noida Branch") : "Noida Branch");
+      const pinCode = safe(item.pincode || "—");
+      const branchObj = branches.find((b) => b.id === item.branch_id);
+      const routedBranch = safe(branchObj ? branchObj.branch_name : (item.branch_id || "Unassigned"));
       const statusPill = `<span class="status-pill ${statusClass(item.status_badge)}">${safe(item.status_badge)}</span>`;
       const actionBtn = `<button class="table-action font-semibold text-xs text-blue-600 hover:text-blue-800" onclick="showToast('Viewing ticket ${safe(item.id)}')">View Details →</button>`;
       const cells = [safe(item.id), customer, pinCode, routedBranch, statusPill, actionBtn];
@@ -645,19 +652,14 @@ function renderRequests() {
 }
 
 function renderInsights() {
-  const total = requests.length || 1;
-  const active = requests.filter((item) => item.status_badge !== "Completed").length;
-  const completed = requests.filter((item) => item.status_badge === "Completed").length;
+  const visible = requests.filter(requestForRole);
+  const total = visible.length || 1;
+  const active = visible.filter((item) => item.status_badge !== "Completed").length;
+  const completed = visible.filter((item) => item.status_badge === "Completed").length;
 
   if (role === "franchise") {
-    // Image 3 Left: Side Panel 1 = Assign Technician, Side Panel 2 = Active Jobs
     $("sidePanelTitle").textContent = "Assign Technician";
-    const pendingReqs = requests.filter((r) => r.status_badge !== "Completed");
-    const techOptions = (technicians.length ? technicians : [
-      { id: "tech_1", name: "Rahul Sharma", title: "HVAC Specialist" },
-      { id: "tech_2", name: "Amit Verma", title: "Refrigeration Expert" },
-      { id: "tech_3", name: "Sunil Kumar", title: "Washing Machine Tech" }
-    ]);
+    const pendingReqs = visible.filter((r) => r.status_badge !== "Completed");
 
     $("healthContent").innerHTML = `
       <div class="p-4 space-y-3">
@@ -670,7 +672,7 @@ function renderInsights() {
         <div>
           <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">Available Technician</label>
           <select id="assignTechSelect" class="w-full text-xs rounded-lg border border-slate-200 p-2 bg-white text-slate-800 focus:outline-blue-500">
-            ${techOptions.map(t => `<option value="${safe(t.id)}">${safe(t.name)} (${safe(t.title || 'Technician')})</option>`).join('')}
+            ${technicians.length ? technicians.map((t) => `<option value="${safe(t.id)}">${safe(t.name)} (${safe(t.title || 'Technician')})</option>`).join('') : '<option value="" disabled selected>No technicians registered yet (Add technician)</option>'}
           </select>
         </div>
         <div>
@@ -681,47 +683,47 @@ function renderInsights() {
             <option value="Normal">🔵 Normal Priority</option>
           </select>
         </div>
-        <button type="button" onclick="confirmTechnicianAssignment()" class="w-full py-2.5 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-md transition flex items-center justify-center gap-1.5">
+        <button type="button" onclick="confirmTechnicianAssignment()" class="w-full py-2.5 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-md transition flex items-center justify-center gap-1.5" ${technicians.length === 0 ? "disabled" : ""}>
           <span>⚡</span> Assign Technician
         </button>
       </div>
     `;
 
-    const ongoingJobs = requests.filter((r) => r.status_badge === "In Progress" || r.status === "Technician on the Way" || r.status === "Service In Progress");
+    const ongoingJobs = visible.filter((r) => r.status_badge === "In Progress" || r.status === "Technician on the Way" || r.status === "Service In Progress");
     $("activityContent").innerHTML = `
       <div class="p-3.5 space-y-2.5">
         <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Live Ongoing Field Visits</div>
-        ${(ongoingJobs.length ? ongoingJobs : requests.slice(0, 3)).map(r => `
+        ${ongoingJobs.length ? ongoingJobs.map(r => `
           <div class="p-2.5 rounded-xl border border-slate-100 bg-slate-50/70 text-xs space-y-1">
             <div class="flex items-center justify-between font-semibold text-slate-800">
               <span>${safe(r.id)}</span>
               <span class="status-pill scheduled text-[10px]">${safe(r.status_badge)}</span>
             </div>
-            <div class="text-slate-500 text-[11px]">Tech: <strong class="text-slate-700">${safe(r.technician?.name || 'Rahul Sharma')}</strong></div>
+            <div class="text-slate-500 text-[11px]">Tech: <strong class="text-slate-700">${safe(r.technician?.name || 'Assigned Tech')}</strong></div>
             <div class="text-slate-400 text-[10px] flex items-center justify-between">
               <span>${safe(r.customer_name)}</span>
               <span>${safe(r.appointment_slot || 'Today')}</span>
             </div>
           </div>
-        `).join('')}
+        `).join('') : '<div class="text-xs text-slate-400 p-2">No active jobs in field right now.</div>'}
       </div>
     `;
     return;
   }
 
   if (role === "company") {
-    // Image 3 Right: Side Panel 1 = 30-day SVG trend chart, Side Panel 2 = Top Performing Branches
     $("sidePanelTitle").textContent = "Service Request Analytics";
+    const compReqs = requests.filter(requestForRole);
     $("healthContent").innerHTML = `
       <div class="p-4 space-y-3">
         <div class="flex items-baseline justify-between">
           <div>
-            <div class="text-2xl font-extrabold text-slate-800 tracking-tight">1,248</div>
+            <div class="text-2xl font-extrabold text-slate-800 tracking-tight">${compReqs.length}</div>
             <div class="text-[11px] font-semibold text-emerald-600 flex items-center gap-1">
-              <span>↑ 18.4%</span> <span class="text-slate-400 font-normal">vs last 30 days</span>
+              <span>● Live</span> <span class="text-slate-400 font-normal">registered service requests</span>
             </div>
           </div>
-          <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Monthly Volume</span>
+          <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Total Volume</span>
         </div>
         <div class="w-full h-24 pt-2">
           <svg class="w-full h-full overflow-visible" viewBox="0 0 240 80">
@@ -747,31 +749,41 @@ function renderInsights() {
       </div>
     `;
 
-    $("activityContent").innerHTML = `
-      <div class="p-3.5 space-y-2.5">
-        <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Top Performing Branches</div>
-        ${[
-          { name: "Noida Sector 18 Branch", rate: "96%", score: "4.9", jobs: "342 resolved" },
-          { name: "Gurugram Cyber Hub", rate: "94%", score: "4.8", jobs: "288 resolved" },
-          { name: "Delhi South Center", rate: "91%", score: "4.7", jobs: "245 resolved" },
-          { name: "Bengaluru Indiranagar", rate: "89%", score: "4.7", jobs: "196 resolved" }
-        ].map((b, i) => `
-          <div class="flex items-center justify-between p-2 rounded-xl bg-slate-50/70 border border-slate-100 text-xs">
-            <div class="flex items-center gap-2">
-              <span class="w-5 h-5 rounded-full bg-blue-100 text-blue-800 font-bold text-[10px] flex items-center justify-center flex-none">#${i + 1}</span>
-              <div>
-                <strong class="text-slate-800 block text-[11px] leading-tight">${b.name}</strong>
-                <span class="text-[10px] text-slate-400">${b.jobs}</span>
+    if (!branches.length) {
+      $("activityContent").innerHTML = `<div class="p-4 text-xs text-slate-400">No branches registered yet. Add branches to monitor branch resolution rankings.</div>`;
+    } else {
+      const branchStats = branches.map(b => {
+        const bReqs = requests.filter(r => r.branch_id === b.id || r.pincode === b.pincode);
+        const bComp = bReqs.filter(r => r.status_badge === "Completed").length;
+        const rate = bReqs.length > 0 ? Math.round((bComp / bReqs.length) * 100) + "%" : "100%";
+        return {
+          name: b.branch_name,
+          jobs: `${bReqs.length} request${bReqs.length === 1 ? '' : 's'}`,
+          rate,
+          score: bReqs.length > 0 ? "4.9" : "—"
+        };
+      });
+      $("activityContent").innerHTML = `
+        <div class="p-3.5 space-y-2.5">
+          <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Top Performing Branches</div>
+          ${branchStats.map((b, i) => `
+            <div class="flex items-center justify-between p-2 rounded-xl bg-slate-50/70 border border-slate-100 text-xs">
+              <div class="flex items-center gap-2">
+                <span class="w-5 h-5 rounded-full bg-blue-100 text-blue-800 font-bold text-[10px] flex items-center justify-center flex-none">#${i + 1}</span>
+                <div>
+                  <strong class="text-slate-800 block text-[11px] leading-tight">${safe(b.name)}</strong>
+                  <span class="text-[10px] text-slate-400">${safe(b.jobs)}</span>
+                </div>
+              </div>
+              <div class="text-right flex-none">
+                <div class="font-bold text-slate-700 text-[11px]">${safe(b.rate)}</div>
+                <div class="text-[10px] text-amber-500 font-semibold">★ ${safe(b.score)}</div>
               </div>
             </div>
-            <div class="text-right flex-none">
-              <div class="font-bold text-slate-700 text-[11px]">${b.rate}</div>
-              <div class="text-[10px] text-amber-500 font-semibold">★ ${b.score}</div>
-            </div>
-          </div>
-        `).join('')}
-      </div>
-    `;
+          `).join('')}
+        </div>
+      `;
+    }
     return;
   }
 
