@@ -2,19 +2,21 @@ name: Keep Servora Render API awake
 
 on:
   schedule:
-    # Runs every 14 minutes, staggered away from the top of the hour.
-    - cron: "3,17,31,45,59 * * * *"
+    # Runs every 12 minutes (0, 12, 24, 36, 48) to guarantee triggering before Render's 15-minute idle sleep, even with runner queue delays.
+    - cron: "*/12 * * * *"
   workflow_dispatch:
 
 jobs:
   ping-render-health:
     runs-on: ubuntu-latest
-    timeout-minutes: 2
+    timeout-minutes: 3
     steps:
       - name: Ping Servora API health endpoint
-        run: >-
-          curl --fail --silent --show-error
-          --max-time 30
-          --retry 3
-          --retry-delay 5
-          https://servora-3v6b.onrender.com/health
+        run: |
+          echo "Pinging Servora API at $(date -u)"
+          curl --fail --silent --show-error \
+            --max-time 45 \
+            --retry 3 \
+            --retry-delay 5 \
+            https://servora-3v6b.onrender.com/health
+          echo "✓ Servora Render backend is awake and responding!"

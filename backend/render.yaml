@@ -24,3 +24,7 @@ services:
         value: Servora
       - key: FRONTEND_BASE_URL
         value: https://servora-frontend-xi.vercel.app
+      - key: KEEP_ALIVE_INTERVAL_SECONDS
+        value: "840" # 14 minutes (Render idle sleep threshold is 15 minutes)
+      - key: PING_URL
+        value: https://servora-3v6b.onrender.com
