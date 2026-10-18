@@ -129,6 +129,11 @@ class ServiceRequestDetail(BaseModel):
     technician: Optional[TechnicianBase] = None
     timeline: List[TimelineStep] = Field(default_factory=list)
     verification_otp: str
+    branch_id: Optional[str] = None
+    company_id: Optional[str] = None
+    pincode: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
 
 class ServiceBookingCreate(BaseModel):
     appliance_id: str
@@ -138,6 +143,22 @@ class ServiceBookingCreate(BaseModel):
     preferred_date: str
     preferred_slot: str
     address: Optional[str] = None
+    pincode: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+
+class UserProfileUpdate(BaseModel):
+    name: str = Field(min_length=2, max_length=128)
+    phone: str = Field(min_length=7, max_length=32)
+    email: Optional[str] = None
+
+class FranchiseAssignPayload(BaseModel):
+    request_id: str
+    technician_id: str
+
+class TechnicianActionPayload(BaseModel):
+    action: str # "accept", "start_visit", "complete"
+    verification_otp: Optional[str] = None
 
 class CustomerAddressUpdate(BaseModel):
     house_flat: str = Field(min_length=1, max_length=128)

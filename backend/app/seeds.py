@@ -2,7 +2,7 @@ import json
 from sqlalchemy import inspect, text
 from sqlalchemy.orm import Session
 from app.db.session import engine, Base, SessionLocal
-from app.db.models import UserModel, TechnicianModel, ApplianceModel, ServiceRequestModel
+from app.db.models import UserModel, TechnicianModel, ApplianceModel, ServiceRequestModel, CompanyBranchModel, BranchTechnicianModel
 
 def seed_database(db: Session):
     # Ensure tables exist in MySQL or SQLite
@@ -19,6 +19,23 @@ def seed_database(db: Session):
     if "company_id" not in appliance_columns:
         with engine.begin() as connection:
             connection.execute(text("ALTER TABLE appliances ADD COLUMN company_id VARCHAR(64) NULL"))
+
+    req_columns = {column["name"] for column in inspect(engine).get_columns("service_requests")}
+    if "pincode" not in req_columns:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE service_requests ADD COLUMN pincode VARCHAR(10) NULL"))
+    if "branch_id" not in req_columns:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE service_requests ADD COLUMN branch_id VARCHAR(64) NULL"))
+    if "company_id" not in req_columns:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE service_requests ADD COLUMN company_id VARCHAR(64) NULL"))
+    if "latitude" not in req_columns:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE service_requests ADD COLUMN latitude FLOAT NULL"))
+    if "longitude" not in req_columns:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE service_requests ADD COLUMN longitude FLOAT NULL"))
 
     # 1. Seed Users if not present
     if not db.query(UserModel).first():
@@ -101,12 +118,38 @@ def seed_database(db: Session):
         db.add_all(techs)
         db.commit()
 
+    # 2.5 Seed Branch & Technician assignment
+    if not db.query(CompanyBranchModel).first():
+        branch = CompanyBranchModel(
+            id="branch_1",
+            company_id="company_1",
+            branch_name="Noida Sector 63 Branch",
+            manager_name="Amit Sharma",
+            email="amit.noida@crompton-service.com",
+            mobile="+91 99887 76655",
+            address="A-44, Sector 63, Noida, Uttar Pradesh",
+            pincode="201310"
+        )
+        db.add(branch)
+        db.commit()
+
+    if not db.query(BranchTechnicianModel).first():
+        bt = BranchTechnicianModel(
+            technician_id="tech_1",
+            branch_id="branch_1",
+            address="Sector 18, Noida",
+            pincode="201310"
+        )
+        db.add(bt)
+        db.commit()
+
     # 3. Seed Appliances
     if not db.query(ApplianceModel).first():
         apps = [
             ApplianceModel(
                 id="app_1",
                 user_id="customer_1",
+                company_id="company_1",
                 brand="Crompton",
                 category="Air Conditioner",
                 model_no="GL-5292",
@@ -200,6 +243,11 @@ def seed_database(db: Session):
             appointment_date="21 Jun 2025",
             appointment_slot="4:00 PM - 6:00 PM",
             technician_id="tech_1",
+            branch_id="branch_1",
+            company_id="company_1",
+            pincode="201310",
+            latitude=28.4744,
+            longitude=77.5040,
             verification_otp="8492",
             timeline_json=json.dumps(timeline_data)
         )

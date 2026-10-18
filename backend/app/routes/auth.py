@@ -5,7 +5,7 @@ from uuid import uuid4
 from app.db.session import get_db
 from app.db.models import BranchOnboardingModel, CompanyOnboardingModel, TechnicianOnboardingModel, UserModel
 from app.security import create_user_session, get_authenticated_user, revoke_user_session
-from app.schemas import CustomerAddressUpdate, CustomerRegistration, LoginRequest
+from app.schemas import CustomerAddressUpdate, CustomerRegistration, LoginRequest, UserProfileUpdate
 import hashlib
 import hmac
 import os
@@ -164,6 +164,24 @@ def update_user_address(payload: CustomerAddressUpdate, request: Request, db: Se
         "status": "success",
         "message": "Service address updated successfully",
         "address": formatted_address,
+        "user": user_payload(user),
+    }
+
+@router.put("/profile")
+def update_user_profile(payload: UserProfileUpdate, request: Request, db: Session = Depends(get_db)):
+    user = get_authenticated_user(request, db)
+    if payload.email and payload.email.strip().lower() != user.email.lower():
+        existing = db.query(UserModel).filter(UserModel.email.ilike(payload.email.strip().lower())).first()
+        if existing and existing.id != user.id:
+            raise HTTPException(status_code=409, detail="An account with this email already exists")
+        user.email = payload.email.strip().lower()
+    user.name = payload.name.strip()
+    user.phone = payload.phone.strip()
+    db.commit()
+    db.refresh(user)
+    return {
+        "status": "success",
+        "message": "Profile updated successfully",
         "user": user_payload(user),
     }
 

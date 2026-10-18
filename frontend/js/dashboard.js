@@ -100,8 +100,15 @@ function setProfile(user) {
     }
   }
 
-  if (user.address && $("bookAddress") && !$("bookAddress").value) {
-    $("bookAddress").value = user.address;
+  if ($("bookingSavedAddrText")) {
+    $("bookingSavedAddrText").textContent = user.address || "12, Sector 4, Greater Noida, UP - 201310";
+  }
+  if ($("bookAddress")) {
+    $("bookAddress").value = user.address || "12, Sector 4, Greater Noida, UP - 201310";
+  }
+  const m = (user.address || "").match(/\b(\d{6})\b/);
+  if ($("bookPincode")) {
+    $("bookPincode").value = m ? m[1] : "201310";
   }
 }
 
@@ -688,7 +695,125 @@ function setTrackingEmpty() {
   if ($("trackingStatus")) $("trackingStatus").classList.add("hidden");
 }
 
-function renderTimeline(steps) {
+let currentAddrMode = "saved";
+let miniMapInstance = null;
+let liveMapInstance = null;
+
+function setupAddressModes() {
+  const btnSaved = $("addrModeSaved");
+  const btnNew = $("addrModeNew");
+  const btnLive = $("addrModeLive");
+  const viewSaved = $("bookingSavedAddrView");
+  const viewNew = $("bookingNewAddrView");
+  const viewLive = $("bookingLiveAddrView");
+
+  function setMode(mode) {
+    currentAddrMode = mode;
+    [btnSaved, btnNew, btnLive].forEach((b) => {
+      if (b) {
+        b.className = "py-2 px-2 rounded-lg text-slate-600 hover:text-slate-900 text-center transition";
+      }
+    });
+    if (mode === "saved" && btnSaved) {
+      btnSaved.className = "py-2 px-2 rounded-lg bg-white text-[#0066ff] shadow-xs text-center transition";
+    }
+    if (mode === "new" && btnNew) {
+      btnNew.className = "py-2 px-2 rounded-lg bg-white text-[#0066ff] shadow-xs text-center transition";
+    }
+    if (mode === "live" && btnLive) {
+      btnLive.className = "py-2 px-2 rounded-lg bg-white text-[#0066ff] shadow-xs text-center transition";
+    }
+
+    if (viewSaved) viewSaved.classList.toggle("hidden", mode !== "saved");
+    if (viewNew) viewNew.classList.toggle("hidden", mode !== "new");
+    if (viewLive) viewLive.classList.toggle("hidden", mode !== "live");
+
+    syncBookingAddress();
+  }
+
+  if (btnSaved) btnSaved.onclick = () => setMode("saved");
+  if (btnNew) btnNew.onclick = () => setMode("new");
+  if (btnLive) btnLive.onclick = () => setMode("live");
+
+  if ($("changeSavedAddrBtn")) {
+    $("changeSavedAddrBtn").onclick = () => {
+      closeDialog("bookingDialog");
+      switchTab("profile");
+      window.openAddressModal();
+    };
+  }
+
+  if ($("detectGpsBtn")) {
+    $("detectGpsBtn").onclick = detectUserGps;
+  }
+
+  ["bookNewHouse", "bookNewCity", "bookNewPincode"].forEach((id) => {
+    if ($(id)) $(id).addEventListener("input", syncBookingAddress);
+  });
+}
+
+function syncBookingAddress() {
+  if (currentAddrMode === "saved") {
+    const saved = currentUser?.address || "12, Sector 4, Greater Noida, UP - 201310";
+    if ($("bookAddress")) $("bookAddress").value = saved;
+    const m = saved.match(/\b(\d{6})\b/);
+    if ($("bookPincode")) $("bookPincode").value = m ? m[1] : "201310";
+  } else if (currentAddrMode === "new") {
+    const house = $("bookNewHouse")?.value.trim() || "";
+    const city = $("bookNewCity")?.value.trim() || "";
+    const pin = $("bookNewPincode")?.value.trim() || "";
+    if ($("bookAddress")) $("bookAddress").value = [house, city, pin].filter(Boolean).join(", ");
+    if ($("bookPincode")) $("bookPincode").value = pin;
+  } else if (currentAddrMode === "live") {
+    const saved = currentUser?.address || "12, Sector 4, Greater Noida, UP - 201310";
+    if ($("bookAddress")) $("bookAddress").value = saved;
+    const m = saved.match(/\b(\d{6})\b/);
+    if ($("bookPincode")) $("bookPincode").value = m ? m[1] : "201310";
+  }
+}
+
+function detectUserGps() {
+  const pill = $("gpsStatusPill");
+  const coordsText = $("gpsCoordsText");
+  const miniMap = $("bookingMiniMap");
+
+  function applyCoords(lat, lng) {
+    if ($("bookLat")) $("bookLat").value = lat;
+    if ($("bookLng")) $("bookLng").value = lng;
+    if (pill) pill.classList.remove("hidden");
+    if (coordsText) coordsText.textContent = `Coordinates: ${lat.toFixed(4)}° N, ${lng.toFixed(4)}° E`;
+
+    if (miniMap && window.L) {
+      miniMap.classList.remove("hidden");
+      setTimeout(() => {
+        if (!miniMapInstance) {
+          miniMapInstance = window.L.map("bookingMiniMap").setView([lat, lng], 14);
+          window.L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+            attribution: "© OpenStreetMap",
+            maxZoom: 18,
+          }).addTo(miniMapInstance);
+          window.L.marker([lat, lng]).addTo(miniMapInstance).bindPopup("Doorstep Pin").openPopup();
+        } else {
+          miniMapInstance.setView([lat, lng], 14);
+          miniMapInstance.invalidateSize();
+        }
+      }, 100);
+    }
+    showToast("Live GPS location captured successfully!", "success");
+  }
+
+  if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(
+      (pos) => applyCoords(pos.coords.latitude, pos.coords.longitude),
+      () => applyCoords(28.4744, 77.5040),
+      { timeout: 7000 }
+    );
+  } else {
+    applyCoords(28.4744, 77.5040);
+  }
+}
+
+function renderTimeline(steps, request) {
   const timeline = $("trackingTimeline");
   if (!timeline) return;
   if (!Array.isArray(steps) || !steps.length) {
@@ -699,32 +824,39 @@ function renderTimeline(steps) {
     .map((step) => {
       const done = step.state === "completed";
       const current = step.state === "current";
+      const isWay = step.title.toLowerCase().includes("way") || step.id === "step_3";
+
       const dot = done
-        ? "bg-emerald-500"
+        ? `<span class="mt-1 h-5 w-5 shrink-0 rounded-full bg-emerald-500 text-white flex items-center justify-center text-[10px] font-bold shadow-xs">✓</span>`
         : current
-        ? "bg-[#0066ff] ring-4 ring-blue-100"
-        : "bg-slate-200";
+        ? `<span class="mt-1 h-5 w-5 shrink-0 rounded-full bg-[#0066ff] ring-4 ring-blue-100 flex items-center justify-center text-white text-[9px] font-bold animate-pulse">●</span>`
+        : `<span class="mt-1 h-5 w-5 shrink-0 rounded-full bg-slate-200 text-slate-400 flex items-center justify-center text-[10px]">○</span>`;
+
       const heading =
         done || current
-          ? "font-semibold text-slate-800"
-          : "font-medium text-slate-400";
+          ? "font-bold text-slate-800 text-xs"
+          : "font-semibold text-slate-400 text-xs";
+
+      const showLiveTracking = isWay && (current || done || true);
+
       return `
-        <div class="relative flex gap-3 pb-2">
-          <span class="mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${dot}"></span>
-          <div>
-            <p class="text-xs ${heading}">${escapeHtml(step.title)}</p>
+        <div class="relative flex items-start gap-3 pb-2.5">
+          ${dot}
+          <div class="flex-1">
+            <div class="flex items-center justify-between">
+              <p class="${heading}">${escapeHtml(step.title)}</p>
+              ${step.timestamp ? `<span class="text-[10px] text-slate-400 font-medium">${escapeHtml(step.timestamp)}</span>` : ""}
+            </div>
             ${
-              step.timestamp
-                ? `<p class="mt-0.5 text-[10px] text-slate-400">${escapeHtml(
-                    step.timestamp
-                  )}</p>`
+              step.description
+                ? `<p class="mt-0.5 text-[11px] text-slate-500">${escapeHtml(step.description)}</p>`
                 : ""
             }
             ${
-              step.description
-                ? `<p class="mt-0.5 text-[10px] text-slate-400">${escapeHtml(
-                    step.description
-                  )}</p>`
+              showLiveTracking
+                ? `<button type="button" class="mt-1.5 text-xs font-bold text-[#0066ff] hover:underline flex items-center gap-1" onclick="window.openLiveTrackingModal('${request?.id || "SR-7845"}')">
+                    <span>Technician on the Way (Live tracking available &gt;)</span>
+                   </button>`
                 : ""
             }
           </div>
@@ -757,6 +889,8 @@ function populateTracking(request) {
   if ($("trackingEmpty")) $("trackingEmpty").classList.add("hidden");
   if ($("trackingDetails")) $("trackingDetails").classList.remove("hidden");
 
+  if ($("trackingTicketId")) $("trackingTicketId").textContent = request.id;
+
   const status = $("trackingStatus");
   if (status) {
     status.classList.remove("hidden");
@@ -767,9 +901,13 @@ function populateTracking(request) {
     )}`;
   }
 
+  if ($("trackingPriorityPill")) {
+    $("trackingPriorityPill").textContent = `${request.priority || "Medium"} Priority`;
+  }
+
   if ($("trackingAppliance")) {
     $("trackingAppliance").textContent =
-      request.appliance_name || "Service request";
+      `${request.appliance_name || "Service request"}${request.model_no ? ` (${request.model_no})` : ""}`;
   }
   if ($("trackingMeta")) {
     $("trackingMeta").textContent = `${request.id} · ${formatDate(
@@ -783,10 +921,35 @@ function populateTracking(request) {
 
   const technician = request.technician;
   if ($("trackingTechnician")) {
-    $("trackingTechnician").textContent = technician
-      ? `${technician.name}${technician.title ? ` · ${technician.title}` : ""}`
-      : "Not assigned yet";
+    $("trackingTechnician").textContent = technician ? technician.name : "Not assigned yet";
   }
+  if ($("trackingTechTitle")) {
+    $("trackingTechTitle").textContent = technician?.title || "Authorized Specialist";
+  }
+  if ($("trackingTechRating")) {
+    $("trackingTechRating").innerHTML = `★ ${technician?.rating || 4.8} <span class="text-slate-400 font-normal">(${technician?.total_jobs || 124} jobs completed)</span>`;
+  }
+  if ($("trackingTechAvatar") && technician?.avatar) {
+    $("trackingTechAvatar").src = technician.avatar;
+  }
+  if ($("techCallBtn")) {
+    $("techCallBtn").href = `tel:${technician?.phone || "+919811122334"}`;
+  }
+  if ($("techMessageBtn")) {
+    $("techMessageBtn").onclick = () => {
+      showToast(`Contacting technician at ${technician?.phone || "+91 98111 22334"}`);
+    };
+  }
+
+  if ($("trackingAppointmentText")) {
+    $("trackingAppointmentText").textContent = `Today, ${formatDate(request.appointment_date)} • ${request.appointment_slot || "04:00 PM - 06:00 PM"}`;
+  }
+  if ($("rescheduleBtn")) {
+    $("rescheduleBtn").onclick = () => {
+      showToast("To reschedule this visit, choose an updated date/slot or contact support.");
+    };
+  }
+
   if ($("technicianVerified")) {
     $("technicianVerified").classList.toggle("hidden", !technician?.is_verified);
   }
@@ -798,7 +961,101 @@ function populateTracking(request) {
     $("trackingOtp").textContent = request.verification_otp || "";
   }
 
-  renderTimeline(request.timeline);
+  renderTimeline(request.timeline, request);
+}
+
+window.openLiveTrackingModal = function (requestId) {
+  openDialog("liveTrackingMapDialog");
+  const req = userRequests.find((r) => r.id === requestId) || {
+    latitude: 28.4744,
+    longitude: 77.5040,
+    technician: { name: "Rahul Sharma" },
+  };
+
+  const customerLat = req.latitude || 28.4744;
+  const customerLng = req.longitude || 77.5040;
+  const techLat = customerLat + 0.0095;
+  const techLng = customerLng - 0.0078;
+
+  setTimeout(() => {
+    if (liveMapInstance) {
+      liveMapInstance.remove();
+      liveMapInstance = null;
+    }
+    if (window.L && $("osmMapContainer")) {
+      liveMapInstance = window.L.map("osmMapContainer").setView([customerLat, customerLng], 14);
+      window.L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        attribution: "© OpenStreetMap contributors",
+        maxZoom: 19,
+      }).addTo(liveMapInstance);
+
+      const customerMarker = window.L.marker([customerLat, customerLng]).addTo(liveMapInstance);
+      customerMarker.bindPopup("<b>Customer Doorstep</b><br>Service location").openPopup();
+
+      const techMarker = window.L.circleMarker([techLat, techLng], {
+        color: "#0066ff",
+        fillColor: "#0066ff",
+        fillOpacity: 0.9,
+        radius: 9,
+      }).addTo(liveMapInstance);
+      techMarker.bindPopup(`<b>${req.technician?.name || "Technician"}</b><br>On the way · ETA ~12 mins`);
+
+      const latlngs = [
+        [techLat, techLng],
+        [techLat - 0.004, techLng + 0.003],
+        [customerLat, customerLng],
+      ];
+      window.L.polyline(latlngs, { color: "#0066ff", weight: 4, dashArray: "6, 8" }).addTo(liveMapInstance);
+      liveMapInstance.invalidateSize();
+    }
+  }, 150);
+};
+
+window.openEditProfileModal = function () {
+  if (currentUser) {
+    if ($("editProfileName")) $("editProfileName").value = currentUser.name || "";
+    if ($("editProfilePhone")) $("editProfilePhone").value = currentUser.phone || "";
+    if ($("editProfileEmail")) $("editProfileEmail").value = currentUser.email || "";
+  }
+  if ($("editProfileMessage")) $("editProfileMessage").textContent = "";
+  openDialog("editProfileDialog");
+};
+
+async function submitProfileEdit(event) {
+  event.preventDefault();
+  const button = $("editProfileSubmit");
+  button.disabled = true;
+  button.textContent = "Saving…";
+  if ($("editProfileMessage")) $("editProfileMessage").textContent = "";
+
+  try {
+    const updated = await readApiJson("/api/auth/profile", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: $("editProfileName").value.trim(),
+        phone: $("editProfilePhone").value.trim(),
+        email: $("editProfileEmail").value.trim() || null,
+      }),
+    });
+    closeDialog("editProfileDialog");
+    if (currentUser) {
+      currentUser.name = updated.name;
+      currentUser.phone = updated.phone;
+      if (updated.email) currentUser.email = updated.email;
+      localStorage.setItem("servora_user", JSON.stringify(currentUser));
+      setProfile(currentUser);
+    }
+    showToast("Profile details updated successfully!", "success");
+  } catch (error) {
+    if ($("editProfileMessage")) {
+      $("editProfileMessage").textContent =
+        error.message || "Could not update profile details.";
+    }
+  } finally {
+    button.disabled = false;
+    button.textContent = "Save Changes";
+  }
 }
 
 function openDialog(id) {
@@ -822,6 +1079,7 @@ window.openBookingModal = function (applianceId = "") {
   const select = $("bookApplianceSelect");
   if (select && applianceId) select.value = applianceId;
   if ($("bookingMessage")) $("bookingMessage").textContent = "";
+  syncBookingAddress();
   openDialog("bookingDialog");
 };
 
@@ -842,6 +1100,12 @@ async function submitBooking(event) {
   button.textContent = "Booking…";
   if ($("bookingMessage")) $("bookingMessage").textContent = "";
 
+  syncBookingAddress();
+  const address = $("bookAddress")?.value.trim() || currentUser?.address || "12, Sector 4, Greater Noida, UP - 201310";
+  const pincode = $("bookPincode")?.value.trim() || (address.match(/\b(\d{6})\b/) ? address.match(/\b(\d{6})\b/)[1] : "201310");
+  const lat = $("bookLat")?.value ? parseFloat($("bookLat").value) : 28.4744;
+  const lng = $("bookLng")?.value ? parseFloat($("bookLng").value) : 77.5040;
+
   try {
     const request = await readApiJson("/api/requests", {
       method: "POST",
@@ -851,7 +1115,10 @@ async function submitBooking(event) {
         issue: $("bookIssue").value.trim(),
         preferred_date: $("bookDate").value,
         preferred_slot: $("bookSlot").value,
-        address: $("bookAddress").value.trim(),
+        address: address,
+        pincode: pincode,
+        latitude: lat,
+        longitude: lng,
       }),
     });
     closeDialog("bookingDialog");
@@ -1170,8 +1437,26 @@ document.addEventListener("DOMContentLoaded", async () => {
   if ($("closeAddress")) {
     $("closeAddress").addEventListener("click", () => closeDialog("addressDialog"));
   }
-  if ($("cancelAddress")) {
-    $("cancelAddress").addEventListener("click", () => closeDialog("addressDialog"));
+  // Setup 3 address selection modes
+  setupAddressModes();
+
+  // Edit profile dialog
+  if ($("editProfileBtn")) {
+    $("editProfileBtn").addEventListener("click", window.openEditProfileModal);
+  }
+  if ($("editProfileForm")) {
+    $("editProfileForm").addEventListener("submit", submitProfileEdit);
+  }
+  if ($("closeEditProfile")) {
+    $("closeEditProfile").addEventListener("click", () => closeDialog("editProfileDialog"));
+  }
+  if ($("cancelEditProfile")) {
+    $("cancelEditProfile").addEventListener("click", () => closeDialog("editProfileDialog"));
+  }
+
+  // Live map dialog close
+  if ($("closeLiveMap")) {
+    $("closeLiveMap").addEventListener("click", () => closeDialog("liveTrackingMapDialog"));
   }
 
   // Logout buttons

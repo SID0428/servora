@@ -125,5 +125,10 @@ class ServiceRequestModel(Base):
     appointment_date = Column(String(64), nullable=False)
     appointment_slot = Column(String(64), nullable=False)
     technician_id = Column(String(64), ForeignKey("technicians.id"), nullable=True)
+    branch_id = Column(String(64), nullable=True, index=True)
+    company_id = Column(String(64), nullable=True, index=True)
+    pincode = Column(String(10), nullable=True, index=True)
+    latitude = Column(Float, nullable=True)
+    longitude = Column(Float, nullable=True)
     verification_otp = Column(String(16), nullable=False, default="8492")
     timeline_json = Column(Text, nullable=False) # JSON string serialized timeline steps
