@@ -1110,6 +1110,27 @@ function renderRequests() {
           </div>
         ` : ''}
 
+        ${item.is_reopened ? `
+          <div class="p-3 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-950 space-y-1.5">
+            <div class="flex items-center gap-2 font-bold">
+              <span class="text-sm">⚠️</span>
+              <span class="text-rose-900">Warranty Revisit · Repeat Issue</span>
+              <span class="ml-auto text-[10px] px-2 py-0.5 rounded-full bg-rose-200 text-rose-800">Priority Revisit</span>
+            </div>
+            <p class="text-rose-800 font-medium">${safe(item.reopened_reason || 'Customer reported issue recurred.')}</p>
+            ${item.previous_job_card ? `
+              <div class="p-2.5 bg-white rounded-lg border border-rose-100 space-y-1 text-[11px] text-slate-700">
+                <div class="font-bold text-slate-900">Previous Diagnosis (by ${safe(item.previous_technician_name || 'Previous Tech')}):</div>
+                <div class="text-slate-600">${safe(item.previous_job_card.work_summary)}</div>
+                ${Array.isArray(item.previous_job_card.parts_used) && item.previous_job_card.parts_used.length ? `
+                  <div class="text-slate-500 font-medium text-[10px]">Parts Replaced: ${item.previous_job_card.parts_used.map(p => `${safe(p.part_name)} (×${p.quantity})`).join(', ')}</div>
+                ` : ''}
+                <div class="text-[10px] text-emerald-700 font-bold">Previous Settlement: ₹${Number(item.previous_job_card.total_amount).toFixed(2)} (PAID)</div>
+              </div>
+            ` : ''}
+          </div>
+        ` : ''}
+
         <div class="rounded-xl bg-slate-50 p-3.5 border border-slate-100 text-xs text-slate-600 space-y-1.5">
           <div class="flex items-center justify-between">
             <span class="font-semibold text-slate-800">👤 Customer: ${safe(item.customer_name)}</span>
@@ -1127,15 +1148,28 @@ function renderRequests() {
 
         <div class="flex flex-wrap items-center gap-2 pt-1 border-t border-slate-100">
           ${item.status_badge !== 'Completed' ? `
-            <button type="button" class="px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs shadow-sm transition flex items-center gap-1.5" onclick="techAction('${safe(item.id)}', 'start_visit')">
-              📍 Start Visit
-            </button>
-            <button type="button" class="px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs shadow-sm transition flex items-center gap-1.5" onclick="openOpsJobCardModal('${safe(item.id)}')">
-              📋 Digital Job Card
-            </button>
+            ${item.status === 'Technician on the Way' ? `
+              <button type="button" class="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs shadow-sm transition flex items-center gap-1.5" onclick="techStartServiceWithOtp('${safe(item.id)}')">
+                ▶ Start Service (OTP)
+              </button>
+            ` : item.status === 'Service In Progress' ? `
+              <button type="button" class="px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs shadow-sm transition flex items-center gap-1.5" onclick="openOpsJobCardModal('${safe(item.id)}')">
+                📋 Job Card & Complete
+              </button>
+            ` : `
+              <button type="button" class="px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs shadow-sm transition flex items-center gap-1.5" onclick="techAction('${safe(item.id)}', 'start_visit')">
+                📍 Start Visit
+              </button>
+              <button type="button" class="px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs shadow-sm transition flex items-center gap-1.5" onclick="openOpsJobCardModal('${safe(item.id)}')">
+                📋 Digital Job Card
+              </button>
+            `}
           ` : `
             <button type="button" class="px-3.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-semibold text-xs transition flex items-center gap-1.5" onclick="openOpsJobCardModal('${safe(item.id)}')">
               📄 View Job Card
+            </button>
+            <button type="button" class="px-3.5 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 font-semibold text-xs transition flex items-center gap-1.5" onclick="openOpsReceiptModal('${safe(item.id)}')">
+              🧾 Receipt
             </button>
           `}
           <button type="button" class="ml-auto text-xs font-semibold text-blue-600 hover:underline" onclick="openTechRouteMap('${safe(item.id)}')">
@@ -1185,7 +1219,7 @@ function renderRequests() {
       }
 
       const priorityBadge = `<span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${priorityClass(item.priority || 'Medium')}">${safe(item.priority || 'Medium')}</span>`;
-      const isDisputed = item.status === "Reopened / Under Review" || item.status_badge === "Disputed";
+      const isDisputed = item.status === "Reopened / Under Review" || item.status_badge === "Disputed" || Boolean(item.is_reopened);
       const statusPill = isDisputed
         ? `<span class="status-pill disputed" title="${safe(item.reopened_reason || 'Reopened by customer')}">⚠️ Reopened</span>`
         : `<span class="status-pill ${statusClass(item.status_badge || item.status)}">${safe(item.status_badge || item.status || "Pending")}</span>`;
@@ -1193,13 +1227,18 @@ function renderRequests() {
       const isDispatched = item.status === "Technician on the Way" || (isAssigned && item.status !== "Completed");
       const trackBtn = isDispatched ? `<button class="table-action px-2 py-1 rounded-lg bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 font-semibold text-xs ml-1" onclick="openTechRouteMap('${safe(item.id)}')">Track 📍</button>` : '';
 
-      const assignBtn = isAssigned
-        ? `<button class="table-action px-2.5 py-1 rounded-lg bg-amber-50 text-amber-800 hover:bg-amber-100 border border-amber-300 font-semibold text-xs flex items-center gap-1" onclick="selectRequestForAssignment('${safe(item.id)}')"><span>↺</span> Reassign</button>`
-        : `<button class="table-action px-3 py-1 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs shadow-sm flex items-center gap-1" onclick="selectRequestForAssignment('${safe(item.id)}')"><span>⚡</span> Assign →</button>`;
+      const assignBtn = item.is_reopened
+        ? `<button class="table-action px-2.5 py-1 rounded-lg bg-rose-50 text-rose-800 hover:bg-rose-100 border border-rose-300 font-semibold text-xs flex items-center gap-1" onclick="openFranchiseReassignModal('${safe(item.id)}')"><span>↺</span> Reassign</button>`
+        : (isAssigned
+          ? `<button class="table-action px-2.5 py-1 rounded-lg bg-amber-50 text-amber-800 hover:bg-amber-100 border border-amber-300 font-semibold text-xs flex items-center gap-1" onclick="selectRequestForAssignment('${safe(item.id)}')"><span>↺</span> Reassign</button>`
+          : `<button class="table-action px-3 py-1 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs shadow-sm flex items-center gap-1" onclick="selectRequestForAssignment('${safe(item.id)}')"><span>⚡</span> Assign →</button>`);
 
       const jcBtn = `<button class="table-action px-2 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs ml-1" onclick="openOpsJobCardModal('${safe(item.id)}')">Job Card 📄</button>`;
+      const receiptBtn = (item.status_badge === "Completed" || item.is_reopened || item.previous_job_card)
+        ? `<button class="table-action px-2 py-1 rounded-lg bg-emerald-50 text-emerald-800 hover:bg-emerald-100 border border-emerald-200 font-semibold text-xs ml-1" onclick="openOpsReceiptModal('${safe(item.id)}')">Receipt 🧾</button>`
+        : '';
 
-      const actionCell = `<div class="flex items-center gap-1">${assignBtn}${trackBtn}${jcBtn}</div>`;
+      const actionCell = `<div class="flex items-center gap-1">${assignBtn}${trackBtn}${jcBtn}${receiptBtn}</div>`;
       const cells = [safe(item.id), customer, safe(item.appliance_name), safe(item.issue), techCell, priorityBadge, statusPill, actionCell];
       return `<tr>${cells.map((cell) => `<td>${cell}</td>`).join("")}</tr>`;
     }
@@ -1376,15 +1415,27 @@ function renderInsights() {
 }
 
 // Global actions for Technician and Franchise operations
-window.techAction = async function(requestId, action) {
+window.techStartServiceWithOtp = async function(requestId) {
+  const otp = prompt("Customer Doorstep Verification:\nPlease enter the 4-digit Service Start OTP provided by the customer to start the repair:");
+  if (!otp) return;
+  if (otp.trim().length < 4) {
+    showToast("Please enter a valid 4-digit OTP provided by customer.", "error");
+    return;
+  }
+  await window.techAction(requestId, "start_service", otp.trim());
+};
+
+window.techAction = async function(requestId, action, otp = null) {
   try {
-    const label = action === "start_visit" ? "Starting visit" : action === "diagnose" ? "Recording diagnosis" : "Completing job";
+    const label = action === "start_visit" ? "Starting visit" : action === "start_service" ? "Verifying doorstep Start OTP" : action === "diagnose" ? "Recording diagnosis" : "Completing job";
     showToast(`${label}…`);
+    const payload = { action };
+    if (otp) payload.verification_otp = otp;
     const res = await fetch(`${API_BASE_URL}/api/requests/${requestId}/action`, {
       method: "POST",
       credentials: "include",
       headers: jsonHeaders(),
-      body: JSON.stringify({ action })
+      body: JSON.stringify(payload)
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
@@ -1403,10 +1454,206 @@ window.techAction = async function(requestId, action) {
       window.openTechRouteMap(requestId);
       return;
     }
+    if (action === "start_service") {
+      showToast("Doorstep OTP verified! Service is now in progress.", "success");
+      return;
+    }
 
     showToast(`Job updated: ${data.status_badge || data.status || "Updated"}`);
   } catch (err) {
     showToast(extractErrorMessage(err.message, "Action failed"), "error");
+  }
+};
+
+window.openOpsReceiptModal = async function(requestId, showPrevious = false) {
+  const req = requests.find(r => r.id === requestId);
+  if (!req) return;
+  const dialog = $("opsReceiptDialog");
+  if (!dialog) return;
+
+  let jc = null;
+  if (showPrevious && req.previous_job_card) {
+    jc = req.previous_job_card;
+  } else {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/requests/${requestId}/job-card`, { headers: jsonHeaders() });
+      if (res.ok) jc = await res.json();
+    } catch (e) {}
+    if (!jc && req.previous_job_card) {
+      jc = req.previous_job_card;
+    }
+  }
+
+  const invoiceNo = `REC-${req.id}${showPrevious ? '-PREV' : ''}`;
+  if ($("opsReceiptInvoiceNo")) $("opsReceiptInvoiceNo").textContent = invoiceNo;
+  if ($("opsReceiptDate")) $("opsReceiptDate").textContent = (jc && jc.completed_at) || req.appointment_date || new Date().toLocaleDateString('en-IN');
+  if ($("opsReceiptPaidBadge")) {
+    const isPaid = req.payment_status === "Paid" || jc;
+    $("opsReceiptPaidBadge").textContent = isPaid ? "✓ PAID IN FULL" : "PAYMENT PENDING";
+    $("opsReceiptPaidBadge").className = `mt-1 inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
+      isPaid ? "bg-emerald-100 text-emerald-800 border-emerald-200" : "bg-amber-100 text-amber-800 border-amber-200"
+    }`;
+  }
+
+  if ($("opsReceiptCustomerName")) $("opsReceiptCustomerName").textContent = req.customer_name || "Customer";
+  if ($("opsReceiptCustomerPhone")) $("opsReceiptCustomerPhone").textContent = req.customer_phone || "";
+  if ($("opsReceiptCustomerAddress")) $("opsReceiptCustomerAddress").textContent = req.customer_address || "Customer doorstep location";
+
+  const techName = showPrevious
+    ? (req.previous_technician_name || "Original Technician")
+    : (req.technician?.name || req.previous_technician_name || "Authorized Field Technician");
+  if ($("opsReceiptBranchName")) $("opsReceiptBranchName").textContent = "Servora Authorized Franchise Partner";
+  if ($("opsReceiptTechName")) $("opsReceiptTechName").textContent = `Technician: ${techName}`;
+  if ($("opsReceiptApplianceDetails")) $("opsReceiptApplianceDetails").textContent = `${req.brand || ''} ${req.appliance_name || 'Appliance'} (${req.model_no || 'Standard'})`;
+  if ($("opsReceiptIssueDescription")) $("opsReceiptIssueDescription").textContent = `Service: ${req.issue || 'Repair inspection'}`;
+
+  const parts = (jc && Array.isArray(jc.parts_used)) ? jc.parts_used : [];
+  const partsCost = jc ? Number(jc.parts_cost || 0) : 0;
+  const laborCost = jc ? Number(jc.labor_cost || 350) : 350;
+  const taxAmount = jc ? Number(jc.tax_amount || (partsCost + laborCost) * 0.18) : ((partsCost + laborCost) * 0.18);
+  const totalAmount = jc ? Number(jc.total_amount || (partsCost + laborCost + taxAmount)) : (partsCost + laborCost + taxAmount);
+
+  if ($("opsReceiptItemsBody")) {
+    let rowsHtml = "";
+    if (parts.length > 0) {
+      parts.forEach((p, idx) => {
+        const pQty = p.quantity || 1;
+        const pRate = Number(p.unit_price || 0);
+        const pTotal = Number(p.total_price || (pQty * pRate));
+        rowsHtml += `
+          <tr>
+            <td class="py-2.5 px-3 text-slate-400 font-mono">${idx + 1}</td>
+            <td class="py-2.5 px-3 font-medium text-slate-800">${safe(p.part_name)} <span class="text-[10px] text-slate-400 block font-normal">Genuine OEM Part</span></td>
+            <td class="py-2.5 px-3 text-center text-slate-600 font-semibold">${pQty}</td>
+            <td class="py-2.5 px-3 text-right text-slate-600">₹${pRate.toFixed(2)}</td>
+            <td class="py-2.5 px-3 text-right font-bold text-slate-800">₹${pTotal.toFixed(2)}</td>
+          </tr>
+        `;
+      });
+    } else {
+      rowsHtml += `
+        <tr>
+          <td class="py-2.5 px-3 text-slate-400 font-mono">1</td>
+          <td class="py-2.5 px-3 font-medium text-slate-800">Standard Technical Inspection & Doorstep Diagnostics</td>
+          <td class="py-2.5 px-3 text-center text-slate-600 font-semibold">1</td>
+          <td class="py-2.5 px-3 text-right text-slate-600">₹${laborCost.toFixed(2)}</td>
+          <td class="py-2.5 px-3 text-right font-bold text-slate-800">₹${laborCost.toFixed(2)}</td>
+        </tr>
+      `;
+    }
+    $("opsReceiptItemsBody").innerHTML = rowsHtml;
+  }
+
+  if ($("opsReceiptPartsSubtotal")) $("opsReceiptPartsSubtotal").textContent = `₹${partsCost.toFixed(2)}`;
+  if ($("opsReceiptLaborCost")) $("opsReceiptLaborCost").textContent = `₹${laborCost.toFixed(2)}`;
+  if ($("opsReceiptGstTax")) $("opsReceiptGstTax").textContent = `₹${taxAmount.toFixed(2)}`;
+  if ($("opsReceiptGrandTotal")) $("opsReceiptGrandTotal").textContent = `₹${totalAmount.toFixed(2)}`;
+
+  if ($("opsReceiptTechSigImg") && jc && jc.technician_signature) {
+    $("opsReceiptTechSigImg").src = jc.technician_signature;
+    $("opsReceiptTechSigImg").classList.remove("hidden");
+    if ($("opsReceiptTechSigText")) $("opsReceiptTechSigText").textContent = `Signed by ${techName}`;
+  } else {
+    if ($("opsReceiptTechSigImg")) $("opsReceiptTechSigImg").classList.add("hidden");
+    if ($("opsReceiptTechSigText")) $("opsReceiptTechSigText").textContent = `Verified via Doorstep OTP (${techName})`;
+  }
+
+  if ($("opsReceiptCustSigImg") && jc && jc.customer_signature) {
+    $("opsReceiptCustSigImg").src = jc.customer_signature;
+    $("opsReceiptCustSigImg").classList.remove("hidden");
+    if ($("opsReceiptCustSigText")) $("opsReceiptCustSigText").textContent = "Digitally signed by Customer";
+  } else {
+    if ($("opsReceiptCustSigImg")) $("opsReceiptCustSigImg").classList.add("hidden");
+    if ($("opsReceiptCustSigText")) $("opsReceiptCustSigText").textContent = "Settled & verified via Completion OTP";
+  }
+
+  dialog.showModal();
+};
+
+window.openFranchiseReassignModal = function(requestId) {
+  const req = requests.find(r => r.id === requestId);
+  if (!req) return;
+  const dialog = $("franchiseReassignDialog");
+  if (!dialog) return;
+
+  if ($("reassignReqId")) $("reassignReqId").textContent = req.id;
+  if ($("reassignReopenedAt")) $("reassignReopenedAt").textContent = req.reopened_at || "Recently";
+  if ($("reassignReasonText")) $("reassignReasonText").textContent = req.reopened_reason || "Customer reported recurring issue.";
+
+  const prevTech = req.previous_technician_name || "Original Technician";
+  if ($("reassignPrevTechName")) $("reassignPrevTechName").textContent = prevTech;
+  if ($("reassignPrevTotal")) {
+    $("reassignPrevTotal").textContent = req.previous_job_card ? `₹${Number(req.previous_job_card.total_amount).toFixed(2)} (PAID)` : "PAID IN FULL";
+  }
+  if ($("reassignPrevWorkSummary")) {
+    $("reassignPrevWorkSummary").textContent = req.previous_job_card?.work_summary || "Prior technical repair performed.";
+  }
+  if ($("reassignOriginalTechDesc")) {
+    $("reassignOriginalTechDesc").textContent = `Send ${prevTech} back for free revisit under guarantee.`;
+  }
+
+  if ($("reassignViewPrevReceiptBtn")) {
+    $("reassignViewPrevReceiptBtn").onclick = () => window.openOpsReceiptModal(req.id, true);
+  }
+
+  if ($("confirmAssignOriginalBtn")) {
+    $("confirmAssignOriginalBtn").onclick = () => window.executeReassign(req.id, req.previous_technician_id || req.technician_id, "same_technician");
+  }
+
+  const select = $("reassignDifferentTechSelect");
+  if (select) {
+    const options = technicians.filter(t => t.id !== req.previous_technician_id);
+    if (options.length > 0) {
+      select.innerHTML = options.map(t => `<option value="${safe(t.id)}">${safe(t.name)} (${safe(t.title || 'Specialist')})</option>`).join("");
+    } else {
+      select.innerHTML = technicians.map(t => `<option value="${safe(t.id)}">${safe(t.name)} (${safe(t.title || 'Technician')})</option>`).join("");
+    }
+  }
+
+  if ($("confirmAssignDifferentBtn")) {
+    $("confirmAssignDifferentBtn").onclick = () => {
+      const selectedId = $("reassignDifferentTechSelect")?.value;
+      if (!selectedId) {
+        showToast("Please select a technician to reassign.", "error");
+        return;
+      }
+      window.executeReassign(req.id, selectedId, "new_technician");
+    };
+  }
+
+  if ($("closeFranchiseReassign")) {
+    $("closeFranchiseReassign").onclick = () => dialog.close();
+  }
+
+  dialog.showModal();
+};
+
+window.executeReassign = async function(requestId, technicianId, mode) {
+  try {
+    showToast("Reassigning technician for revisit…");
+    const res = await fetch(`${API_BASE_URL}/api/requests/${requestId}/assign`, {
+      method: "POST",
+      credentials: "include",
+      headers: jsonHeaders(),
+      body: JSON.stringify({
+        technician_id: technicianId,
+        reassign_mode: mode,
+        priority: "High"
+      })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(extractErrorMessage(data, "Failed to reassign technician"));
+
+    const idx = requests.findIndex(r => r.id === requestId);
+    if (idx !== -1) requests[idx] = data;
+
+    $("franchiseReassignDialog")?.close();
+    showToast(`Reassigned to ${data.technician?.name || 'Technician'} successfully!`, "success");
+    setMetrics();
+    renderRequests();
+    renderInsights();
+  } catch (err) {
+    showToast(extractErrorMessage(err.message, "Reassignment failed"), "error");
   }
 };
 

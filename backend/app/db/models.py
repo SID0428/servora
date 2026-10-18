@@ -131,6 +131,13 @@ class ServiceRequestModel(Base):
     latitude = Column(Float, nullable=True)
     longitude = Column(Float, nullable=True)
     verification_otp = Column(String(16), nullable=False, default="8492")
+    start_otp = Column(String(16), nullable=True)
+    completion_otp = Column(String(16), nullable=True)
+    previous_technician_id = Column(String(64), nullable=True)
+    previous_technician_name = Column(String(128), nullable=True)
+    previous_job_card_json = Column(Text, nullable=True)
+    is_reopened = Column(Boolean, nullable=True, default=False)
+    payment_status = Column(String(32), nullable=True, default="Pending")
     timeline_json = Column(Text, nullable=False) # JSON string serialized timeline steps
     defect_photo = Column(Text, nullable=True)
     reopened_reason = Column(Text, nullable=True)

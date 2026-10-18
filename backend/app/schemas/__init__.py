@@ -108,6 +108,29 @@ class TimelineStep(BaseModel):
     description: Optional[str] = None
     state: str # completed, current, pending
 
+class JobCardPartItem(BaseModel):
+    part_name: str
+    quantity: int = 1
+    unit_price: float = 0.0
+    total_price: float = 0.0
+
+class JobCardResponse(BaseModel):
+    id: str
+    request_id: str
+    technician_id: str
+    customer_id: str
+    work_summary: str
+    parts_used: List[JobCardPartItem] = Field(default_factory=list)
+    labor_cost: float
+    parts_cost: float
+    tax_amount: float
+    total_amount: float
+    technician_signature: Optional[str] = None
+    customer_signature: Optional[str] = None
+    customer_status: str # pending_acceptance, accepted, disputed
+    customer_remarks: Optional[str] = None
+    completed_at: str
+
 class ServiceRequestDetail(BaseModel):
     id: str
     customer_id: str
@@ -129,6 +152,13 @@ class ServiceRequestDetail(BaseModel):
     technician: Optional[TechnicianBase] = None
     timeline: List[TimelineStep] = Field(default_factory=list)
     verification_otp: str
+    start_otp: Optional[str] = None
+    completion_otp: Optional[str] = None
+    previous_technician_id: Optional[str] = None
+    previous_technician_name: Optional[str] = None
+    previous_job_card: Optional[JobCardResponse] = None
+    is_reopened: Optional[bool] = False
+    payment_status: Optional[str] = "Pending"
     branch_id: Optional[str] = None
     company_id: Optional[str] = None
     pincode: Optional[str] = None
@@ -151,34 +181,12 @@ class ServiceBookingCreate(BaseModel):
     longitude: Optional[float] = None
     defect_photo: Optional[str] = None
 
-class JobCardPartItem(BaseModel):
-    part_name: str
-    quantity: int = 1
-    unit_price: float = 0.0
-    total_price: float = 0.0
-
 class JobCardCreatePayload(BaseModel):
     work_summary: str = Field(min_length=5, max_length=2000)
     parts_used: List[JobCardPartItem] = Field(default_factory=list)
     labor_cost: float = Field(default=0.0, ge=0.0)
     technician_signature: Optional[str] = None
-
-class JobCardResponse(BaseModel):
-    id: str
-    request_id: str
-    technician_id: str
-    customer_id: str
-    work_summary: str
-    parts_used: List[JobCardPartItem] = Field(default_factory=list)
-    labor_cost: float
-    parts_cost: float
-    tax_amount: float
-    total_amount: float
-    technician_signature: Optional[str] = None
-    customer_signature: Optional[str] = None
-    customer_status: str # pending_acceptance, accepted, disputed
-    customer_remarks: Optional[str] = None
-    completed_at: str
+    completion_otp: Optional[str] = None
 
 class JobCardCustomerActionPayload(BaseModel):
     action: str # "accept" or "dispute"
@@ -218,9 +226,11 @@ class FranchiseAssignPayload(BaseModel):
     technician_id: str
     request_id: Optional[str] = None
     priority: Optional[str] = None
+    reassign_mode: Optional[str] = None # "same_technician" or "new_technician"
+    reassign_notes: Optional[str] = None
 
 class TechnicianActionPayload(BaseModel):
-    action: str # "accept", "start_visit", "complete"
+    action: str # "accept", "start_visit", "start_service", "complete"
     verification_otp: Optional[str] = None
 
 class CustomerAddressUpdate(BaseModel):

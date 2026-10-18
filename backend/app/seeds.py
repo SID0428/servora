@@ -48,6 +48,27 @@ def seed_database(db: Session):
     if "reopened_at" not in req_columns:
         with engine.begin() as connection:
             connection.execute(text("ALTER TABLE service_requests ADD COLUMN reopened_at VARCHAR(64) NULL"))
+    if "start_otp" not in req_columns:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE service_requests ADD COLUMN start_otp VARCHAR(16) NULL"))
+    if "completion_otp" not in req_columns:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE service_requests ADD COLUMN completion_otp VARCHAR(16) NULL"))
+    if "previous_technician_id" not in req_columns:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE service_requests ADD COLUMN previous_technician_id VARCHAR(64) NULL"))
+    if "previous_technician_name" not in req_columns:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE service_requests ADD COLUMN previous_technician_name VARCHAR(128) NULL"))
+    if "previous_job_card_json" not in req_columns:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE service_requests ADD COLUMN previous_job_card_json TEXT NULL"))
+    if "is_reopened" not in req_columns:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE service_requests ADD COLUMN is_reopened BOOLEAN DEFAULT 0"))
+    if "payment_status" not in req_columns:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE service_requests ADD COLUMN payment_status VARCHAR(32) DEFAULT 'Pending'"))
 
     # 1. Seed Users if not present
     if not db.query(UserModel).first():

@@ -91,6 +91,37 @@ def format_request_detail(req: ServiceRequestModel, db: Session) -> ServiceReque
     timeline_raw = json.loads(req.timeline_json) if req.timeline_json else []
     timeline = [TimelineStep(**step) for step in timeline_raw]
 
+    previous_job_card = None
+    if getattr(req, "previous_job_card_json", None):
+        try:
+            pjc_data = json.loads(req.previous_job_card_json)
+            if isinstance(pjc_data, dict):
+                parts_raw = pjc_data.get("parts_used", [])
+                parts = [JobCardPartItem(**p) if isinstance(p, dict) else p for p in parts_raw]
+                previous_job_card = JobCardResponse(
+                    id=pjc_data.get("id", f"JC-{req.id.replace('SR-', '')}-PREV"),
+                    request_id=req.id,
+                    technician_id=pjc_data.get("technician_id", getattr(req, "previous_technician_id", "") or ""),
+                    customer_id=req.customer_id,
+                    work_summary=pjc_data.get("work_summary", "Previous service completion"),
+                    parts_used=parts,
+                    labor_cost=float(pjc_data.get("labor_cost", 0.0)),
+                    parts_cost=float(pjc_data.get("parts_cost", 0.0)),
+                    tax_amount=float(pjc_data.get("tax_amount", 0.0)),
+                    total_amount=float(pjc_data.get("total_amount", 0.0)),
+                    technician_signature=pjc_data.get("technician_signature"),
+                    customer_signature=pjc_data.get("customer_signature"),
+                    customer_status=pjc_data.get("customer_status", "accepted"),
+                    customer_remarks=pjc_data.get("customer_remarks"),
+                    completed_at=pjc_data.get("completed_at", "")
+                )
+        except Exception:
+            previous_job_card = None
+
+    start_otp_val = getattr(req, "start_otp", None) or req.verification_otp
+    completion_otp_val = getattr(req, "completion_otp", None)
+    payment_status_val = getattr(req, "payment_status", None) or ("Paid" if req.status == "Completed" else "Pending")
+
     return ServiceRequestDetail(
         id=req.id,
         customer_id=req.customer_id,
@@ -112,6 +143,13 @@ def format_request_detail(req: ServiceRequestModel, db: Session) -> ServiceReque
         technician=tech,
         timeline=timeline,
         verification_otp=req.verification_otp,
+        start_otp=start_otp_val,
+        completion_otp=completion_otp_val,
+        previous_technician_id=getattr(req, "previous_technician_id", None),
+        previous_technician_name=getattr(req, "previous_technician_name", None),
+        previous_job_card=previous_job_card,
+        is_reopened=bool(getattr(req, "is_reopened", False)),
+        payment_status=payment_status_val,
         branch_id=req.branch_id,
         company_id=req.company_id,
         pincode=req.pincode,
@@ -262,7 +300,10 @@ def create_request(payload: ServiceBookingCreate, request: Request, db: Session 
     req_num = random.randint(7850, 9999)
     new_id = f"SR-{req_num}"
     now_str = datetime.now().strftime("%d %b %Y, %I:%M %p")
-    otp_code = str(random.randint(1000, 9999))
+    start_otp_code = str(random.randint(1000, 9999))
+    completion_otp_code = str(random.randint(1000, 9999))
+    while completion_otp_code == start_otp_code:
+        completion_otp_code = str(random.randint(1000, 9999))
 
     initial_timeline = [
         {
@@ -327,7 +368,11 @@ def create_request(payload: ServiceBookingCreate, request: Request, db: Session 
         latitude=payload.latitude,
         longitude=payload.longitude,
         defect_photo=payload.defect_photo,
-        verification_otp=otp_code,
+        verification_otp=start_otp_code,
+        start_otp=start_otp_code,
+        completion_otp=completion_otp_code,
+        is_reopened=False,
+        payment_status="Pending",
         timeline_json=json.dumps(initial_timeline)
     )
 
@@ -375,15 +420,29 @@ def assign_technician(request_id: str, payload: FranchiseAssignPayload, request:
 
     now_str = datetime.now().strftime("%d %b %Y, %I:%M %p")
     
+    if getattr(req, "is_reopened", False):
+        if req.previous_technician_id and tech.id == req.previous_technician_id:
+            assignment_desc = f"Reassigned to original technician {tech.name} ({tech.title}) for revisit"
+        elif req.previous_technician_name:
+            assignment_desc = f"Reassigned to new technician {tech.name} ({tech.title}) (Previously serviced by {req.previous_technician_name})"
+        else:
+            assignment_desc = f"Reassigned to technician {tech.name} ({tech.title}) for revisit"
+    else:
+        assignment_desc = f"Assigned to {tech.name} ({tech.title})"
+
     timeline = json.loads(req.timeline_json) if req.timeline_json else []
     for step in timeline:
         if step.get("id") == "step_2":
             step["state"] = "completed"
             step["timestamp"] = now_str
-            step["description"] = f"Assigned to {tech.name} ({tech.title})"
-        elif step.get("id") == "step_3" and step.get("state") == "pending":
+            step["description"] = assignment_desc
+        elif step.get("id") == "step_3":
             step["state"] = "current"
+            step["timestamp"] = None
             step["description"] = "Technician notified; ready for dispatch"
+        elif step.get("id") in ("step_4", "step_5"):
+            step["state"] = "pending"
+            step["timestamp"] = None
     
     req.timeline_json = json.dumps(timeline)
     req.status = "Technician Assigned"
@@ -440,6 +499,23 @@ def technician_action(request_id: str, payload: TechnicianActionPayload, request
                 step["description"] = "Technician on the way to customer doorstep (Live GPS active)"
             elif step.get("id") == "step_4":
                 step["state"] = "pending"
+    elif action in ("start_service",):
+        expected_start_otp = getattr(req, "start_otp", None) or req.verification_otp
+        if not payload.verification_otp or payload.verification_otp.strip() != expected_start_otp.strip():
+            raise HTTPException(status_code=400, detail="Invalid Service Start OTP provided by customer. Please verify with customer at doorstep.")
+        req.status = "Service In Progress"
+        req.status_badge = "In Progress"
+        for step in timeline:
+            if step.get("id") in ("step_1", "step_2", "step_3"):
+                step["state"] = "completed"
+                if not step.get("timestamp"):
+                    step["timestamp"] = now_str
+            elif step.get("id") == "step_4":
+                step["state"] = "current"
+                step["timestamp"] = now_str
+                step["description"] = "Doorstep arrival verified via Service Start OTP. Diagnostics & repair in progress."
+            elif step.get("id") == "step_5":
+                step["state"] = "pending"
     elif action in ("diagnose", "in_progress"):
         req.status = "Service In Progress"
         req.status_badge = "In Progress"
@@ -453,16 +529,19 @@ def technician_action(request_id: str, payload: TechnicianActionPayload, request
                 step["timestamp"] = now_str
                 step["description"] = "On-site diagnosis & inspection in progress"
     elif action == "complete":
-        if payload.verification_otp and payload.verification_otp != req.verification_otp:
-            raise HTTPException(status_code=400, detail="Invalid customer verification OTP")
+        expected_comp_otp = getattr(req, "completion_otp", None) or req.verification_otp
+        if payload.verification_otp and payload.verification_otp.strip() != expected_comp_otp.strip():
+            raise HTTPException(status_code=400, detail="Invalid Service Completion OTP provided by customer. Please verify with customer upon repair completion.")
         req.status = "Completed"
         req.status_badge = "Completed"
+        req.payment_status = "Paid"
         for step in timeline:
             step["state"] = "completed"
             if not step.get("timestamp"):
                 step["timestamp"] = now_str
             if step.get("id") == "step_5":
                 step["timestamp"] = now_str
+                step["description"] = "Service successfully completed & verified via Completion OTP. Payment settled (PAID)."
     else:
         raise HTTPException(status_code=400, detail=f"Unknown action: {payload.action}")
 
@@ -577,16 +656,33 @@ def create_job_card(request_id: str, payload: JobCardCreatePayload, request: Req
         )
         db.add(jc)
 
-    # Update timeline step 5 description
+    # Update timeline and completion if completion_otp is provided
     timeline = json.loads(req.timeline_json) if req.timeline_json else []
-    for step in timeline:
-        if step.get("id") == "step_5":
-            step["timestamp"] = now_str
-            step["description"] = f"Digital job card generated (₹{total_amount:.2f}). Awaiting customer sign-off."
+    if payload.completion_otp:
+        expected_comp_otp = getattr(req, "completion_otp", None) or req.verification_otp
+        if payload.completion_otp.strip() != expected_comp_otp.strip():
+            raise HTTPException(status_code=400, detail="Invalid Service Completion OTP provided by customer. Please verify with customer upon repair completion.")
+        jc.customer_status = "accepted"
+        req.status = "Completed"
+        req.status_badge = "Completed"
+        req.payment_status = "Paid"
+        for step in timeline:
+            step["state"] = "completed"
+            if not step.get("timestamp"):
+                step["timestamp"] = now_str
+            if step.get("id") == "step_5":
+                step["timestamp"] = now_str
+                step["description"] = f"Job card generated (₹{total_amount:.2f}) & verified with customer Completion OTP. Service closed and payment settled (PAID)."
+    else:
+        for step in timeline:
+            if step.get("id") == "step_5":
+                step["timestamp"] = now_str
+                step["description"] = f"Digital job card generated (₹{total_amount:.2f}). Awaiting customer sign-off or completion OTP."
     req.timeline_json = json.dumps(timeline)
 
     db.commit()
     db.refresh(jc)
+    db.refresh(req)
     return format_job_card(jc)
 
 @router.get("/{request_id}/job-card", response_model=JobCardResponse)
@@ -621,13 +717,14 @@ def respond_job_card(request_id: str, payload: JobCardCustomerActionPayload, req
 
         req.status = "Completed"
         req.status_badge = "Completed"
+        req.payment_status = "Paid"
         for step in timeline:
             step["state"] = "completed"
             if not step.get("timestamp"):
                 step["timestamp"] = now_str
             if step.get("id") == "step_5":
                 step["timestamp"] = now_str
-                step["description"] = "Job card approved & signed by customer. Service closed."
+                step["description"] = "Job card approved & signed by customer. Service closed and payment settled (PAID)."
     elif payload.action == "dispute":
         jc.customer_status = "disputed"
         jc.customer_remarks = payload.remarks or "Customer disputed the job card charges/repairs."
@@ -725,18 +822,65 @@ def reopen_ticket(request_id: str, payload: TicketReopenPayload, request: Reques
     now_str = datetime.now().strftime("%d %b %Y, %I:%M %p")
     full_reason = payload.reason + (f": {payload.notes}" if payload.notes else "")
 
+    # Snapshot current job card into previous_job_card_json if present
+    existing_jc = db.query(JobCardModel).filter(JobCardModel.request_id == request_id).first()
+    if existing_jc:
+        parts_raw = json.loads(existing_jc.parts_used_json) if existing_jc.parts_used_json else []
+        snapshot = {
+            "id": existing_jc.id,
+            "technician_id": existing_jc.technician_id,
+            "work_summary": existing_jc.work_summary,
+            "parts_used": parts_raw,
+            "labor_cost": existing_jc.labor_cost,
+            "parts_cost": existing_jc.parts_cost,
+            "tax_amount": existing_jc.tax_amount,
+            "total_amount": existing_jc.total_amount,
+            "technician_signature": existing_jc.technician_signature,
+            "customer_signature": existing_jc.customer_signature,
+            "customer_status": existing_jc.customer_status,
+            "customer_remarks": existing_jc.customer_remarks,
+            "completed_at": existing_jc.completed_at
+        }
+        req.previous_job_card_json = json.dumps(snapshot)
+
+    # Save previous technician details
+    if req.technician_id:
+        req.previous_technician_id = req.technician_id
+        prev_tech = db.query(TechnicianModel).filter(TechnicianModel.id == req.technician_id).first()
+        if prev_tech:
+            req.previous_technician_name = prev_tech.name
+
+    # Generate fresh OTPs for revisit
+    new_start_otp = str(random.randint(1000, 9999))
+    new_completion_otp = str(random.randint(1000, 9999))
+    while new_completion_otp == new_start_otp:
+        new_completion_otp = str(random.randint(1000, 9999))
+
+    req.start_otp = new_start_otp
+    req.verification_otp = new_start_otp
+    req.completion_otp = new_completion_otp
+    req.is_reopened = True
     req.status = "Reopened / Under Review"
     req.status_badge = "Disputed"
     req.reopened_reason = full_reason
     req.reopened_at = now_str
 
     timeline = json.loads(req.timeline_json) if req.timeline_json else []
+    for step in timeline:
+        if step.get("id") == "step_2":
+            step["state"] = "current"
+            step["timestamp"] = now_str
+            step["description"] = "Ticket reopened by customer for repeat issue. Awaiting franchise reassignment."
+        elif step.get("id") in ("step_3", "step_4", "step_5"):
+            step["state"] = "pending"
+            step["timestamp"] = None
+
     timeline.append({
         "id": f"step_reopen_{int(datetime.now().timestamp())}",
         "title": "Ticket Reopened by Customer",
         "timestamp": now_str,
-        "description": f"Customer reopened ticket. Reason: {full_reason}",
-        "state": "current"
+        "description": f"Repeat issue reported: {full_reason}. Historical job card & payment receipt preserved.",
+        "state": "completed"
     })
     req.timeline_json = json.dumps(timeline)
 

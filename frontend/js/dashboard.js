@@ -968,11 +968,72 @@ function populateTracking(request) {
     $("technicianVerified").classList.toggle("hidden", !technician?.is_verified);
   }
 
-  if ($("otpPanel")) {
-    $("otpPanel").classList.toggle("hidden", !request.verification_otp);
-  }
-  if ($("trackingOtp")) {
-    $("trackingOtp").textContent = request.verification_otp || "";
+  // Dynamic Two-Step OTP & Settlement State
+  const otpPanel = $("otpPanel");
+  const otpTitle = $("otpPanelTitle");
+  const otpDesc = $("otpPanelDesc");
+  const otpDisplay = $("trackingOtp");
+
+  if (otpPanel && otpDisplay) {
+    if (request.status === "Completed") {
+      otpPanel.classList.remove("hidden");
+      otpPanel.className = "rounded-2xl border border-emerald-300 bg-emerald-50/80 p-4 transition-all";
+      if (otpTitle) {
+        otpTitle.textContent = "SERVICE COMPLETED & SETTLED";
+        otpTitle.className = "text-[10px] font-bold text-emerald-800 uppercase tracking-wider block";
+      }
+      if (otpDesc) {
+        otpDesc.textContent = "Work verified with OTP. Official payment receipt generated.";
+        otpDesc.className = "text-xs text-emerald-900 mt-0.5";
+      }
+      otpDisplay.textContent = "PAID";
+      otpDisplay.className = "font-sans text-xs uppercase font-extrabold text-emerald-700 bg-white px-3 py-1 rounded-xl border border-emerald-300 shadow-sm shrink-0 tracking-wider";
+    } else if (request.status === "Service In Progress") {
+      otpPanel.classList.remove("hidden");
+      otpPanel.className = "rounded-2xl border border-indigo-300 bg-indigo-50/80 p-4 transition-all";
+      if (otpTitle) {
+        otpTitle.textContent = "SERVICE COMPLETION OTP";
+        otpTitle.className = "text-[10px] font-bold text-indigo-800 uppercase tracking-wider block";
+      }
+      if (otpDesc) {
+        otpDesc.textContent = "Share this OTP with technician ONLY after repair is completed & tested.";
+        otpDesc.className = "text-xs text-indigo-900 mt-0.5";
+      }
+      otpDisplay.textContent = request.completion_otp || request.verification_otp || "----";
+      otpDisplay.className = "font-mono text-2xl text-indigo-950 bg-white px-3.5 py-1.5 rounded-xl border border-indigo-200 shadow-sm tracking-widest shrink-0";
+    } else if (request.status === "Reopened / Under Review") {
+      otpPanel.classList.remove("hidden");
+      otpPanel.className = "rounded-2xl border border-rose-300 bg-rose-50/80 p-4 transition-all";
+      if (otpTitle) {
+        otpTitle.textContent = "REVISIT SERVICE START OTP";
+        otpTitle.className = "text-[10px] font-bold text-rose-800 uppercase tracking-wider block";
+      }
+      if (otpDesc) {
+        otpDesc.textContent = "Share with revisit technician upon arrival at your doorstep.";
+        otpDesc.className = "text-xs text-rose-900 mt-0.5";
+      }
+      otpDisplay.textContent = request.start_otp || request.verification_otp || "----";
+      otpDisplay.className = "font-mono text-2xl text-rose-950 bg-white px-3.5 py-1.5 rounded-xl border border-rose-200 shadow-sm tracking-widest shrink-0";
+    } else {
+      // Technician Assigned or Technician on the Way
+      const startOtpVal = request.start_otp || request.verification_otp;
+      if (startOtpVal) {
+        otpPanel.classList.remove("hidden");
+        otpPanel.className = "rounded-2xl border border-amber-200 bg-amber-50/70 p-4 transition-all";
+        if (otpTitle) {
+          otpTitle.textContent = "SERVICE START OTP";
+          otpTitle.className = "text-[10px] font-bold text-amber-800 uppercase tracking-wider block";
+        }
+        if (otpDesc) {
+          otpDesc.textContent = "Share with technician upon arrival to begin inspection.";
+          otpDesc.className = "text-xs text-amber-900 mt-0.5";
+        }
+        otpDisplay.textContent = startOtpVal;
+        otpDisplay.className = "font-mono text-2xl text-amber-950 bg-white px-3.5 py-1.5 rounded-xl border border-amber-200 shadow-sm tracking-widest shrink-0";
+      } else {
+        otpPanel.classList.add("hidden");
+      }
+    }
   }
 
   // Defect Photo Display (Phase 1 FR-TKT-004)
@@ -987,10 +1048,13 @@ function populateTracking(request) {
 
   // Reopen Banner Display (Phase 1 FR-FBK-005)
   if ($("trackingReopenBanner")) {
-    if (request.status === "Reopened / Under Review" || request.status_badge === "Disputed") {
+    if (request.status === "Reopened / Under Review" || request.status_badge === "Disputed" || request.is_reopened) {
       $("trackingReopenBanner").classList.remove("hidden");
       if ($("trackingReopenReason")) {
         $("trackingReopenReason").textContent = request.reopened_reason || "Customer requested priority revisit & review under Servora Customer Protection.";
+      }
+      if ($("openPrevReceiptFromBannerBtn")) {
+        $("openPrevReceiptFromBannerBtn").onclick = () => window.openReceiptModal(request.id, true);
       }
     } else {
       $("trackingReopenBanner").classList.add("hidden");
@@ -998,10 +1062,18 @@ function populateTracking(request) {
   }
 
   // Completion & Sign-off Hub (Phase 1 FR-JOB-001 & FR-FBK-001)
-  const isCompletedOrDisputed = request.status === "Completed" || request.status === "Reopened / Under Review" || request.status === "Disputed";
+  const isCompletedOrDisputed = request.status === "Completed" || request.status === "Reopened / Under Review" || request.status === "Disputed" || Boolean(request.is_reopened);
   if ($("trackingCompletionCard")) {
     $("trackingCompletionCard").classList.toggle("hidden", !isCompletedOrDisputed);
     if (isCompletedOrDisputed) {
+      if ($("openReceiptBtn")) $("openReceiptBtn").onclick = () => window.openReceiptModal(request.id, false);
+      if ($("openPrevReceiptBtn")) {
+        const hasPrevious = Boolean(request.is_reopened || request.previous_job_card);
+        $("openPrevReceiptBtn").classList.toggle("hidden", !hasPrevious);
+        if (hasPrevious) {
+          $("openPrevReceiptBtn").onclick = () => window.openReceiptModal(request.id, true);
+        }
+      }
       if ($("openJobCardBtn")) $("openJobCardBtn").onclick = () => window.openJobCardModal(request.id);
       if ($("openFeedbackBtn")) $("openFeedbackBtn").onclick = () => window.openFeedbackModal(request.id);
       if ($("openReopenBtn")) {
@@ -1853,6 +1925,115 @@ window.openReopenModal = function(requestId) {
         btn.textContent = "Confirm Reopen";
       }
     };
+  }
+};
+
+window.openReceiptModal = async function(requestId, showPrevious = false) {
+  const reqId = requestId || selectedRequestId;
+  if (!reqId) return;
+
+  const targetReq = userRequests.find(r => r.id === reqId) || {};
+  openDialog("receiptModal");
+
+  // Determine which job card to display (current vs previous preserved snapshot)
+  let jc = null;
+  if (showPrevious && targetReq.previous_job_card) {
+    jc = targetReq.previous_job_card;
+  } else {
+    try {
+      jc = await readApiJson(`/api/requests/${encodeURIComponent(reqId)}/job-card`);
+    } catch (e) {
+      if (targetReq.previous_job_card) {
+        jc = targetReq.previous_job_card;
+      }
+    }
+  }
+
+  const invoiceNo = `REC-${reqId}${showPrevious ? '-PREV' : ''}`;
+  if ($("receiptInvoiceNo")) $("receiptInvoiceNo").textContent = invoiceNo;
+  if ($("receiptDate")) $("receiptDate").textContent = (jc && jc.completed_at) || targetReq.appointment_date || new Date().toLocaleDateString('en-IN');
+  if ($("receiptPaidBadge")) {
+    const isPaid = targetReq.payment_status === "Paid" || jc;
+    $("receiptPaidBadge").textContent = isPaid ? "✓ PAID IN FULL" : "PAYMENT PENDING";
+    $("receiptPaidBadge").className = `mt-1 inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
+      isPaid ? "bg-emerald-100 text-emerald-800 border-emerald-200" : "bg-amber-100 text-amber-800 border-amber-200"
+    }`;
+  }
+
+  // Customer info
+  if ($("receiptCustomerName")) $("receiptCustomerName").textContent = targetReq.customer_name || currentUser?.name || "Valued Customer";
+  if ($("receiptCustomerPhone")) $("receiptCustomerPhone").textContent = targetReq.customer_phone || currentUser?.phone || "";
+  if ($("receiptCustomerAddress")) $("receiptCustomerAddress").textContent = targetReq.customer_address || currentUser?.address || "Customer doorstep location";
+
+  // Branch & Technician
+  const techName = showPrevious
+    ? (targetReq.previous_technician_name || "Original Technician")
+    : (targetReq.technician?.name || targetReq.previous_technician_name || "Authorized Field Technician");
+  if ($("receiptBranchName")) $("receiptBranchName").textContent = "Servora Authorized Franchise Partner";
+  if ($("receiptTechName")) $("receiptTechName").textContent = `Technician: ${techName}`;
+  if ($("receiptApplianceDetails")) $("receiptApplianceDetails").textContent = `${targetReq.brand || ''} ${targetReq.appliance_name || 'Home Appliance'} (${targetReq.model_no || 'Standard'})`;
+  if ($("receiptIssueDescription")) $("receiptIssueDescription").textContent = `Service: ${targetReq.issue || 'Routine Service'}`;
+
+  // Itemized parts & labor
+  const parts = (jc && Array.isArray(jc.parts_used)) ? jc.parts_used : [];
+  const partsCost = jc ? Number(jc.parts_cost || 0) : 0;
+  const laborCost = jc ? Number(jc.labor_cost || 350) : 350;
+  const taxAmount = jc ? Number(jc.tax_amount || (partsCost + laborCost) * 0.18) : ((partsCost + laborCost) * 0.18);
+  const totalAmount = jc ? Number(jc.total_amount || (partsCost + laborCost + taxAmount)) : (partsCost + laborCost + taxAmount);
+
+  if ($("receiptItemsBody")) {
+    let rowsHtml = "";
+    if (parts.length > 0) {
+      parts.forEach((p, idx) => {
+        const pQty = p.quantity || 1;
+        const pRate = Number(p.unit_price || 0);
+        const pTotal = Number(p.total_price || (pQty * pRate));
+        rowsHtml += `
+          <tr>
+            <td class="py-2.5 px-3 text-slate-400 font-mono">${idx + 1}</td>
+            <td class="py-2.5 px-3 font-medium text-slate-800">${escapeHtml(p.part_name)} <span class="text-[10px] text-slate-400 block font-normal">Genuine OEM Part</span></td>
+            <td class="py-2.5 px-3 text-center text-slate-600 font-semibold">${pQty}</td>
+            <td class="py-2.5 px-3 text-right text-slate-600">₹${pRate.toFixed(2)}</td>
+            <td class="py-2.5 px-3 text-right font-bold text-slate-800">₹${pTotal.toFixed(2)}</td>
+          </tr>
+        `;
+      });
+    } else {
+      rowsHtml += `
+        <tr>
+          <td class="py-2.5 px-3 text-slate-400 font-mono">1</td>
+          <td class="py-2.5 px-3 font-medium text-slate-800">Standard Technical Inspection & Doorstep Diagnostics</td>
+          <td class="py-2.5 px-3 text-center text-slate-600 font-semibold">1</td>
+          <td class="py-2.5 px-3 text-right text-slate-600">₹${laborCost.toFixed(2)}</td>
+          <td class="py-2.5 px-3 text-right font-bold text-slate-800">₹${laborCost.toFixed(2)}</td>
+        </tr>
+      `;
+    }
+    $("receiptItemsBody").innerHTML = rowsHtml;
+  }
+
+  if ($("receiptPartsSubtotal")) $("receiptPartsSubtotal").textContent = `₹${partsCost.toFixed(2)}`;
+  if ($("receiptLaborCost")) $("receiptLaborCost").textContent = `₹${laborCost.toFixed(2)}`;
+  if ($("receiptGstTax")) $("receiptGstTax").textContent = `₹${taxAmount.toFixed(2)}`;
+  if ($("receiptGrandTotal")) $("receiptGrandTotal").textContent = `₹${totalAmount.toFixed(2)}`;
+
+  // Signatures
+  if ($("receiptTechSigImg") && jc && jc.technician_signature) {
+    $("receiptTechSigImg").src = jc.technician_signature;
+    $("receiptTechSigImg").classList.remove("hidden");
+    if ($("receiptTechSigText")) $("receiptTechSigText").textContent = `Signed by ${techName}`;
+  } else {
+    if ($("receiptTechSigImg")) $("receiptTechSigImg").classList.add("hidden");
+    if ($("receiptTechSigText")) $("receiptTechSigText").textContent = `Verified via Doorstep OTP (${techName})`;
+  }
+
+  if ($("receiptCustSigImg") && jc && jc.customer_signature) {
+    $("receiptCustSigImg").src = jc.customer_signature;
+    $("receiptCustSigImg").classList.remove("hidden");
+    if ($("receiptCustSigText")) $("receiptCustSigText").textContent = "Digitally signed by Customer";
+  } else {
+    if ($("receiptCustSigImg")) $("receiptCustSigImg").classList.add("hidden");
+    if ($("receiptCustSigText")) $("receiptCustSigText").textContent = "Settled & verified via Completion OTP";
   }
 };
 
