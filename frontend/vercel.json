@@ -3,15 +3,12 @@
   "cleanUrls": true,
   "trailingSlash": false,
   "rewrites": [
-    { "source": "/login", "destination": "/index" },
-    { "source": "/company", "destination": "/company-login" },
-    { "source": "/franchise", "destination": "/franchise-login" },
-    { "source": "/technician", "destination": "/technician-login" },
-    { "source": "/admin", "destination": "/admin-login" },
-    { "source": "/technician-dashboard", "destination": "/ops-dashboard" },
-    { "source": "/franchise-dashboard", "destination": "/ops-dashboard" },
-    { "source": "/company-dashboard", "destination": "/ops-dashboard" },
-    { "source": "/admin-dashboard", "destination": "/ops-dashboard" }
+    { "source": "/login", "destination": "/index.html" },
+    { "source": "/company", "destination": "/company-login.html" },
+    { "source": "/franchise", "destination": "/franchise-login.html" },
+    { "source": "/technician", "destination": "/technician-login.html" },
+    { "source": "/admin", "destination": "/admin-login.html" },
+    { "source": "/dashboard", "destination": "/customer-dashboard.html" }
   ],
   "headers": [
     {

@@ -3,6 +3,28 @@
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="theme-color" content="#f4f7fb">
   <title>Operations dashboard — Servora</title>
+  <script>
+    (function() {
+      try {
+        var u = JSON.parse(localStorage.getItem("servora_user") || "null");
+        var roleRoutes = {
+          technician: "./technician-dashboard.html",
+          franchise: "./franchise-dashboard.html",
+          branch: "./franchise-dashboard.html",
+          company: "./company-dashboard.html",
+          admin: "./admin-dashboard.html",
+          customer: "./customer-dashboard.html"
+        };
+        if (u && u.role && roleRoutes[u.role]) {
+          window.location.replace(roleRoutes[u.role]);
+        } else {
+          window.location.replace("./index.html");
+        }
+      } catch (e) {
+        window.location.replace("./index.html");
+      }
+    })();
+  </script>
   <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <script src="https://cdn.tailwindcss.com"></script><script src="https://unpkg.com/lucide@latest"></script>

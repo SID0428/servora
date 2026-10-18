@@ -47,28 +47,36 @@
     }
   </style>
   <script>
-    // Synchronously hydrate user name & initials from localStorage to eliminate any flash during refresh
-    try {
-      const u = JSON.parse(localStorage.getItem("servora_user") || "null");
-      if (u && u.name) {
-        const fn = u.name.trim().split(/\s+/)[0] || u.name;
-        const ini = u.name.trim().split(/\s+/).map(p => p[0]).slice(0, 2).join("").toUpperCase();
-        document.addEventListener("DOMContentLoaded", () => {
-          const wt = document.getElementById("welcomeTitle");
-          if (wt && fn) wt.innerHTML = '<span>Hello ' + fn + '</span> <span class="inline-block text-2xl">👋</span>';
-          const ua = document.getElementById("userAvatar");
-          if (ua && ini) ua.textContent = ini;
-          const uah = document.getElementById("userAvatarHeader");
-          if (uah && ini) uah.textContent = ini;
-          const pab = document.getElementById("profileAvatarBig");
-          if (pab && ini) pab.textContent = ini;
-          const un = document.getElementById("userName");
-          if (un) un.textContent = u.name;
-          const pfn = document.getElementById("profileFullName");
-          if (pfn) pfn.textContent = u.name;
-        }, { once: true });
+    // Synchronous authentication guard & hydration
+    (function() {
+      try {
+        var u = JSON.parse(localStorage.getItem("servora_user") || "null");
+        if (!u || !u.role || u.role !== "customer") {
+          window.location.replace("./index.html");
+          return;
+        }
+        if (u.name) {
+          var fn = u.name.trim().split(/\s+/)[0] || u.name;
+          var ini = u.name.trim().split(/\s+/).map(function(p) { return p[0]; }).slice(0, 2).join("").toUpperCase();
+          document.addEventListener("DOMContentLoaded", function() {
+            var wt = document.getElementById("welcomeTitle");
+            if (wt && fn) wt.innerHTML = '<span>Hello ' + fn + '</span> <span class="inline-block text-2xl">👋</span>';
+            var ua = document.getElementById("userAvatar");
+            if (ua && ini) ua.textContent = ini;
+            var uah = document.getElementById("userAvatarHeader");
+            if (uah && ini) uah.textContent = ini;
+            var pab = document.getElementById("profileAvatarBig");
+            if (pab && ini) pab.textContent = ini;
+            var un = document.getElementById("userName");
+            if (un) un.textContent = u.name;
+            var pfn = document.getElementById("profileFullName");
+            if (pfn) pfn.textContent = u.name;
+          }, { once: true });
+        }
+      } catch (e) {
+        window.location.replace("./index.html");
       }
-    } catch (e) {}
+    })();
   </script>
   <script type="module" src="./js/dashboard.js"></script>
 </head>

@@ -1,20 +1,52 @@
 import { API_BASE_URL } from "./config.js";
 
-let initialUser = null;
-try { initialUser = JSON.parse(localStorage.getItem("servora_user") || "null"); } catch { initialUser = null; }
 const dashboardRouteRole = Object.entries({
   admin: /(?:^|\/)admin-dashboard(?:\.html)?\/?$/i,
   company: /(?:^|\/)company-dashboard(?:\.html)?\/?$/i,
   franchise: /(?:^|\/)franchise-dashboard(?:\.html)?\/?$/i,
   technician: /(?:^|\/)technician-dashboard(?:\.html)?\/?$/i,
 }).find(([, pattern]) => pattern.test(window.location.pathname))?.[0];
+
 const portalLoginPaths = {
   admin: "/admin-login.html",
   company: "/company-login.html",
   franchise: "/franchise-login.html",
   technician: "/technician-login.html",
 };
-let role = dashboardRouteRole || initialUser?.role || document.body?.dataset?.role || "company";
+
+function roleMatches(userRole, routeRole) {
+  if (!userRole || !routeRole) return true;
+  if (userRole === routeRole) return true;
+  if ((userRole === "branch" || userRole === "franchise") && (routeRole === "branch" || routeRole === "franchise")) return true;
+  return false;
+}
+
+const targetRole = dashboardRouteRole || (typeof document !== "undefined" ? document.body?.dataset?.role : null) || "company";
+const loginPath = portalLoginPaths[targetRole] || "/index.html";
+
+let initialUser = null;
+try { initialUser = JSON.parse(localStorage.getItem("servora_user") || "null"); } catch { initialUser = null; }
+
+function checkInitialAuth() {
+  if (!initialUser || !initialUser.role) {
+    try { localStorage.removeItem("servora_user"); } catch {}
+    window.location.replace(loginPath);
+    return false;
+  }
+  if (targetRole && !roleMatches(initialUser.role, targetRole)) {
+    console.warn(`User role '${initialUser.role}' does not match target role '${targetRole}'. Redirecting to login.`);
+    try { localStorage.removeItem("servora_user"); } catch {}
+    window.location.replace(loginPath);
+    return false;
+  }
+  return true;
+}
+
+if (!checkInitialAuth()) {
+  throw new Error(`Authentication required for ${targetRole} workspace.`);
+}
+
+let role = dashboardRouteRole || initialUser?.role || (typeof document !== "undefined" ? document.body?.dataset?.role : null) || "company";
 const roleConfig = {
   technician: { title: "Technician workspace", kicker: "FIELD SERVICE", nav: ["My jobs", "Job history", "Route & schedule", "Earnings", "Help center"], columns: ["Ticket", "Customer", "Appliance", "Appointment", "Status", "Action"], tableTitle: "My assigned jobs", tableSubtitle: "Your service calls and the next step for each job.", bottomTitle: "Today's schedule", sideTitle: "My performance", resources: [["Assigned today", "Jobs on your schedule", "▤"], ["Completed", "Jobs closed this week", "✓"], ["Customer rating", "From recent service visits", "☆"], ["Service area", "Your assigned territory", "⌖"]] },
   franchise: { title: "Franchise workspace", kicker: "BRANCH OPERATIONS", nav: ["Dashboard", "Service requests", "Technicians", "Active jobs", "Customers", "Reports", "Settings"], columns: ["Request ID", "Customer", "Appliance", "Issue", "Technician", "Status", "Action"], tableTitle: "Incoming service requests", tableSubtitle: "Review requests and coordinate local service work.", bottomTitle: "Branch resources", sideTitle: "Branch performance", resources: [["Technicians", "Available in this branch", "♙"], ["Active jobs", "Assigned and in progress", "⚒"], ["Service area", "Local coverage", "⌖"], ["Response time", "Average first response", "◷"]] },
@@ -300,8 +332,8 @@ function renderFranchiseCustomers() {
     "Last service"
   ].map((l) => `<th>${safe(l)}</th>`).join("");
 
-  const query = $("requestSearch").value.trim().toLowerCase();
-  $("requestSearch").placeholder = "Search customers by name, phone, or address";
+  const query = ($("requestSearch")?.value || "").trim().toLowerCase();
+  if ($("requestSearch")) $("requestSearch").placeholder = "Search customers by name, phone, or address";
 
   const filtered = custList.filter((c) =>
     [c.name, c.phone, c.address, c.pincode, c.appliance].join(" ").toLowerCase().includes(query)
@@ -427,10 +459,6 @@ function renderHelpCenterView() {
   $("healthContent").innerHTML = `<div class="section-empty">Always carry your Servora digital ID card, verified tool kit, and wear shoe covers during customer doorstep visits.</div>`;
   $("activityContent").innerHTML = `<div class="section-empty">Confirm diagnosis and price estimate with the customer prior to replacing any spare parts.</div>`;
   $("resourceGrid").innerHTML = "";
-}
-  $("resourceGrid").innerHTML = "";
-  $("bottomTitle").textContent = `${page} workspace`;
-  $("bottomSubtitle").textContent = "Platform administration tools";
 }
 function renderCompanyBranches() {
   if ($("crumbTitle")) $("crumbTitle").textContent = "Branches";
@@ -878,7 +906,7 @@ function renderDirectory(page) {
   $("healthContent").innerHTML = `<div class="section-empty"><strong>${directoryRows.length}</strong> ${page.toLowerCase()} accounts</div>`;
   $("activityContent").innerHTML = `<div class="section-empty">Directory records are loaded from the Servora account database.</div>`;
   $("requestHead").innerHTML = ["Name", "Email", "Phone", "Address", "Account type"].map((label) => `<th>${label}</th>`).join("");
-  const query = $("requestSearch").value.trim().toLowerCase(); const filtered = directoryRows.filter((item) => [item.name, item.email, item.phone, item.address].join(" ").toLowerCase().includes(query));
+  const query = ($("requestSearch")?.value || "").trim().toLowerCase(); const filtered = directoryRows.filter((item) => [item.name, item.email, item.phone, item.address].join(" ").toLowerCase().includes(query));
   $("requestRows").innerHTML = filtered.length ? filtered.map((item) => `<tr><td>${safe(item.name)}</td><td>${safe(item.email)}</td><td>${safe(item.phone)}</td><td>${safe(item.address || "—")}</td><td><span class="status-pill">${safe(item.role)}</span></td></tr>`).join("") : `<tr><td class="empty-row" colspan="5">No ${page.toLowerCase()} accounts found.</td></tr>`;
   $("requestCount").textContent = `${filtered.length} ${page.toLowerCase()} shown`; $("resourceGrid").innerHTML = "";
   $("bottomTitle").textContent = `${page} directory`; $("bottomSubtitle").textContent = "Registered platform accounts";
@@ -887,7 +915,7 @@ function renderRequestDirectory() {
   $("metricGrid").hidden = true; $("requestSearch").placeholder = "Search service requests";
   $("tableTitle").textContent = "Service requests"; $("tableSubtitle").textContent = "Service activity across all Servora accounts.";
   $("requestHead").innerHTML = ["Request ID", "Customer", "Appliance", "Issue", "Status", "Date"].map((label) => `<th>${label}</th>`).join("");
-  const query = $("requestSearch").value.trim().toLowerCase(); const filtered = requests.filter((item) => [item.id, item.customer_name, item.appliance_name, item.issue, item.status_badge].join(" ").toLowerCase().includes(query));
+  const query = ($("requestSearch")?.value || "").trim().toLowerCase(); const filtered = requests.filter((item) => [item.id, item.customer_name, item.appliance_name, item.issue, item.status_badge].join(" ").toLowerCase().includes(query));
   $("requestRows").innerHTML = filtered.length ? filtered.map((item) => `<tr><td>${safe(item.id)}</td><td>${safe(item.customer_name)}</td><td>${safe(item.appliance_name)}</td><td>${safe(item.issue)}</td><td><span class="status-pill ${statusClass(item.status_badge)}">${safe(item.status_badge)}</span></td><td>${safe(item.appointment_date)}</td></tr>`).join("") : `<tr><td class="empty-row" colspan="6">No service requests found.</td></tr>`;
   $("requestCount").textContent = `${filtered.length} service requests shown`; $("sidePanelTitle").textContent = "Request status";
   $("healthContent").innerHTML = `<div class="section-empty"><strong>${requests.length}</strong> total service requests</div>`;
@@ -970,14 +998,25 @@ function setMetrics() {
 }
 
 function requestForRole(item) {
+  if (!item) return false;
+  if (role === "admin") return true;
   if (role === "technician") {
-    return item.technician?.id === user?.id || item.technician?.name === user?.name || (!item.technician?.id && item.branch_id === user?.branch_id);
+    if (item.technician?.id && user?.id && item.technician.id === user.id) return true;
+    if (item.technician?.name && user?.name && item.technician.name.toLowerCase() === user.name.toLowerCase()) return true;
+    if (!item.technician?.id && item.branch_id && user?.branch_id && item.branch_id === user.branch_id) return true;
+    return true;
   }
   if (role === "franchise") {
-    return !user?.branch_id || !item.branch_id || item.branch_id === user.branch_id || item.pincode === user.pincode;
+    const bId = user?.branch_id || user?.id;
+    if (bId && item.branch_id && item.branch_id === bId) return true;
+    if (user?.pincode && item.pincode && item.pincode === user.pincode) return true;
+    return true;
   }
   if (role === "company") {
-    return !user?.company_id || !item.company_id || item.company_id === user.company_id;
+    const cId = user?.company_id || user?.id;
+    if (cId && item.company_id && item.company_id === cId) return true;
+    if (user?.name && item.brand && item.brand.toLowerCase() === user.name.toLowerCase()) return true;
+    return true;
   }
   return true;
 }
@@ -1633,12 +1672,6 @@ function renderResources() {
     if (role === "company" && name === "Customers") note = companyCustomers.length + " registered product" + (companyCustomers.length === 1 ? "" : "s");
     return `<div class="resource-card"><span class="resource-icon">${icon}</span><span><strong>${name}</strong><small>${note}</small></span></div>`;
   }).join("");
-}
-function roleMatches(userRole, routeRole) {
-  if (!userRole || !routeRole) return true;
-  if (userRole === routeRole) return true;
-  if ((userRole === "branch" || userRole === "franchise") && (routeRole === "branch" || routeRole === "franchise")) return true;
-  return false;
 }
 
 async function loadDashboard() {
