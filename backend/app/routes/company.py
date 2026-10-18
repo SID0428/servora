@@ -8,9 +8,10 @@ from datetime import datetime, timedelta
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
-from app.db.models import BranchOnboardingModel, CompanyBranchModel, UserModel
+from app.db.models import ApplianceModel, BranchOnboardingModel, CompanyBranchModel, UserModel
 from app.db.session import get_db
 from app.email_service import send_brevo_email
 from app.schemas import BranchCredentialsEmail, CompanyBranchCreate, CompanyOtpVerify, CompanyPasswordSetup
@@ -94,6 +95,41 @@ def list_company_branches(request: Request, db: Session = Depends(get_db)):
     )
     onboarding = {item.branch_id: item for item in db.query(BranchOnboardingModel).all()}
     return [branch_payload(branch, onboarding.get(branch.id)) for branch in branches]
+
+
+@router.get("/customers")
+def list_company_customers(request: Request, db: Session = Depends(get_db)):
+    company = require_company(request, db)
+    # Query all appliances registered for this company, joined with customer UserModel
+    rows = (
+        db.query(ApplianceModel, UserModel)
+        .join(UserModel, ApplianceModel.user_id == UserModel.id)
+        .filter(
+            or_(
+                ApplianceModel.company_id == company.id,
+                ApplianceModel.brand.ilike(company.name.strip()),
+            )
+        )
+        .order_by(ApplianceModel.registered_on.desc())
+        .all()
+    )
+    customers_data = []
+    for appliance, customer in rows:
+        customers_data.append({
+            "appliance_id": appliance.id,
+            "category": appliance.category,
+            "brand": appliance.brand,
+            "model_no": appliance.model_no,
+            "serial_no": appliance.serial_no or "Not provided",
+            "warranty_status": appliance.warranty_status or "Standard Active",
+            "registered_on": appliance.registered_on,
+            "customer_id": customer.id,
+            "customer_name": customer.name,
+            "customer_email": customer.email,
+            "customer_phone": customer.phone,
+            "customer_address": customer.address or "Address not provided",
+        })
+    return customers_data
 
 
 @router.post("/branches", status_code=201)

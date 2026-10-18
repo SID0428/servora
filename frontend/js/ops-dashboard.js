@@ -28,6 +28,7 @@ let companies = [];
 let branches = [];
 let technicians = [];
 let directoryRows = [];
+let companyCustomers = [];
 let user = null;
 
 const icons = { Dashboard: "⌂", Overview: "⌂", "My jobs": "▤", "Job history": "◷", "Route & schedule": "⌖", Earnings: "$", "Help center": "?", "Service requests": "▣", "Incoming service requests": "▣", Technicians: "♙", "Active jobs": "⚒", Customers: "♧", Reports: "▥", Settings: "⚙", Companies: "▦", Branches: "⌖", "System settings": "⚙" };
@@ -244,9 +245,93 @@ async function loadCompanyBranches() {
     showToast(`Branches could not load: ${error.message}`, "error");
   }
 }
+async function loadCompanyCustomers() {
+  try {
+    companyCustomers = await companyApi("/customers");
+    renderCompanyCustomers();
+  } catch (error) {
+    companyCustomers = [];
+    renderCompanyCustomers();
+    $("requestRows").innerHTML = `<tr><td class="empty-row" colspan="7">${safe(error.message)}. Try again after confirming your company session.</td></tr>`;
+    $("requestCount").textContent = "Could not load customers";
+    showToast(`Customers could not load: ${error.message}`, "error");
+  }
+}
+function renderCompanyCustomers() {
+  $("crumbTitle").textContent = "Customers";
+  $("addCompanyButton").hidden = true;
+  $("addBranchButton").hidden = true;
+  $("addTechnicianButton").hidden = true;
+  $("companyInlineAdd").hidden = true;
+  $("exportButton").hidden = false;
+  $("pageContent").hidden = false;
+  $("metricGrid").hidden = true;
+  $("tableTitle").textContent = "Registered customers & products";
+  $("tableSubtitle").textContent = "Customers who have registered your company's appliances for service.";
+  $("sidePanelTitle").textContent = "Customer reach";
+  $("healthContent").innerHTML = `<div class="section-empty"><strong>${companyCustomers.length}</strong> registered products under your brand</div>`;
+  $("activityContent").innerHTML = `<div class="section-empty">When customers add appliances under your company, their contact details, address, and device model appear here.</div>`;
+  $("bottomTitle").textContent = "Customer directory";
+  $("bottomSubtitle").textContent = "Customers with products under your warranty and service coverage.";
+
+  $("requestHead").innerHTML = [
+    "Customer",
+    "Contact info",
+    "Service address",
+    "Registered product",
+    "Model & serial",
+    "Warranty",
+    "Registered date"
+  ].map((label) => `<th>${safe(label)}</th>`).join("");
+
+  const query = $("requestSearch").value.trim().toLowerCase();
+  $("requestSearch").placeholder = "Search customers or products";
+
+  const filtered = companyCustomers.filter((item) =>
+    [
+      item.customer_name,
+      item.customer_email,
+      item.customer_phone,
+      item.customer_address,
+      item.category,
+      item.brand,
+      item.model_no,
+      item.serial_no
+    ]
+      .join(" ")
+      .toLowerCase()
+      .includes(query)
+  );
+
+  $("requestRows").innerHTML = filtered.length
+    ? filtered
+        .map((item) => {
+          const initials = safe(
+            (item.customer_name || "CU")
+              .split(/\s+/)
+              .map((p) => p[0])
+              .slice(0, 2)
+              .join("")
+              .toUpperCase()
+          );
+          return `<tr><td><div class="customer-cell"><span class="customer-avatar">${initials}</span><span class="customer-name"><strong>${safe(item.customer_name)}</strong><small>ID: ${safe(item.customer_id)}</small></span></div></td><td><div>${safe(item.customer_email)}</div><small class="text-slate-400 font-mono">${safe(item.customer_phone)}</small></td><td class="max-w-[220px]"><span class="block text-xs leading-relaxed text-slate-700">${safe(item.customer_address || "Address not provided")}</span></td><td><strong>${safe(item.brand)} ${safe(item.category)}</strong></td><td><div>Model: <strong>${safe(item.model_no)}</strong></div><small class="text-slate-400">SN: ${safe(item.serial_no || "N/A")}</small></td><td><span class="status-pill completed">${safe(item.warranty_status || "Active")}</span></td><td>${safe(item.registered_on || "—")}</td></tr>`;
+        })
+        .join("")
+    : `<tr><td class="empty-row" colspan="7">${
+        query
+          ? "No customers or products match your search."
+          : "No customer products registered yet. When customers add appliances under your brand, they will appear here automatically."
+      }</td></tr>`;
+
+  $("requestCount").textContent = `${filtered.length} customer product${
+    filtered.length === 1 ? "" : "s"
+  } shown`;
+  $("resourceGrid").innerHTML = "";
+}
 async function loadWorkspacePageData(page) {
   if (role === "admin") { await loadAdminPageData(page); return; }
   if (role === "company" && page === "Branches") { await loadCompanyBranches(); return; }
+  if (role === "company" && page === "Customers") { await loadCompanyCustomers(); return; }
   if (role === "franchise" && page === "Technicians") { await loadFranchiseTechnicians(); return; }
   renderPage(page);
 }
@@ -370,7 +455,12 @@ function renderInsights() {
   $("activityContent").innerHTML = latest.length ? `<div class="activity-list">${latest.map((item, index) => `<div class="activity-row"><i class="activity-dot ${item.status_badge === "Completed" ? "green-dot" : ""}"></i><div class="activity-copy"><strong>${safe(item.id)}</strong> · ${safe(item.status)}<small>${safe(item.customer_name)} · ${safe(item.appliance_name)}</small></div></div>`).join("")}</div>` : `<div class="activity-list"><div class="activity-copy">No service activity yet.</div></div>`;
 }
 function renderResources() {
-  $("resourceGrid").innerHTML = config.resources.map(([name, detail, icon], index) => `<div class="resource-card"><span class="resource-icon">${icon}</span><span><strong>${name}</strong><small>${role === "technician" && index === 0 ? requests.length + " jobs on your schedule" : detail}</small></span></div>`).join("");
+  $("resourceGrid").innerHTML = config.resources.map(([name, detail, icon], index) => {
+    let note = detail;
+    if (role === "technician" && index === 0) note = requests.length + " jobs on your schedule";
+    if (role === "company" && name === "Customers") note = companyCustomers.length + " registered product" + (companyCustomers.length === 1 ? "" : "s");
+    return `<div class="resource-card"><span class="resource-icon">${icon}</span><span><strong>${name}</strong><small>${note}</small></span></div>`;
+  }).join("");
 }
 async function loadDashboard() {
   const stored = localStorage.getItem("servora_user");
@@ -407,6 +497,9 @@ async function loadDashboard() {
     if (response.status === 401) throw new Error("Your admin session was not accepted. Sign out and sign in again.");
     if (response.ok) requests = await response.json();
     if (role === "admin") companies = await adminApi("/companies");
+    if (role === "company") {
+      try { companyCustomers = await companyApi("/customers"); } catch { companyCustomers = []; }
+    }
   } catch (error) {
     const detail = error instanceof TypeError ? "Could not connect to the Servora API." : error.message;
     showToast(`${detail} Showing available workspace data.`, "error");
@@ -416,9 +509,30 @@ async function loadDashboard() {
   if (role === "admin") { $("crumbTitle").textContent = "Overview"; renderPage("Overview"); }
   if (user?.role && user.role !== role) showToast(`Signed in as ${user.role}; this is the ${role} workspace.`, "error");
 }
-$("requestSearch").addEventListener("input", () => { const page = $("crumbTitle").textContent; if (role === "admin" && page === "Companies") renderCompanies(); else if (role === "company" && page === "Branches") renderCompanyBranches(); else if (role === "franchise" && page === "Technicians") renderFranchiseTechnicians(); else if (role === "admin" && ["Branches", "Technicians", "Customers"].includes(page)) renderDirectory(page); else if (role === "admin" && page === "Service requests") renderRequestDirectory(); else renderRequests(); });
+$("requestSearch").addEventListener("input", () => {
+  const page = $("crumbTitle").textContent;
+  if (role === "admin" && page === "Companies") renderCompanies();
+  else if (role === "company" && page === "Branches") renderCompanyBranches();
+  else if (role === "company" && page === "Customers") renderCompanyCustomers();
+  else if (role === "franchise" && page === "Technicians") renderFranchiseTechnicians();
+  else if (role === "admin" && ["Branches", "Technicians", "Customers"].includes(page)) renderDirectory(page);
+  else if (role === "admin" && page === "Service requests") renderRequestDirectory();
+  else renderRequests();
+});
 $("statusFilter").addEventListener("change", () => { if (role === "admin" && $("crumbTitle").textContent === "Service requests") renderRequestDirectory(); else renderRequests(); });
 $("exportButton").addEventListener("click", () => {
+  const page = $("crumbTitle").textContent;
+  if (role === "company" && page === "Customers") {
+    const rows = [
+      ["Customer Name", "Customer Email", "Customer Phone", "Service Address", "Category", "Brand", "Model No", "Serial No", "Warranty", "Registered Date"],
+      ...companyCustomers.map((item) => [
+        item.customer_name, item.customer_email, item.customer_phone, item.customer_address || "",
+        item.category, item.brand, item.model_no, item.serial_no || "", item.warranty_status || "", item.registered_on || ""
+      ])
+    ];
+    downloadCsv(`servora-company-customers.csv`, rows);
+    return;
+  }
   const rows = [["Request ID", "Customer", "Appliance", "Issue", "Status", "Date"], ...requests.map((item) => [item.id, item.customer_name, item.appliance_name, item.issue, item.status_badge, item.appointment_date])];
   downloadCsv(`servora-${role}-requests.csv`, rows);
 });

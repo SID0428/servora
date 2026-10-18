@@ -5,7 +5,7 @@ from uuid import uuid4
 from app.db.session import get_db
 from app.db.models import BranchOnboardingModel, CompanyOnboardingModel, TechnicianOnboardingModel, UserModel
 from app.security import create_user_session, get_authenticated_user, revoke_user_session
-from app.schemas import CustomerRegistration, LoginRequest
+from app.schemas import CustomerAddressUpdate, CustomerRegistration, LoginRequest
 import hashlib
 import hmac
 import os
@@ -146,6 +146,26 @@ def logout(request: Request, response: Response, db: Session = Depends(get_db)):
     db.commit()
     response.delete_cookie(key="servora_user_id", path="/", samesite="none", secure=True)
     return {"status": "success", "message": "Logged out successfully"}
+
+@router.put("/address")
+def update_user_address(payload: CustomerAddressUpdate, request: Request, db: Session = Depends(get_db)):
+    user = get_authenticated_user(request, db)
+    parts = [payload.house_flat.strip(), payload.street_area.strip()]
+    if payload.landmark and payload.landmark.strip():
+        parts.append(f"Near {payload.landmark.strip()}")
+    parts.append(payload.city.strip())
+    parts.append(f"{payload.state.strip()} - {payload.pincode.strip()}")
+    formatted_address = ", ".join(parts)
+
+    user.address = formatted_address
+    db.commit()
+    db.refresh(user)
+    return {
+        "status": "success",
+        "message": "Service address updated successfully",
+        "address": formatted_address,
+        "user": user_payload(user),
+    }
 
 @router.get("/demo-users")
 def get_demo_users(db: Session = Depends(get_db)):

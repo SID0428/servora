@@ -68,9 +68,16 @@ def list_requests(request: Request, db: Session = Depends(get_db)):
         ).first()
         technician_id = technician.id if technician else user_id
         query = query.filter(ServiceRequestModel.technician_id == technician_id)
-    elif user.role in {"company", "branch"}:
-        # Service requests do not yet have a company assignment field. Never
-        # expose the platform-wide request list to company or franchise accounts.
+    elif user.role == "company":
+        company_app_ids = [
+            app_id for (app_id,) in db.query(ApplianceModel.id).filter(
+                (ApplianceModel.company_id == user.id) | (ApplianceModel.brand.ilike(user.name.strip()))
+            ).all()
+        ]
+        query = query.filter(
+            (ServiceRequestModel.appliance_id.in_(company_app_ids)) | (ServiceRequestModel.brand.ilike(user.name.strip()))
+        )
+    elif user.role == "branch":
         query = query.filter(false())
     reqs = query.order_by(ServiceRequestModel.created_at.desc()).all()
     return [format_request_detail(r, db) for r in reqs]
@@ -84,7 +91,17 @@ def get_request(request_id: str, request: Request, db: Session = Depends(get_db)
         raise HTTPException(status_code=404, detail="Service request not found")
     if user.role == "customer" and req.customer_id != user_id:
         raise HTTPException(status_code=403, detail="Not allowed to view this service request")
-    if user.role in {"company", "branch"}:
+    if user.role == "company":
+        is_company_request = (
+            req.brand.lower() == user.name.lower() or
+            db.query(ApplianceModel).filter(
+                ApplianceModel.id == req.appliance_id,
+                (ApplianceModel.company_id == user.id) | (ApplianceModel.brand.ilike(user.name.strip()))
+            ).first() is not None
+        )
+        if not is_company_request:
+            raise HTTPException(status_code=403, detail="Not allowed to view this service request")
+    elif user.role == "branch":
         raise HTTPException(status_code=403, detail="Service request access is not configured for this account yet")
     if user.role == "technician":
         technician = db.query(TechnicianModel).filter(

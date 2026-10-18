@@ -830,6 +830,11 @@ window.openAddApplianceModal = function () {
   openDialog("applianceDialog");
 };
 
+window.openAddressModal = function () {
+  if ($("addressMessage")) $("addressMessage").textContent = "";
+  openDialog("addressDialog");
+};
+
 async function submitBooking(event) {
   event.preventDefault();
   const button = $("bookingSubmit");
@@ -918,6 +923,56 @@ async function submitAppliance(event) {
   } finally {
     button.disabled = false;
     button.textContent = "Save appliance";
+  }
+}
+
+async function submitAddress(event) {
+  event.preventDefault();
+  const button = $("addressSubmit");
+  button.disabled = true;
+  button.textContent = "Saving…";
+  if ($("addressMessage")) $("addressMessage").textContent = "";
+
+  const pincode = $("addrPincode").value.trim();
+  if (!/^\d{6}$/.test(pincode)) {
+    if ($("addressMessage")) {
+      $("addressMessage").textContent = "Please enter a valid 6-digit postal PIN code.";
+    }
+    button.disabled = false;
+    button.textContent = "Save Service Address";
+    return;
+  }
+
+  try {
+    const data = await readApiJson("/api/auth/address", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        house_flat: $("addrHouseFlat").value.trim(),
+        street_area: $("addrStreetArea").value.trim(),
+        landmark: $("addrLandmark").value.trim() || null,
+        city: $("addrCity").value.trim(),
+        state: $("addrState").value.trim(),
+        pincode: pincode,
+      }),
+    });
+    closeDialog("addressDialog");
+    $("addressForm").reset();
+    if (currentUser) {
+      currentUser.address = data.address;
+      localStorage.setItem("servora_user", JSON.stringify(currentUser));
+      setProfile(currentUser);
+    }
+    if ($("bookAddress")) $("bookAddress").value = data.address;
+    showToast("Service address saved successfully!", "success");
+  } catch (error) {
+    if ($("addressMessage")) {
+      $("addressMessage").textContent =
+        error.message || "Could not save this address.";
+    }
+  } finally {
+    button.disabled = false;
+    button.textContent = "Save Service Address";
   }
 }
 
@@ -1104,6 +1159,20 @@ document.addEventListener("DOMContentLoaded", async () => {
     $("cancelAppliance").addEventListener("click", () =>
       closeDialog("applianceDialog")
     );
+
+  // Address modal form submissions & dialog
+  if ($("editAddressBtn")) {
+    $("editAddressBtn").addEventListener("click", window.openAddressModal);
+  }
+  if ($("addressForm")) {
+    $("addressForm").addEventListener("submit", submitAddress);
+  }
+  if ($("closeAddress")) {
+    $("closeAddress").addEventListener("click", () => closeDialog("addressDialog"));
+  }
+  if ($("cancelAddress")) {
+    $("cancelAddress").addEventListener("click", () => closeDialog("addressDialog"));
+  }
 
   // Logout buttons
   if ($("logoutBtn")) $("logoutBtn").addEventListener("click", logout);

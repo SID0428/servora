@@ -138,3 +138,25 @@ class ServiceBookingCreate(BaseModel):
     preferred_date: str
     preferred_slot: str
     address: Optional[str] = None
+
+class CustomerAddressUpdate(BaseModel):
+    house_flat: str = Field(min_length=1, max_length=128)
+    street_area: str = Field(min_length=1, max_length=256)
+    landmark: Optional[str] = Field(default=None, max_length=128)
+    city: str = Field(min_length=1, max_length=128)
+    state: str = Field(min_length=1, max_length=128)
+    pincode: str = Field(min_length=6, max_length=10, pattern=r"^\d{6}$")
+
+class CompanyCustomerProductResponse(BaseModel):
+    appliance_id: str
+    category: str
+    brand: str
+    model_no: str
+    serial_no: Optional[str] = None
+    warranty_status: str
+    registered_on: str
+    customer_id: str
+    customer_name: str
+    customer_email: str
+    customer_phone: str
+    customer_address: Optional[str] = None
