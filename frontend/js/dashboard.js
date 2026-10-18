@@ -1120,7 +1120,14 @@ document.addEventListener("DOMContentLoaded", async () => {
     $("bookDate").value = localToday;
   }
 
-  // Load customer session & dashboard data
+  // Instantly hydrate user profile from localStorage cache to eliminate any flash during refresh
+  const cachedUser = readStoredUser();
+  if (cachedUser && cachedUser.role === "customer") {
+    currentUser = cachedUser;
+    setProfile(cachedUser);
+  }
+
+  // Confirm customer session with the API & load dashboard data
   if (await loadCurrentCustomer()) {
     setProfile(currentUser);
     await loadDashboardData();
