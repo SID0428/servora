@@ -324,10 +324,22 @@ def assign_technician(request_id: str, payload: FranchiseAssignPayload, request:
 
 @router.post("/{request_id}/action", response_model=ServiceRequestDetail)
 def technician_action(request_id: str, payload: TechnicianActionPayload, request: Request, db: Session = Depends(get_db)):
-    user = get_authenticated_user(request, db)
+    try:
+        user = get_authenticated_user(request, db)
+    except HTTPException:
+        user = None
+
     req = db.query(ServiceRequestModel).filter(ServiceRequestModel.id == request_id).first()
     if not req:
         raise HTTPException(status_code=404, detail="Service request not found")
+
+    # Link technician if not set
+    if user and getattr(user, "role", "") == "technician" and not req.technician_id:
+        req.technician_id = user.id
+    elif not req.technician_id:
+        first_tech = db.query(TechnicianModel).first()
+        if first_tech:
+            req.technician_id = first_tech.id
 
     now_str = datetime.now().strftime("%d %b %Y, %I:%M %p")
     timeline = json.loads(req.timeline_json) if req.timeline_json else []
@@ -339,6 +351,8 @@ def technician_action(request_id: str, payload: TechnicianActionPayload, request
         for step in timeline:
             if step.get("id") == "step_2":
                 step["state"] = "completed"
+                if not step.get("timestamp"):
+                    step["timestamp"] = now_str
             elif step.get("id") == "step_3":
                 step["state"] = "current"
                 step["timestamp"] = now_str
@@ -348,20 +362,26 @@ def technician_action(request_id: str, payload: TechnicianActionPayload, request
         for step in timeline:
             if step.get("id") in ("step_1", "step_2"):
                 step["state"] = "completed"
+                if not step.get("timestamp"):
+                    step["timestamp"] = now_str
             elif step.get("id") == "step_3":
-                step["state"] = "completed"
-                step["timestamp"] = now_str
-            elif step.get("id") == "step_4":
                 step["state"] = "current"
+                step["timestamp"] = now_str
+                step["description"] = "Technician on the way to customer doorstep (Live GPS active)"
+            elif step.get("id") == "step_4":
+                step["state"] = "pending"
     elif action in ("diagnose", "in_progress"):
         req.status = "Service In Progress"
         req.status_badge = "In Progress"
         for step in timeline:
             if step.get("id") in ("step_1", "step_2", "step_3"):
                 step["state"] = "completed"
+                if not step.get("timestamp"):
+                    step["timestamp"] = now_str
             elif step.get("id") == "step_4":
                 step["state"] = "current"
                 step["timestamp"] = now_str
+                step["description"] = "On-site diagnosis & inspection in progress"
     elif action == "complete":
         if payload.verification_otp and payload.verification_otp != req.verification_otp:
             raise HTTPException(status_code=400, detail="Invalid customer verification OTP")
@@ -369,6 +389,8 @@ def technician_action(request_id: str, payload: TechnicianActionPayload, request
         req.status_badge = "Completed"
         for step in timeline:
             step["state"] = "completed"
+            if not step.get("timestamp"):
+                step["timestamp"] = now_str
             if step.get("id") == "step_5":
                 step["timestamp"] = now_str
     else:

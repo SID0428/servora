@@ -157,10 +157,23 @@ async function loadCurrentCustomer() {
   return true;
 }
 
+function extractErrorMessage(errData, fallback = "Operation failed") {
+  if (!errData) return fallback;
+  const detail = errData.detail ?? errData.message ?? errData;
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail)) {
+    return detail.map((item) => (typeof item === "object" ? (item.msg || item.message || JSON.stringify(item)) : String(item))).join("; ");
+  }
+  if (typeof detail === "object") {
+    return detail.msg || detail.message || JSON.stringify(detail);
+  }
+  return String(detail);
+}
+
 async function readApiJson(path, options) {
   const response = await apiFetch(path, options);
   const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.detail || `Could not load ${path}`);
+  if (!response.ok) throw new Error(extractErrorMessage(data, `Could not load ${path}`));
   return data;
 }
 

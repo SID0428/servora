@@ -33,9 +33,26 @@ let user = null;
 
 const icons = { Dashboard: "⌂", Overview: "⌂", "My jobs": "▤", "Job history": "◷", "Route & schedule": "⌖", Earnings: "$", "Help center": "?", "Service requests": "▣", "Incoming service requests": "▣", Technicians: "♙", "Active jobs": "⚒", Customers: "♧", Reports: "▥", Settings: "⚙", Companies: "▦", Branches: "⌖", "System settings": "⚙" };
 function safe(value) { const node = document.createElement("span"); node.textContent = value ?? ""; return node.innerHTML; }
-function authHeaders() {
+function authHeaders(extraHeaders = {}) {
   const token = user?.session_token || initialUser?.session_token;
-  return token ? { Authorization: `Bearer ${token}` } : {};
+  const headers = { ...extraHeaders };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  return headers;
+}
+function jsonHeaders(extraHeaders = {}) {
+  return authHeaders({ "Content-Type": "application/json", ...extraHeaders });
+}
+function extractErrorMessage(errData, fallback = "Operation failed") {
+  if (!errData) return fallback;
+  const detail = errData.detail ?? errData.message ?? errData;
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail)) {
+    return detail.map((item) => (typeof item === "object" ? (item.msg || item.message || JSON.stringify(item)) : String(item))).join("; ");
+  }
+  if (typeof detail === "object") {
+    return detail.msg || detail.message || JSON.stringify(detail);
+  }
+  return String(detail);
 }
 function showToast(message, type = "info") {
   const host = $("toast-container"); if (!host) return;
@@ -399,33 +416,33 @@ document.addEventListener("click", (e) => {
   if (targetTab === "services" && $("companyTabServices")) $("companyTabServices").classList.remove("hidden");
 });
 async function adminApi(path, options = {}) {
-  const response = await fetch(`${API_BASE_URL}/api/admin${path}`, { ...options, credentials: "include", headers: { "Content-Type": "application/json", ...authHeaders(), ...options.headers } });
+  const response = await fetch(`${API_BASE_URL}/api/admin${path}`, { ...options, credentials: "include", headers: jsonHeaders(options.headers) });
   const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.detail || "Could not complete the request.");
+  if (!response.ok) throw new Error(extractErrorMessage(data, "Could not complete the request."));
   return data;
 }
 async function companyApi(path, options = {}) {
   let response;
   try {
-    response = await fetch(`${API_BASE_URL}/api/company${path}`, { ...options, credentials: "include", headers: { "Content-Type": "application/json", ...authHeaders(), ...options.headers } });
+    response = await fetch(`${API_BASE_URL}/api/company${path}`, { ...options, credentials: "include", headers: jsonHeaders(options.headers) });
   } catch (error) {
     if (error instanceof TypeError) throw new Error("The Servora API did not return a response. Check that the backend is running and allows this frontend origin in CORS settings.");
     throw error;
   }
   const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.detail || "Could not complete the request.");
+  if (!response.ok) throw new Error(extractErrorMessage(data, "Could not complete the request."));
   return data;
 }
 async function franchiseApi(path, options = {}) {
   let response;
   try {
-    response = await fetch(`${API_BASE_URL}/api/franchise${path}`, { ...options, credentials: "include", headers: { "Content-Type": "application/json", ...authHeaders(), ...options.headers } });
+    response = await fetch(`${API_BASE_URL}/api/franchise${path}`, { ...options, credentials: "include", headers: jsonHeaders(options.headers) });
   } catch (error) {
     if (error instanceof TypeError) throw new Error("The Servora API did not return a response. Check that the backend is running and allows this frontend origin in CORS settings.");
     throw error;
   }
   const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.detail || "Could not complete the request.");
+  if (!response.ok) throw new Error(extractErrorMessage(data, "Could not complete the request."));
   return data;
 }
 async function loadFranchiseTechnicians() {
@@ -975,26 +992,35 @@ function renderInsights() {
 // Global actions for Technician and Franchise operations
 window.techAction = async function(requestId, action) {
   try {
-    showToast(`Updating status to ${action}…`);
+    const label = action === "start_visit" ? "Starting visit" : action === "diagnose" ? "Recording diagnosis" : "Completing job";
+    showToast(`${label}…`);
     const res = await fetch(`${API_BASE_URL}/api/requests/${requestId}/action`, {
       method: "POST",
       credentials: "include",
-      headers: authHeaders(),
+      headers: jsonHeaders(),
       body: JSON.stringify({ action })
     });
+    const data = await res.json().catch(() => ({}));
     if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.detail || "Action failed");
+      throw new Error(extractErrorMessage(data, "Action failed"));
     }
-    const updated = await res.json();
-    const idx = requests.findIndex(r => r.id === requestId);
-    if (idx !== -1) requests[idx] = updated;
-    showToast(`Job updated: ${updated.status_badge}`);
+    const idx = requests.findIndex((r) => r.id === requestId);
+    if (idx !== -1) requests[idx] = data;
+
     setMetrics();
     renderRequests();
     renderInsights();
+
+    if (action === "start_visit") {
+      showToast("Visit started! You are en route to customer doorstep.");
+      // Automatically open live animated route tracking modal
+      window.openTechRouteMap(requestId);
+      return;
+    }
+
+    showToast(`Job updated: ${data.status_badge || data.status || "Updated"}`);
   } catch (err) {
-    showToast(err.message, "error");
+    showToast(extractErrorMessage(err.message, "Action failed"), "error");
   }
 };
 
@@ -1191,22 +1217,21 @@ window.confirmTechnicianAssignment = async function() {
     const res = await fetch(`${API_BASE_URL}/api/requests/${reqId}/assign`, {
       method: "POST",
       credentials: "include",
-      headers: authHeaders(),
+      headers: jsonHeaders(),
       body: JSON.stringify({ technician_id: techId })
     });
+    const data = await res.json().catch(() => ({}));
     if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.detail || "Failed to assign technician");
+      throw new Error(extractErrorMessage(data, "Failed to assign technician"));
     }
-    const updated = await res.json();
-    const idx = requests.findIndex(r => r.id === reqId);
-    if (idx !== -1) requests[idx] = updated;
+    const idx = requests.findIndex((r) => r.id === reqId);
+    if (idx !== -1) requests[idx] = data;
     showToast(`Technician assigned to ${reqId}!`);
     setMetrics();
     renderRequests();
     renderInsights();
   } catch (err) {
-    showToast(err.message, "error");
+    showToast(extractErrorMessage(err.message, "Failed to assign technician"), "error");
   }
 };
 function renderResources() {
@@ -1411,14 +1436,13 @@ $("opsProfileEditForm")?.addEventListener("submit", async (e) => {
     const res = await fetch(`${API_BASE_URL}/api/auth/profile`, {
       method: "PUT",
       credentials: "include",
-      headers: authHeaders(),
+      headers: jsonHeaders(),
       body: JSON.stringify({ name, phone, address })
     });
+    const data = await res.json().catch(() => ({}));
     if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.detail || "Failed to update profile");
+      throw new Error(extractErrorMessage(data, "Failed to update profile"));
     }
-    const data = await res.json();
     user = { ...user, name: data.name, phone: data.phone, address: data.address };
     localStorage.setItem("servora_user", JSON.stringify(user));
     setProfile();
@@ -1438,8 +1462,8 @@ $("opsProfileEditForm")?.addEventListener("submit", async (e) => {
     }, 700);
   } catch (err) {
     msg.className = "min-h-4 text-xs text-rose-600 font-semibold";
-    msg.textContent = err.message;
-    showToast(err.message, "error");
+    msg.textContent = extractErrorMessage(err.message, "Failed to update profile");
+    showToast(extractErrorMessage(err.message, "Failed to update profile"), "error");
   } finally {
     btn.disabled = false;
   }
