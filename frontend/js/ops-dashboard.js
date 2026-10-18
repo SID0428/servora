@@ -1218,7 +1218,11 @@ window.confirmTechnicianAssignment = async function() {
       method: "POST",
       credentials: "include",
       headers: jsonHeaders(),
-      body: JSON.stringify({ technician_id: techId })
+      body: JSON.stringify({
+        request_id: reqId,
+        technician_id: techId,
+        priority: document.getElementById("assignPrioritySelect")?.value || "Medium"
+      })
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {

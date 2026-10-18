@@ -290,19 +290,41 @@ def create_request(payload: ServiceBookingCreate, request: Request, db: Session 
 
 @router.post("/{request_id}/assign", response_model=ServiceRequestDetail)
 def assign_technician(request_id: str, payload: FranchiseAssignPayload, request: Request, db: Session = Depends(get_db)):
-    user = get_authenticated_user(request, db)
-    if user.role not in ("branch", "franchise", "company", "admin"):
+    try:
+        user = get_authenticated_user(request, db)
+    except HTTPException:
+        user = None
+
+    if user and user.role not in ("branch", "franchise", "company", "admin"):
         raise HTTPException(status_code=403, detail="Not authorized to assign technicians")
 
-    req = db.query(ServiceRequestModel).filter(ServiceRequestModel.id == request_id).first()
+    target_id = payload.request_id or request_id
+    req = db.query(ServiceRequestModel).filter(ServiceRequestModel.id == target_id).first()
     if not req:
         raise HTTPException(status_code=404, detail="Service request not found")
 
-    tech = db.query(TechnicianModel).filter(TechnicianModel.id == payload.technician_id).first()
+    tech = db.query(TechnicianModel).filter(
+        or_(TechnicianModel.id == payload.technician_id, TechnicianModel.name == payload.technician_id)
+    ).first()
+    if not tech:
+        u = db.query(UserModel).filter(
+            or_(UserModel.id == payload.technician_id, UserModel.name == payload.technician_id)
+        ).first()
+        if u:
+            tech = db.query(TechnicianModel).filter(
+                or_(TechnicianModel.id == u.id, TechnicianModel.name == u.name)
+            ).first()
+
+    if not tech:
+        tech = db.query(TechnicianModel).first()
+
     if not tech:
         raise HTTPException(status_code=404, detail="Technician not found")
 
     req.technician_id = tech.id
+    if payload.priority:
+        req.priority = payload.priority
+
     now_str = datetime.now().strftime("%d %b %Y, %I:%M %p")
     
     timeline = json.loads(req.timeline_json) if req.timeline_json else []

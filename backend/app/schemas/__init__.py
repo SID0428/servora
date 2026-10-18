@@ -154,8 +154,9 @@ class UserProfileUpdate(BaseModel):
     address: Optional[str] = None
 
 class FranchiseAssignPayload(BaseModel):
-    request_id: str
     technician_id: str
+    request_id: Optional[str] = None
+    priority: Optional[str] = None
 
 class TechnicianActionPayload(BaseModel):
     action: str # "accept", "start_visit", "complete"
