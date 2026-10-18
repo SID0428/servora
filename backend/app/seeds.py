@@ -2,7 +2,10 @@ import json
 from sqlalchemy import inspect, text
 from sqlalchemy.orm import Session
 from app.db.session import engine, Base, SessionLocal
-from app.db.models import UserModel, TechnicianModel, ApplianceModel, ServiceRequestModel, CompanyBranchModel, BranchTechnicianModel
+from app.db.models import (
+    UserModel, TechnicianModel, ApplianceModel, ServiceRequestModel,
+    CompanyBranchModel, BranchTechnicianModel, JobCardModel, ServiceFeedbackModel
+)
 
 def seed_database(db: Session):
     # Ensure tables exist in MySQL or SQLite
@@ -36,6 +39,15 @@ def seed_database(db: Session):
     if "longitude" not in req_columns:
         with engine.begin() as connection:
             connection.execute(text("ALTER TABLE service_requests ADD COLUMN longitude FLOAT NULL"))
+    if "defect_photo" not in req_columns:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE service_requests ADD COLUMN defect_photo TEXT NULL"))
+    if "reopened_reason" not in req_columns:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE service_requests ADD COLUMN reopened_reason TEXT NULL"))
+    if "reopened_at" not in req_columns:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE service_requests ADD COLUMN reopened_at VARCHAR(64) NULL"))
 
     # 1. Seed Users if not present
     if not db.query(UserModel).first():

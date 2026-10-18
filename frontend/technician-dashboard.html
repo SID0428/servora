@@ -84,6 +84,127 @@
     </div>
   </dialog>
 
+  <!-- Digital Job Card Modal for Technician & Franchise (Phase 1 FR-JOB-001 to 005) -->
+  <dialog id="opsJobCardDialog" class="w-[min(94vw,620px)] rounded-3xl border-0 p-0 shadow-2xl overflow-hidden bg-white">
+    <div class="p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+      <div class="flex items-start justify-between border-b border-slate-100 pb-3">
+        <div>
+          <div class="flex items-center gap-2">
+            <span class="text-[10px] font-bold tracking-[.16em] text-blue-600 uppercase">DIGITAL JOB CARD</span>
+            <span id="opsJcStatusBadge" class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">Pending</span>
+          </div>
+          <h3 class="font-display text-base font-bold text-slate-900 mt-1" id="opsJcTitle">Job Card & Billing Summary</h3>
+          <p class="text-xs text-slate-400" id="opsJcSubtitle">Record work, itemize parts, compute GST, and verify customer OTP</p>
+        </div>
+        <button type="button" id="closeOpsJobCard" class="rounded-xl p-1.5 text-slate-400 hover:bg-slate-100 text-lg leading-none" aria-label="Close">✕</button>
+      </div>
+
+      <!-- Ticket Details Readout -->
+      <div class="p-3 bg-slate-50 rounded-2xl border border-slate-100 text-xs grid grid-cols-2 gap-2">
+        <div>
+          <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Service Request</span>
+          <strong id="opsJcReqId" class="text-slate-800 font-bold block">SR-7845</strong>
+        </div>
+        <div>
+          <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Customer</span>
+          <strong id="opsJcCustomerName" class="text-slate-800 font-bold block">Customer Name</strong>
+        </div>
+        <div class="col-span-2">
+          <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Appliance & Reported Issue</span>
+          <p id="opsJcApplianceIssue" class="text-slate-700 mt-0.5 font-medium"></p>
+        </div>
+      </div>
+
+      <form id="opsJobCardForm" class="space-y-4 text-xs">
+        <!-- Work Summary -->
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">
+            Work Performed / Technical Diagnosis <span class="text-rose-500">*</span>
+          </label>
+          <textarea id="opsJcWorkSummary" required rows="2" maxlength="1000" placeholder="e.g. Inspected refrigerant pressure, replaced capacitor, cleaned blower wheel..." class="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20"></textarea>
+        </div>
+
+        <!-- Dynamic Parts Line Items -->
+        <div>
+          <div class="flex items-center justify-between mb-1.5">
+            <label class="font-semibold text-slate-700">Spare Parts & Consumables Used</label>
+            <button type="button" id="opsAddPartRowBtn" class="text-[11px] font-bold text-blue-600 hover:text-blue-800 flex items-center gap-1">+ Add Part</button>
+          </div>
+          <div class="space-y-2" id="opsPartsContainer">
+            <!-- Dynamic parts row template -->
+          </div>
+        </div>
+
+        <!-- Labor Charges -->
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">
+            Labor & Diagnostic Charges (₹) <span class="text-rose-500">*</span>
+          </label>
+          <input type="number" id="opsJcLaborCost" min="0" step="1" value="350" required class="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20">
+        </div>
+
+        <!-- Live Price Calculation Breakdown -->
+        <div class="p-3 bg-blue-50/60 rounded-2xl border border-blue-100 space-y-1.5 text-xs text-slate-700">
+          <div class="flex justify-between">
+            <span>Parts Subtotal:</span>
+            <strong id="opsCalcPartsSubtotal">₹0.00</strong>
+          </div>
+          <div class="flex justify-between">
+            <span>Labor Charges:</span>
+            <strong id="opsCalcLabor">₹350.00</strong>
+          </div>
+          <div class="flex justify-between">
+            <span>GST (18%):</span>
+            <strong id="opsCalcTax">₹63.00</strong>
+          </div>
+          <div class="border-t border-blue-200 pt-1.5 flex justify-between font-bold text-slate-900 text-sm">
+            <span>Total Billable Amount:</span>
+            <strong id="opsCalcTotal" class="text-blue-700 text-base">₹413.00</strong>
+          </div>
+        </div>
+
+        <!-- Technician Signature Pad -->
+        <div id="opsTechSigSection" class="space-y-1.5">
+          <div class="flex items-center justify-between">
+            <label class="font-semibold text-slate-700">Technician Signature</label>
+            <button type="button" id="opsClearTechSigBtn" class="text-[11px] text-slate-500 hover:text-slate-800">Clear</button>
+          </div>
+          <div class="rounded-xl border border-slate-300 bg-white overflow-hidden">
+            <canvas id="opsTechSigCanvas" width="480" height="90" class="w-full h-20 touch-none block cursor-crosshair"></canvas>
+          </div>
+        </div>
+
+        <!-- Customer Verification OTP (Mandatory for completing service) -->
+        <div id="opsOtpSection" class="space-y-1">
+          <label class="block font-semibold text-slate-700">
+            Customer Doorstep OTP <span class="text-rose-500">*</span>
+          </label>
+          <input type="text" id="opsJcOtpInput" maxlength="6" placeholder="Enter 4-digit code provided by customer" class="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs bg-white font-mono tracking-widest text-center focus:outline-none focus:ring-2 focus:ring-blue-500/20">
+          <p class="text-[10px] text-slate-400">Technician must obtain the 4-digit verification code from the customer.</p>
+        </div>
+
+        <!-- Customer Signature / Status Display if already completed -->
+        <div id="opsCustomerSigReadout" class="hidden p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-1">
+          <span class="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">Customer Acceptance Status</span>
+          <div class="flex items-center gap-3">
+            <img id="opsCustomerSigImg" src="" alt="Customer Signature" class="h-12 max-w-[140px] object-contain border border-slate-200 rounded-lg bg-white hidden">
+            <div>
+              <strong id="opsCustomerStatusText" class="text-xs font-bold block text-slate-800">Awaiting customer sign-off</strong>
+              <p id="opsCustomerRemarksText" class="text-[11px] text-slate-500 mt-0.5"></p>
+            </div>
+          </div>
+        </div>
+
+        <p id="opsJcMessage" class="min-h-4 text-xs text-rose-600" role="status"></p>
+
+        <div class="flex justify-end gap-2 pt-1 border-t border-slate-100">
+          <button type="button" id="cancelOpsJcBtn" class="rounded-xl px-4 py-2 font-semibold text-slate-600 hover:bg-slate-100">Cancel</button>
+          <button id="saveOpsJcBtn" type="submit" class="rounded-xl bg-blue-600 hover:bg-blue-700 px-5 py-2 font-bold text-white transition shadow-sm">Generate & Complete Job</button>
+        </div>
+      </form>
+    </div>
+  </dialog>
+
   <!-- User Profile & Edit Details Modal for Ops Portals -->
   <dialog id="opsProfileDialog" class="w-[min(94vw,480px)] rounded-3xl border-0 p-0 shadow-2xl overflow-hidden bg-white">
     <div class="p-6 space-y-4">

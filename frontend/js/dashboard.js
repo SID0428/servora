@@ -975,6 +975,64 @@ function populateTracking(request) {
     $("trackingOtp").textContent = request.verification_otp || "";
   }
 
+  // Defect Photo Display (Phase 1 FR-TKT-004)
+  if ($("trackingDefectCard")) {
+    if (request.defect_photo) {
+      $("trackingDefectCard").classList.remove("hidden");
+      if ($("trackingDefectImg")) $("trackingDefectImg").src = request.defect_photo;
+    } else {
+      $("trackingDefectCard").classList.add("hidden");
+    }
+  }
+
+  // Reopen Banner Display (Phase 1 FR-FBK-005)
+  if ($("trackingReopenBanner")) {
+    if (request.status === "Reopened / Under Review" || request.status_badge === "Disputed") {
+      $("trackingReopenBanner").classList.remove("hidden");
+      if ($("trackingReopenReason")) {
+        $("trackingReopenReason").textContent = request.reopened_reason || "Customer requested priority revisit & review under Servora Customer Protection.";
+      }
+    } else {
+      $("trackingReopenBanner").classList.add("hidden");
+    }
+  }
+
+  // Completion & Sign-off Hub (Phase 1 FR-JOB-001 & FR-FBK-001)
+  const isCompletedOrDisputed = request.status === "Completed" || request.status === "Reopened / Under Review" || request.status === "Disputed";
+  if ($("trackingCompletionCard")) {
+    $("trackingCompletionCard").classList.toggle("hidden", !isCompletedOrDisputed);
+    if (isCompletedOrDisputed) {
+      if ($("openJobCardBtn")) $("openJobCardBtn").onclick = () => window.openJobCardModal(request.id);
+      if ($("openFeedbackBtn")) $("openFeedbackBtn").onclick = () => window.openFeedbackModal(request.id);
+      if ($("openReopenBtn")) {
+        $("openReopenBtn").onclick = () => window.openReopenModal(request.id);
+        $("openReopenBtn").style.display = request.status === "Completed" ? "inline-flex" : "none";
+      }
+
+      readApiJson(`/api/requests/${encodeURIComponent(request.id)}/job-card`)
+        .then(jc => {
+          if ($("jobCardStatusBadge")) {
+            if (jc.customer_status === "accepted") {
+              $("jobCardStatusBadge").textContent = "✓ Signed & Approved";
+              $("jobCardStatusBadge").className = "text-[10px] font-bold px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200";
+            } else if (jc.customer_status === "disputed") {
+              $("jobCardStatusBadge").textContent = "⚠️ Disputed";
+              $("jobCardStatusBadge").className = "text-[10px] font-bold px-2.5 py-1 rounded-full bg-rose-100 text-rose-800 border border-rose-200";
+            } else {
+              $("jobCardStatusBadge").textContent = "Awaiting Sign-off";
+              $("jobCardStatusBadge").className = "text-[10px] font-bold px-2.5 py-1 rounded-full bg-amber-100 text-amber-800 border border-amber-200";
+            }
+          }
+        })
+        .catch(() => {
+          if ($("jobCardStatusBadge")) {
+            $("jobCardStatusBadge").textContent = "Pending Technician Submission";
+            $("jobCardStatusBadge").className = "text-[10px] font-bold px-2.5 py-1 rounded-full bg-slate-100 text-slate-700 border border-slate-200";
+          }
+        });
+    }
+  }
+
   renderTimeline(request.timeline, request);
 }
 
@@ -1208,10 +1266,15 @@ async function submitBooking(event) {
         pincode: pincode,
         latitude: lat,
         longitude: lng,
+        defect_photo: $("bookDefectPhoto")?.value || null,
       }),
     });
     closeDialog("bookingDialog");
     $("bookingForm").reset();
+    if ($("defectPhotoPreviewWrap")) $("defectPhotoPreviewWrap").classList.add("hidden");
+    if ($("defectPhotoPreview")) $("defectPhotoPreview").src = "";
+    if ($("bookDefectPhoto")) $("bookDefectPhoto").value = "";
+    if ($("defectPhotoBtnLabel")) $("defectPhotoBtnLabel").textContent = "Attach Photo";
     if (currentUser?.address && $("bookAddress")) {
       $("bookAddress").value = currentUser.address;
     }
@@ -1424,6 +1487,375 @@ function logout() {
   window.location.replace("./index.html");
 }
 
+/* ============================================================== */
+/* PHASE 1: DIGITAL JOB CARD, FEEDBACK, REOPEN, MEDIA UPLOAD     */
+/* ============================================================== */
+
+function setupDefectPhotoUpload() {
+  const fileInput = $("bookDefectFileInput");
+  const previewWrap = $("defectPhotoPreviewWrap");
+  const previewImg = $("defectPhotoPreview");
+  const hiddenInput = $("bookDefectPhoto");
+  const btnLabel = $("defectPhotoBtnLabel");
+  const removeBtn = $("removeDefectPhotoBtn");
+
+  if (!fileInput) return;
+
+  fileInput.addEventListener("change", (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+
+    if (file.size > 5 * 1024 * 1024) {
+      showToast("Photo must be less than 5MB", "error");
+      fileInput.value = "";
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const dataUrl = event.target.result;
+      if (previewImg) previewImg.src = dataUrl;
+      if (previewWrap) previewWrap.classList.remove("hidden");
+      if (hiddenInput) hiddenInput.value = dataUrl;
+      if (btnLabel) btnLabel.textContent = "Change Photo";
+    };
+    reader.readAsDataURL(file);
+  });
+
+  if (removeBtn) {
+    removeBtn.addEventListener("click", () => {
+      fileInput.value = "";
+      if (previewImg) previewImg.src = "";
+      if (previewWrap) previewWrap.classList.add("hidden");
+      if (hiddenInput) hiddenInput.value = "";
+      if (btnLabel) btnLabel.textContent = "Attach Photo";
+    });
+  }
+}
+
+let isDrawingSig = false;
+let hasDrawnSig = false;
+
+function setupCustomerSignaturePad() {
+  const canvas = $("customerSigCanvas");
+  if (!canvas) return;
+
+  const ctx = canvas.getContext("2d");
+  ctx.strokeStyle = "#1e293b";
+  ctx.lineWidth = 2.5;
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+
+  function getPos(e) {
+    const rect = canvas.getBoundingClientRect();
+    const clientX = e.clientX || (e.touches && e.touches[0].clientX);
+    const clientY = e.clientY || (e.touches && e.touches[0].clientY);
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    return {
+      x: (clientX - rect.left) * scaleX,
+      y: (clientY - rect.top) * scaleY
+    };
+  }
+
+  function startDraw(e) {
+    e.preventDefault();
+    isDrawingSig = true;
+    hasDrawnSig = true;
+    const pos = getPos(e);
+    ctx.beginPath();
+    ctx.moveTo(pos.x, pos.y);
+  }
+
+  function draw(e) {
+    if (!isDrawingSig) return;
+    e.preventDefault();
+    const pos = getPos(e);
+    ctx.lineTo(pos.x, pos.y);
+    ctx.stroke();
+  }
+
+  function endDraw() {
+    isDrawingSig = false;
+  }
+
+  canvas.addEventListener("pointerdown", startDraw);
+  canvas.addEventListener("pointermove", draw);
+  window.addEventListener("pointerup", endDraw);
+
+  if ($("clearSigBtn")) {
+    $("clearSigBtn").onclick = () => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      hasDrawnSig = false;
+    };
+  }
+}
+
+window.openJobCardModal = async function(requestId) {
+  const reqId = requestId || selectedRequestId;
+  if (!reqId) return;
+
+  openDialog("jobCardDialog");
+  if ($("jcActionMsg")) $("jcActionMsg").textContent = "";
+
+  try {
+    const jc = await readApiJson(`/api/requests/${encodeURIComponent(reqId)}/job-card`);
+    if ($("jcCardId")) $("jcCardId").textContent = jc.id;
+    if ($("jcRequestId")) $("jcRequestId").textContent = jc.request_id;
+    if ($("jcWorkSummary")) $("jcWorkSummary").textContent = jc.work_summary || "Routine appliance inspection & diagnosis.";
+
+    if ($("jcPartsBody")) {
+      if (Array.isArray(jc.parts_used) && jc.parts_used.length > 0) {
+        $("jcPartsBody").innerHTML = jc.parts_used.map(p => `
+          <tr>
+            <td class="py-2.5 px-3 font-medium text-slate-800">${escapeHtml(p.part_name)}</td>
+            <td class="py-2.5 px-3 text-center font-semibold text-slate-600">${p.quantity}</td>
+            <td class="py-2.5 px-3 text-right text-slate-600">₹${Number(p.unit_price).toFixed(2)}</td>
+            <td class="py-2.5 px-3 text-right font-bold text-slate-800">₹${Number(p.total_price || (p.quantity * p.unit_price)).toFixed(2)}</td>
+          </tr>
+        `).join("");
+      } else {
+        $("jcPartsBody").innerHTML = `<tr><td colspan="4" class="p-4 text-center text-slate-400">No spare parts billed. Standard diagnosis performed.</td></tr>`;
+      }
+    }
+
+    if ($("jcPartsTotal")) $("jcPartsTotal").textContent = `₹${jc.parts_cost.toFixed(2)}`;
+    if ($("jcLaborCost")) $("jcLaborCost").textContent = `₹${jc.labor_cost.toFixed(2)}`;
+    if ($("jcTaxAmount")) $("jcTaxAmount").textContent = `₹${jc.tax_amount.toFixed(2)}`;
+    if ($("jcGrandTotal")) $("jcGrandTotal").textContent = `₹${jc.total_amount.toFixed(2)}`;
+
+    // Technician Signature
+    if (jc.technician_signature && $("jcTechSigImg")) {
+      $("jcTechSigImg").src = jc.technician_signature;
+      $("jcTechSigImg").classList.remove("hidden");
+      if ($("jcTechSigPlaceholder")) $("jcTechSigPlaceholder").classList.add("hidden");
+    } else {
+      if ($("jcTechSigImg")) $("jcTechSigImg").classList.add("hidden");
+      if ($("jcTechSigPlaceholder")) $("jcTechSigPlaceholder").classList.remove("hidden");
+    }
+
+    // Customer Status
+    if (jc.customer_status === "accepted") {
+      if ($("jcStatusPill")) {
+        $("jcStatusPill").textContent = "Signed & Approved";
+        $("jcStatusPill").className = "text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200";
+      }
+      if ($("jcCustomerSigImg") && jc.customer_signature) {
+        $("jcCustomerSigImg").src = jc.customer_signature;
+        $("jcCustomerSigImg").classList.remove("hidden");
+        if ($("jcCustomerSigPlaceholder")) $("jcCustomerSigPlaceholder").classList.add("hidden");
+      }
+      if ($("jcCustomerSigStatus")) $("jcCustomerSigStatus").textContent = "✓ Verified Digital Signature";
+      if ($("jcSignaturePadBlock")) $("jcSignaturePadBlock").classList.add("hidden");
+      if ($("jcDisputeBlock")) $("jcDisputeBlock").classList.add("hidden");
+    } else if (jc.customer_status === "disputed") {
+      if ($("jcStatusPill")) {
+        $("jcStatusPill").textContent = "Disputed by Customer";
+        $("jcStatusPill").className = "text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-100 text-rose-800 border border-rose-200";
+      }
+      if ($("jcSignaturePadBlock")) $("jcSignaturePadBlock").classList.add("hidden");
+      if ($("jcDisputeBlock")) {
+        $("jcDisputeBlock").classList.remove("hidden");
+        if ($("jcDisputeRemarks")) $("jcDisputeRemarks").textContent = jc.customer_remarks || "Dispute reason recorded.";
+      }
+    } else {
+      // Pending acceptance
+      if ($("jcStatusPill")) {
+        $("jcStatusPill").textContent = "Awaiting Customer Sign-off";
+        $("jcStatusPill").className = "text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 border border-blue-200";
+      }
+      if ($("jcCustomerSigImg")) $("jcCustomerSigImg").classList.add("hidden");
+      if ($("jcCustomerSigPlaceholder")) $("jcCustomerSigPlaceholder").classList.remove("hidden");
+      if ($("jcSignaturePadBlock")) $("jcSignaturePadBlock").classList.remove("hidden");
+      if ($("jcDisputeBlock")) $("jcDisputeBlock").classList.add("hidden");
+      setupCustomerSignaturePad();
+    }
+
+    if ($("approveJobCardBtn")) {
+      $("approveJobCardBtn").onclick = async () => {
+        if (!hasDrawnSig) {
+          if ($("jcActionMsg")) $("jcActionMsg").textContent = "Please provide your touch or mouse signature above before approving.";
+          return;
+        }
+        const canvas = $("customerSigCanvas");
+        const sigData = canvas ? canvas.toDataURL("image/png") : null;
+        try {
+          $("approveJobCardBtn").disabled = true;
+          $("approveJobCardBtn").textContent = "Submitting…";
+          await readApiJson(`/api/requests/${encodeURIComponent(reqId)}/job-card/respond`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "accept", customer_signature: sigData })
+          });
+          showToast("Job Card signed & approved successfully!", "success");
+          closeDialog("jobCardDialog");
+          await loadDashboardData();
+          await loadTrackingDetails(reqId);
+        } catch (err) {
+          if ($("jcActionMsg")) $("jcActionMsg").textContent = err.message || "Failed to submit approval.";
+        } finally {
+          $("approveJobCardBtn").disabled = false;
+          $("approveJobCardBtn").textContent = "✓ Approve & Sign Job Card";
+        }
+      };
+    }
+
+    if ($("disputeJobCardBtn")) {
+      $("disputeJobCardBtn").onclick = async () => {
+        const remarks = prompt("Please state the reason for disputing this job card / billing:", "Discrepancy in parts or labor charges");
+        if (!remarks) return;
+        try {
+          $("disputeJobCardBtn").disabled = true;
+          await readApiJson(`/api/requests/${encodeURIComponent(reqId)}/job-card/respond`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "dispute", remarks: remarks })
+          });
+          showToast("Job Card dispute recorded. Escalated to franchise review.", "info");
+          closeDialog("jobCardDialog");
+          await loadDashboardData();
+          await loadTrackingDetails(reqId);
+        } catch (err) {
+          alert(err.message || "Failed to record dispute.");
+        } finally {
+          $("disputeJobCardBtn").disabled = false;
+        }
+      };
+    }
+
+  } catch (err) {
+    showToast(err.message || "Job card is not yet generated by the technician.", "info");
+    closeDialog("jobCardDialog");
+  }
+};
+
+function setupStarRatings() {
+  document.querySelectorAll(".star-rating").forEach(ratingEl => {
+    const field = ratingEl.getAttribute("data-rating-field");
+    const stars = ratingEl.querySelectorAll("[data-star]");
+    const inputId = field === "overall" ? "fbRatingOverall" : field === "quality" ? "fbRatingQuality" : field === "behavior" ? "fbRatingBehavior" : "fbRatingPricing";
+    const hiddenInput = $(inputId);
+
+    stars.forEach(star => {
+      star.addEventListener("click", () => {
+        const val = parseInt(star.getAttribute("data-star"), 10);
+        if (hiddenInput) hiddenInput.value = val;
+        stars.forEach(s => {
+          const sVal = parseInt(s.getAttribute("data-star"), 10);
+          if (sVal <= val) {
+            s.className = "text-amber-400 hover:scale-110 transition";
+          } else {
+            s.className = "text-slate-200 hover:scale-110 transition";
+          }
+        });
+      });
+    });
+  });
+}
+
+window.openFeedbackModal = async function(requestId) {
+  const reqId = requestId || selectedRequestId;
+  if (!reqId) return;
+
+  openDialog("feedbackDialog");
+  if ($("fbMessage")) $("fbMessage").textContent = "";
+
+  try {
+    const existing = await readApiJson(`/api/requests/${encodeURIComponent(reqId)}/feedback`);
+    if (existing) {
+      if ($("fbRatingOverall")) $("fbRatingOverall").value = existing.rating_overall;
+      if ($("fbRatingQuality")) $("fbRatingQuality").value = existing.rating_quality;
+      if ($("fbRatingBehavior")) $("fbRatingBehavior").value = existing.rating_behavior;
+      if ($("fbRatingPricing")) $("fbRatingPricing").value = existing.rating_pricing;
+      if ($("fbComment")) $("fbComment").value = existing.comment || "";
+      document.querySelectorAll(".star-rating").forEach(ratingEl => {
+        const field = ratingEl.getAttribute("data-rating-field");
+        const val = existing[`rating_${field}`] || 5;
+        ratingEl.querySelectorAll("[data-star]").forEach(s => {
+          const sVal = parseInt(s.getAttribute("data-star"), 10);
+          s.className = sVal <= val ? "text-amber-400 hover:scale-110 transition" : "text-slate-200 hover:scale-110 transition";
+        });
+      });
+      if ($("fbSubmitBtn")) $("fbSubmitBtn").textContent = "Update Review";
+    }
+  } catch (e) {
+    // No feedback yet
+  }
+
+  if ($("feedbackForm")) {
+    $("feedbackForm").onsubmit = async (e) => {
+      e.preventDefault();
+      const btn = $("fbSubmitBtn");
+      btn.disabled = true;
+      btn.textContent = "Submitting…";
+      try {
+        const payload = {
+          rating_overall: parseInt($("fbRatingOverall")?.value || "5", 10),
+          rating_quality: parseInt($("fbRatingQuality")?.value || "5", 10),
+          rating_behavior: parseInt($("fbRatingBehavior")?.value || "5", 10),
+          rating_pricing: parseInt($("fbRatingPricing")?.value || "5", 10),
+          comment: $("fbComment")?.value.trim() || null
+        };
+        await readApiJson(`/api/requests/${encodeURIComponent(reqId)}/feedback`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        showToast("Thank you! Your verified review has been recorded.", "success");
+        closeDialog("feedbackDialog");
+        await loadDashboardData();
+        await loadTrackingDetails(reqId);
+      } catch (err) {
+        if ($("fbMessage")) $("fbMessage").textContent = err.message || "Failed to submit feedback.";
+      } finally {
+        btn.disabled = false;
+        btn.textContent = "Submit Review";
+      }
+    };
+  }
+};
+
+window.openReopenModal = function(requestId) {
+  const reqId = requestId || selectedRequestId;
+  if (!reqId) return;
+
+  openDialog("reopenDialog");
+  if ($("reopenMessage")) $("reopenMessage").textContent = "";
+  if ($("reopenForm")) $("reopenForm").reset();
+
+  if ($("reopenForm")) {
+    $("reopenForm").onsubmit = async (e) => {
+      e.preventDefault();
+      const reason = $("reopenReasonSelect")?.value;
+      if (!reason) {
+        if ($("reopenMessage")) $("reopenMessage").textContent = "Please select a reason for reopening.";
+        return;
+      }
+      const notes = $("reopenNotes")?.value.trim() || null;
+      const btn = $("reopenSubmitBtn");
+      btn.disabled = true;
+      btn.textContent = "Reopening…";
+
+      try {
+        await readApiJson(`/api/requests/${encodeURIComponent(reqId)}/reopen`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ reason, notes })
+        });
+        showToast("Service ticket reopened. Franchise supervisor will review.", "success");
+        closeDialog("reopenDialog");
+        await loadDashboardData();
+        await loadTrackingDetails(reqId);
+      } catch (err) {
+        if ($("reopenMessage")) $("reopenMessage").textContent = err.message || "Could not reopen ticket.";
+      } finally {
+        btn.disabled = false;
+        btn.textContent = "Confirm Reopen";
+      }
+    };
+  }
+};
+
 document.addEventListener("DOMContentLoaded", async () => {
   // Mobile bottom bar tabs
   document.querySelectorAll(".nav-tab").forEach((tab) => {
@@ -1547,6 +1979,27 @@ document.addEventListener("DOMContentLoaded", async () => {
   if ($("closeLiveMap")) {
     $("closeLiveMap").addEventListener("click", () => closeDialog("liveTrackingMapDialog"));
   }
+
+  // Phase 1 dialog close handlers
+  if ($("closeJobCard")) {
+    $("closeJobCard").addEventListener("click", () => closeDialog("jobCardDialog"));
+  }
+  if ($("closeFeedback")) {
+    $("closeFeedback").addEventListener("click", () => closeDialog("feedbackDialog"));
+  }
+  if ($("cancelFeedback")) {
+    $("cancelFeedback").addEventListener("click", () => closeDialog("feedbackDialog"));
+  }
+  if ($("closeReopen")) {
+    $("closeReopen").addEventListener("click", () => closeDialog("reopenDialog"));
+  }
+  if ($("cancelReopen")) {
+    $("cancelReopen").addEventListener("click", () => closeDialog("reopenDialog"));
+  }
+
+  // Setup Phase 1 helpers
+  setupDefectPhotoUpload();
+  setupStarRatings();
 
   // Logout buttons
   if ($("logoutBtn")) $("logoutBtn").addEventListener("click", logout);

@@ -13,7 +13,9 @@ from app.db.models import (
     TechnicianModel,
     CompanyBranchModel,
     BranchTechnicianModel,
-    UserModel
+    UserModel,
+    JobCardModel,
+    ServiceFeedbackModel
 )
 from app.schemas import (
     ServiceRequestDetail,
@@ -21,11 +23,53 @@ from app.schemas import (
     TechnicianBase,
     TimelineStep,
     FranchiseAssignPayload,
-    TechnicianActionPayload
+    TechnicianActionPayload,
+    JobCardPartItem,
+    JobCardCreatePayload,
+    JobCardResponse,
+    JobCardCustomerActionPayload,
+    ServiceFeedbackPayload,
+    ServiceFeedbackResponse,
+    TicketReopenPayload
 )
 from app.security import get_authenticated_user
 
 router = APIRouter(prefix="/api/requests", tags=["requests"])
+
+def format_job_card(jc: JobCardModel) -> JobCardResponse:
+    parts_raw = json.loads(jc.parts_used_json) if jc.parts_used_json else []
+    parts = [JobCardPartItem(**p) for p in parts_raw]
+    return JobCardResponse(
+        id=jc.id,
+        request_id=jc.request_id,
+        technician_id=jc.technician_id,
+        customer_id=jc.customer_id,
+        work_summary=jc.work_summary,
+        parts_used=parts,
+        labor_cost=jc.labor_cost,
+        parts_cost=jc.parts_cost,
+        tax_amount=jc.tax_amount,
+        total_amount=jc.total_amount,
+        technician_signature=jc.technician_signature,
+        customer_signature=jc.customer_signature,
+        customer_status=jc.customer_status,
+        customer_remarks=jc.customer_remarks,
+        completed_at=jc.completed_at
+    )
+
+def format_feedback(fb: ServiceFeedbackModel) -> ServiceFeedbackResponse:
+    return ServiceFeedbackResponse(
+        id=fb.id,
+        request_id=fb.request_id,
+        customer_id=fb.customer_id,
+        technician_id=fb.technician_id,
+        rating_overall=fb.rating_overall,
+        rating_quality=fb.rating_quality,
+        rating_behavior=fb.rating_behavior,
+        rating_pricing=fb.rating_pricing,
+        comment=fb.comment,
+        created_at=fb.created_at
+    )
 
 def format_request_detail(req: ServiceRequestModel, db: Session) -> ServiceRequestDetail:
     tech = None
@@ -72,7 +116,10 @@ def format_request_detail(req: ServiceRequestModel, db: Session) -> ServiceReque
         company_id=req.company_id,
         pincode=req.pincode,
         latitude=req.latitude,
-        longitude=req.longitude
+        longitude=req.longitude,
+        defect_photo=req.defect_photo,
+        reopened_reason=req.reopened_reason,
+        reopened_at=req.reopened_at
     )
 
 @router.get("", response_model=List[ServiceRequestDetail])
@@ -279,6 +326,7 @@ def create_request(payload: ServiceBookingCreate, request: Request, db: Session 
         pincode=pincode or "201310",
         latitude=payload.latitude,
         longitude=payload.longitude,
+        defect_photo=payload.defect_photo,
         verification_otp=otp_code,
         timeline_json=json.dumps(initial_timeline)
     )
@@ -470,3 +518,229 @@ def advance_status(request_id: str, db: Session = Depends(get_db)):
         db.refresh(req)
 
     return {"status": "success", "new_status": req.status, "request": format_request_detail(req, db)}
+
+@router.post("/{request_id}/job-card", response_model=JobCardResponse)
+def create_job_card(request_id: str, payload: JobCardCreatePayload, request: Request, db: Session = Depends(get_db)):
+    user = get_authenticated_user(request, db)
+    req = db.query(ServiceRequestModel).filter(ServiceRequestModel.id == request_id).first()
+    if not req:
+        raise HTTPException(status_code=404, detail="Service request not found")
+
+    if user.role not in ("technician", "admin", "franchise", "branch"):
+        raise HTTPException(status_code=403, detail="Only assigned technicians or franchise can create job cards")
+
+    if user.role == "technician":
+        technician = db.query(TechnicianModel).filter(
+            (TechnicianModel.id == user.id) | (TechnicianModel.name == user.name)
+        ).first()
+        tech_id = technician.id if technician else user.id
+        if req.technician_id and req.technician_id != tech_id:
+            raise HTTPException(status_code=403, detail="You are not assigned to this service request")
+    else:
+        tech_id = req.technician_id or "tech-default"
+
+    parts_cost = round(sum(p.total_price if p.total_price else (p.quantity * p.unit_price) for p in payload.parts_used), 2)
+    labor_cost = round(payload.labor_cost, 2)
+    tax_amount = round((parts_cost + labor_cost) * 0.18, 2)
+    total_amount = round(parts_cost + labor_cost + tax_amount, 2)
+    now_str = datetime.now().strftime("%d %b %Y, %I:%M %p")
+
+    jc = db.query(JobCardModel).filter(JobCardModel.request_id == request_id).first()
+    if jc:
+        jc.work_summary = payload.work_summary
+        jc.parts_used_json = json.dumps([(p.model_dump() if hasattr(p, "model_dump") else p.dict()) for p in payload.parts_used])
+        jc.labor_cost = labor_cost
+        jc.parts_cost = parts_cost
+        jc.tax_amount = tax_amount
+        jc.total_amount = total_amount
+        if payload.technician_signature:
+            jc.technician_signature = payload.technician_signature
+        jc.completed_at = now_str
+    else:
+        jc_id = f"JC-{req.id.replace('SR-', '')}"
+        jc = JobCardModel(
+            id=jc_id,
+            request_id=req.id,
+            technician_id=tech_id,
+            customer_id=req.customer_id,
+            work_summary=payload.work_summary,
+            parts_used_json=json.dumps([(p.model_dump() if hasattr(p, "model_dump") else p.dict()) for p in payload.parts_used]),
+            labor_cost=labor_cost,
+            parts_cost=parts_cost,
+            tax_amount=tax_amount,
+            total_amount=total_amount,
+            technician_signature=payload.technician_signature,
+            customer_signature=None,
+            customer_status="pending_acceptance",
+            customer_remarks=None,
+            completed_at=now_str
+        )
+        db.add(jc)
+
+    # Update timeline step 5 description
+    timeline = json.loads(req.timeline_json) if req.timeline_json else []
+    for step in timeline:
+        if step.get("id") == "step_5":
+            step["timestamp"] = now_str
+            step["description"] = f"Digital job card generated (₹{total_amount:.2f}). Awaiting customer sign-off."
+    req.timeline_json = json.dumps(timeline)
+
+    db.commit()
+    db.refresh(jc)
+    return format_job_card(jc)
+
+@router.get("/{request_id}/job-card", response_model=JobCardResponse)
+def get_job_card(request_id: str, request: Request, db: Session = Depends(get_db)):
+    _ = get_authenticated_user(request, db)
+    jc = db.query(JobCardModel).filter(JobCardModel.request_id == request_id).first()
+    if not jc:
+        raise HTTPException(status_code=404, detail="Job card not found for this service request")
+    return format_job_card(jc)
+
+@router.post("/{request_id}/job-card/respond", response_model=JobCardResponse)
+def respond_job_card(request_id: str, payload: JobCardCustomerActionPayload, request: Request, db: Session = Depends(get_db)):
+    user = get_authenticated_user(request, db)
+    req = db.query(ServiceRequestModel).filter(ServiceRequestModel.id == request_id).first()
+    if not req:
+        raise HTTPException(status_code=404, detail="Service request not found")
+    if user.role == "customer" and req.customer_id != user.id:
+        raise HTTPException(status_code=403, detail="Not authorized to act on this job card")
+
+    jc = db.query(JobCardModel).filter(JobCardModel.request_id == request_id).first()
+    if not jc:
+        raise HTTPException(status_code=404, detail="Job card not found for this service request")
+
+    now_str = datetime.now().strftime("%d %b %Y, %I:%M %p")
+    timeline = json.loads(req.timeline_json) if req.timeline_json else []
+
+    if payload.action == "accept":
+        jc.customer_status = "accepted"
+        if payload.customer_signature:
+            jc.customer_signature = payload.customer_signature
+        jc.customer_remarks = payload.remarks or "Customer accepted and signed job card."
+
+        req.status = "Completed"
+        req.status_badge = "Completed"
+        for step in timeline:
+            step["state"] = "completed"
+            if not step.get("timestamp"):
+                step["timestamp"] = now_str
+            if step.get("id") == "step_5":
+                step["timestamp"] = now_str
+                step["description"] = "Job card approved & signed by customer. Service closed."
+    elif payload.action == "dispute":
+        jc.customer_status = "disputed"
+        jc.customer_remarks = payload.remarks or "Customer disputed the job card charges/repairs."
+
+        req.status = "Disputed"
+        req.status_badge = "Disputed"
+        for step in timeline:
+            if step.get("id") == "step_5":
+                step["timestamp"] = now_str
+                step["description"] = f"Job card disputed by customer: {jc.customer_remarks}"
+    else:
+        raise HTTPException(status_code=400, detail=f"Invalid action: {payload.action}")
+
+    req.timeline_json = json.dumps(timeline)
+    db.commit()
+    db.refresh(jc)
+    db.refresh(req)
+    return format_job_card(jc)
+
+@router.post("/{request_id}/feedback", response_model=ServiceFeedbackResponse)
+def submit_feedback(request_id: str, payload: ServiceFeedbackPayload, request: Request, db: Session = Depends(get_db)):
+    user = get_authenticated_user(request, db)
+    req = db.query(ServiceRequestModel).filter(ServiceRequestModel.id == request_id).first()
+    if not req:
+        raise HTTPException(status_code=404, detail="Service request not found")
+
+    if user.role == "customer" and req.customer_id != user.id:
+        raise HTTPException(status_code=403, detail="Not authorized to submit feedback for this request")
+
+    if req.status != "Completed":
+        raise HTTPException(status_code=400, detail="Feedback can only be submitted for completed service requests")
+
+    tech_id = req.technician_id or "tech-default"
+    now_str = datetime.now().strftime("%d %b %Y, %I:%M %p")
+
+    fb = db.query(ServiceFeedbackModel).filter(ServiceFeedbackModel.request_id == request_id).first()
+    if fb:
+        fb.rating_overall = payload.rating_overall
+        fb.rating_quality = payload.rating_quality
+        fb.rating_behavior = payload.rating_behavior
+        fb.rating_pricing = payload.rating_pricing
+        fb.comment = payload.comment
+        fb.created_at = now_str
+    else:
+        fb_id = f"FB-{req.id.replace('SR-', '')}"
+        fb = ServiceFeedbackModel(
+            id=fb_id,
+            request_id=req.id,
+            customer_id=req.customer_id,
+            technician_id=tech_id,
+            rating_overall=payload.rating_overall,
+            rating_quality=payload.rating_quality,
+            rating_behavior=payload.rating_behavior,
+            rating_pricing=payload.rating_pricing,
+            comment=payload.comment,
+            created_at=now_str
+        )
+        db.add(fb)
+
+    db.commit()
+    db.refresh(fb)
+
+    # Recalculate technician rating
+    technician = db.query(TechnicianModel).filter(TechnicianModel.id == tech_id).first()
+    if technician:
+        all_fbs = db.query(ServiceFeedbackModel).filter(ServiceFeedbackModel.technician_id == tech_id).all()
+        if all_fbs:
+            avg_rating = round(sum(f.rating_overall for f in all_fbs) / len(all_fbs), 1)
+            technician.rating = avg_rating
+            db.commit()
+
+    return format_feedback(fb)
+
+@router.get("/{request_id}/feedback", response_model=Optional[ServiceFeedbackResponse])
+def get_feedback(request_id: str, request: Request, db: Session = Depends(get_db)):
+    _ = get_authenticated_user(request, db)
+    fb = db.query(ServiceFeedbackModel).filter(ServiceFeedbackModel.request_id == request_id).first()
+    if not fb:
+        return None
+    return format_feedback(fb)
+
+@router.post("/{request_id}/reopen", response_model=ServiceRequestDetail)
+def reopen_ticket(request_id: str, payload: TicketReopenPayload, request: Request, db: Session = Depends(get_db)):
+    user = get_authenticated_user(request, db)
+    req = db.query(ServiceRequestModel).filter(ServiceRequestModel.id == request_id).first()
+    if not req:
+        raise HTTPException(status_code=404, detail="Service request not found")
+
+    if user.role == "customer" and req.customer_id != user.id:
+        raise HTTPException(status_code=403, detail="Not authorized to reopen this request")
+
+    if req.status != "Completed":
+        raise HTTPException(status_code=400, detail="Only completed service requests can be reopened")
+
+    now_str = datetime.now().strftime("%d %b %Y, %I:%M %p")
+    full_reason = payload.reason + (f": {payload.notes}" if payload.notes else "")
+
+    req.status = "Reopened / Under Review"
+    req.status_badge = "Disputed"
+    req.reopened_reason = full_reason
+    req.reopened_at = now_str
+
+    timeline = json.loads(req.timeline_json) if req.timeline_json else []
+    timeline.append({
+        "id": f"step_reopen_{int(datetime.now().timestamp())}",
+        "title": "Ticket Reopened by Customer",
+        "timestamp": now_str,
+        "description": f"Customer reopened ticket. Reason: {full_reason}",
+        "state": "current"
+    })
+    req.timeline_json = json.dumps(timeline)
+
+    db.commit()
+    db.refresh(req)
+    return format_request_detail(req, db)
+

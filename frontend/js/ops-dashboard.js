@@ -1023,6 +1023,7 @@ function requestForRole(item) {
 
 function statusClass(status) {
   if (status === "Completed") return "completed";
+  if (status === "Disputed" || status === "Reopened / Under Review") return "disputed";
   if (["Scheduled", "Request Created", "Technician Assigned"].includes(status)) return "scheduled";
   if (status === "Assigned") return "assigned";
   return "";
@@ -1096,8 +1097,18 @@ function renderRequests() {
               <span>📌 You have been assigned this work</span>
             </div>
           </div>
-          <span class="status-pill ${statusClass(item.status_badge)}">${safe(item.status_badge)}</span>
+          <span class="status-pill ${statusClass(item.status_badge || item.status)}">${safe(item.status_badge || item.status)}</span>
         </div>
+
+        ${item.defect_photo ? `
+          <div class="flex items-center gap-3 p-2.5 bg-blue-50/60 rounded-xl border border-blue-100">
+            <img src="${safe(item.defect_photo)}" alt="Defect" class="w-12 h-12 rounded-lg object-cover border border-slate-200 cursor-pointer shadow-xs hover:opacity-90" onclick="window.open(this.src, '_blank')">
+            <div class="text-[11px] text-slate-600">
+              <strong class="text-blue-900 block font-bold">Appliance Defect Photo Attached</strong>
+              <span class="text-slate-400">Click photo to view full resolution</span>
+            </div>
+          </div>
+        ` : ''}
 
         <div class="rounded-xl bg-slate-50 p-3.5 border border-slate-100 text-xs text-slate-600 space-y-1.5">
           <div class="flex items-center justify-between">
@@ -1119,14 +1130,13 @@ function renderRequests() {
             <button type="button" class="px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs shadow-sm transition flex items-center gap-1.5" onclick="techAction('${safe(item.id)}', 'start_visit')">
               📍 Start Visit
             </button>
-            <button type="button" class="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs shadow-sm transition flex items-center gap-1.5" onclick="techDiagnosisModal('${safe(item.id)}')">
-              ⊕ Diagnosis
-            </button>
-            <button type="button" class="px-3.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-900 text-white font-semibold text-xs shadow-sm transition flex items-center gap-1.5" onclick="techAction('${safe(item.id)}', 'complete')">
-              ✓ Complete Job
+            <button type="button" class="px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs shadow-sm transition flex items-center gap-1.5" onclick="openOpsJobCardModal('${safe(item.id)}')">
+              📋 Digital Job Card
             </button>
           ` : `
-            <span class="text-xs font-semibold text-emerald-600 flex items-center gap-1">✓ Service Completed</span>
+            <button type="button" class="px-3.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-semibold text-xs transition flex items-center gap-1.5" onclick="openOpsJobCardModal('${safe(item.id)}')">
+              📄 View Job Card
+            </button>
           `}
           <button type="button" class="ml-auto text-xs font-semibold text-blue-600 hover:underline" onclick="openTechRouteMap('${safe(item.id)}')">
             🗺️ Open Map Route →
@@ -1175,16 +1185,21 @@ function renderRequests() {
       }
 
       const priorityBadge = `<span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${priorityClass(item.priority || 'Medium')}">${safe(item.priority || 'Medium')}</span>`;
-      const statusPill = `<span class="status-pill ${statusClass(item.status_badge || item.status)}">${safe(item.status_badge || item.status || "Pending")}</span>`;
+      const isDisputed = item.status === "Reopened / Under Review" || item.status_badge === "Disputed";
+      const statusPill = isDisputed
+        ? `<span class="status-pill disputed" title="${safe(item.reopened_reason || 'Reopened by customer')}">⚠️ Reopened</span>`
+        : `<span class="status-pill ${statusClass(item.status_badge || item.status)}">${safe(item.status_badge || item.status || "Pending")}</span>`;
 
       const isDispatched = item.status === "Technician on the Way" || (isAssigned && item.status !== "Completed");
-      const trackBtn = isDispatched ? `<button class="table-action px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 font-semibold text-xs ml-1" onclick="openTechRouteMap('${safe(item.id)}')">Track 📍</button>` : '';
+      const trackBtn = isDispatched ? `<button class="table-action px-2 py-1 rounded-lg bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 font-semibold text-xs ml-1" onclick="openTechRouteMap('${safe(item.id)}')">Track 📍</button>` : '';
 
       const assignBtn = isAssigned
         ? `<button class="table-action px-2.5 py-1 rounded-lg bg-amber-50 text-amber-800 hover:bg-amber-100 border border-amber-300 font-semibold text-xs flex items-center gap-1" onclick="selectRequestForAssignment('${safe(item.id)}')"><span>↺</span> Reassign</button>`
         : `<button class="table-action px-3 py-1 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs shadow-sm flex items-center gap-1" onclick="selectRequestForAssignment('${safe(item.id)}')"><span>⚡</span> Assign →</button>`;
 
-      const actionCell = `<div class="flex items-center gap-1.5">${assignBtn}${trackBtn}</div>`;
+      const jcBtn = `<button class="table-action px-2 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs ml-1" onclick="openOpsJobCardModal('${safe(item.id)}')">Job Card 📄</button>`;
+
+      const actionCell = `<div class="flex items-center gap-1">${assignBtn}${trackBtn}${jcBtn}</div>`;
       const cells = [safe(item.id), customer, safe(item.appliance_name), safe(item.issue), techCell, priorityBadge, statusPill, actionCell];
       return `<tr>${cells.map((cell) => `<td>${cell}</td>`).join("")}</tr>`;
     }
@@ -1401,6 +1416,272 @@ window.techDiagnosisModal = function(requestId) {
     window.techAction(requestId, 'diagnose');
   }
 };
+
+let opsTechSigCtx = null;
+let isDrawingOpsTechSig = false;
+let hasDrawnOpsTechSig = false;
+let currentOpsJcRequestId = null;
+
+function setupOpsTechSignaturePad() {
+  const canvas = $("opsTechSigCanvas");
+  if (!canvas) return;
+  const ctx = canvas.getContext("2d");
+  opsTechSigCtx = ctx;
+  ctx.strokeStyle = "#1e293b";
+  ctx.lineWidth = 2.5;
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+
+  function getPos(e) {
+    const rect = canvas.getBoundingClientRect();
+    const clientX = e.clientX || (e.touches && e.touches[0].clientX);
+    const clientY = e.clientY || (e.touches && e.touches[0].clientY);
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    return {
+      x: (clientX - rect.left) * scaleX,
+      y: (clientY - rect.top) * scaleY
+    };
+  }
+
+  function startDraw(e) {
+    e.preventDefault();
+    isDrawingOpsTechSig = true;
+    hasDrawnOpsTechSig = true;
+    const pos = getPos(e);
+    ctx.beginPath();
+    ctx.moveTo(pos.x, pos.y);
+  }
+
+  function draw(e) {
+    if (!isDrawingOpsTechSig) return;
+    e.preventDefault();
+    const pos = getPos(e);
+    ctx.lineTo(pos.x, pos.y);
+    ctx.stroke();
+  }
+
+  function endDraw() {
+    isDrawingOpsTechSig = false;
+  }
+
+  canvas.addEventListener("pointerdown", startDraw);
+  canvas.addEventListener("pointermove", draw);
+  window.addEventListener("pointerup", endDraw);
+
+  if ($("opsClearTechSigBtn")) {
+    $("opsClearTechSigBtn").onclick = () => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      hasDrawnOpsTechSig = false;
+    };
+  }
+}
+
+function recalculateOpsJobCardTotals() {
+  const container = $("opsPartsContainer");
+  let partsTotal = 0;
+  if (container) {
+    container.querySelectorAll(".ops-part-row").forEach(row => {
+      const qty = parseInt(row.querySelector(".part-qty")?.value || "1", 10);
+      const price = parseFloat(row.querySelector(".part-price")?.value || "0");
+      const lineTotal = (qty || 0) * (price || 0);
+      partsTotal += lineTotal;
+      const totalDisplay = row.querySelector(".part-line-total");
+      if (totalDisplay) totalDisplay.textContent = `₹${lineTotal.toFixed(2)}`;
+    });
+  }
+
+  const labor = parseFloat($("opsJcLaborCost")?.value || "0");
+  const tax = Math.round((partsTotal + labor) * 0.18 * 100) / 100;
+  const grandTotal = Math.round((partsTotal + labor + tax) * 100) / 100;
+
+  if ($("opsCalcPartsSubtotal")) $("opsCalcPartsSubtotal").textContent = `₹${partsTotal.toFixed(2)}`;
+  if ($("opsCalcLabor")) $("opsCalcLabor").textContent = `₹${labor.toFixed(2)}`;
+  if ($("opsCalcTax")) $("opsCalcTax").textContent = `₹${tax.toFixed(2)}`;
+  if ($("opsCalcTotal")) $("opsCalcTotal").textContent = `₹${grandTotal.toFixed(2)}`;
+}
+
+function addOpsPartRow(name = "", qty = 1, price = 0) {
+  const container = $("opsPartsContainer");
+  if (!container) return;
+  const rowId = `part_row_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`;
+  const lineTotal = (qty || 1) * (price || 0);
+  const rowHtml = `
+    <div id="${rowId}" class="ops-part-row flex items-center gap-2 p-2 bg-slate-50 rounded-xl border border-slate-200">
+      <input type="text" placeholder="Part description (e.g. Capacitor 45uF)" value="${safe(name)}" required class="part-name flex-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs bg-white">
+      <input type="number" min="1" max="50" value="${qty}" class="part-qty w-14 rounded-lg border border-slate-200 px-2 py-1.5 text-xs text-center bg-white">
+      <input type="number" min="0" step="10" placeholder="₹ Price" value="${price}" class="part-price w-20 rounded-lg border border-slate-200 px-2 py-1.5 text-xs text-right bg-white">
+      <span class="part-line-total text-xs font-bold text-slate-800 w-16 text-right">₹${lineTotal.toFixed(2)}</span>
+      <button type="button" class="text-rose-500 hover:text-rose-700 p-1 font-bold" onclick="document.getElementById('${rowId}').remove(); recalculateOpsJobCardTotals();">✕</button>
+    </div>
+  `;
+  container.insertAdjacentHTML("beforeend", rowHtml);
+  const newRow = document.getElementById(rowId);
+  if (newRow) {
+    newRow.querySelectorAll(".part-qty, .part-price").forEach(inp => {
+      inp.addEventListener("input", recalculateOpsJobCardTotals);
+    });
+  }
+  recalculateOpsJobCardTotals();
+}
+
+window.openOpsJobCardModal = async function(requestId) {
+  const req = requests.find(r => r.id === requestId);
+  if (!req) return;
+  currentOpsJcRequestId = requestId;
+
+  const dialog = $("opsJobCardDialog");
+  if (!dialog) return;
+  dialog.showModal();
+
+  if ($("opsJcMessage")) $("opsJcMessage").textContent = "";
+  if ($("opsJcReqId")) $("opsJcReqId").textContent = req.id;
+  if ($("opsJcCustomerName")) $("opsJcCustomerName").textContent = `${req.customer_name} (${req.customer_phone || ''})`;
+  if ($("opsJcApplianceIssue")) $("opsJcApplianceIssue").textContent = `${req.appliance_name} · Issue: ${req.issue}`;
+  if ($("opsPartsContainer")) $("opsPartsContainer").innerHTML = "";
+
+  setupOpsTechSignaturePad();
+
+  let existingJc = null;
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/requests/${requestId}/job-card`, {
+      headers: jsonHeaders(),
+      credentials: "include"
+    });
+    if (res.ok) {
+      existingJc = await res.json();
+    }
+  } catch (e) {}
+
+  if (existingJc) {
+    if ($("opsJcStatusBadge")) {
+      $("opsJcStatusBadge").textContent = existingJc.customer_status === "accepted" ? "✓ Customer Accepted" : existingJc.customer_status === "disputed" ? "⚠️ Customer Disputed" : "Awaiting Customer Sign-off";
+      $("opsJcStatusBadge").className = `text-[10px] font-bold px-2 py-0.5 rounded-full ${existingJc.customer_status === "accepted" ? "bg-emerald-100 text-emerald-800" : existingJc.customer_status === "disputed" ? "bg-rose-100 text-rose-800" : "bg-amber-100 text-amber-800"}`;
+    }
+    if ($("opsJcWorkSummary")) $("opsJcWorkSummary").value = existingJc.work_summary || "";
+    if ($("opsJcLaborCost")) $("opsJcLaborCost").value = existingJc.labor_cost;
+    if (Array.isArray(existingJc.parts_used)) {
+      existingJc.parts_used.forEach(p => addOpsPartRow(p.part_name, p.quantity, p.unit_price));
+    }
+    recalculateOpsJobCardTotals();
+
+    if ($("opsCustomerSigReadout")) {
+      $("opsCustomerSigReadout").classList.remove("hidden");
+      if (existingJc.customer_signature && $("opsCustomerSigImg")) {
+        $("opsCustomerSigImg").src = existingJc.customer_signature;
+        $("opsCustomerSigImg").classList.remove("hidden");
+      }
+      if ($("opsCustomerStatusText")) {
+        $("opsCustomerStatusText").textContent = existingJc.customer_status === "accepted" ? "Customer approved & signed" : existingJc.customer_status === "disputed" ? "Customer disputed job card" : "Awaiting customer sign-off";
+      }
+      if ($("opsCustomerRemarksText")) {
+        $("opsCustomerRemarksText").textContent = existingJc.customer_remarks || "";
+      }
+    }
+    if (req.status_badge === "Completed") {
+      if ($("opsOtpSection")) $("opsOtpSection").classList.add("hidden");
+      if ($("saveOpsJcBtn")) $("saveOpsJcBtn").textContent = "Update Job Card";
+    }
+  } else {
+    if ($("opsJcStatusBadge")) {
+      $("opsJcStatusBadge").textContent = "Drafting";
+      $("opsJcStatusBadge").className = "text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700";
+    }
+    if ($("opsJcWorkSummary")) $("opsJcWorkSummary").value = `Inspected ${req.appliance_name}. Completed diagnosis and testing.`;
+    if ($("opsJcLaborCost")) $("opsJcLaborCost").value = "350";
+    if ($("opsCustomerSigReadout")) $("opsCustomerSigReadout").classList.add("hidden");
+    if ($("opsOtpSection")) $("opsOtpSection").classList.remove("hidden");
+    if ($("saveOpsJcBtn")) $("saveOpsJcBtn").textContent = "Generate & Complete Job";
+    recalculateOpsJobCardTotals();
+  }
+};
+
+async function submitOpsJobCard(e) {
+  e.preventDefault();
+  const requestId = currentOpsJcRequestId;
+  if (!requestId) return;
+
+  const targetReq = requests.find(r => r.id === requestId);
+  const isAlreadyCompleted = targetReq?.status_badge === "Completed";
+  const btn = $("saveOpsJcBtn");
+  btn.disabled = true;
+  btn.textContent = "Processing…";
+  if ($("opsJcMessage")) $("opsJcMessage").textContent = "";
+
+  const work_summary = $("opsJcWorkSummary")?.value.trim();
+  const labor_cost = parseFloat($("opsJcLaborCost")?.value || "0");
+  const otp = $("opsJcOtpInput")?.value.trim();
+
+  if (!isAlreadyCompleted && (!otp || otp.length < 4)) {
+    if ($("opsJcMessage")) $("opsJcMessage").textContent = "Please enter the 4-digit verification OTP provided by the customer.";
+    btn.disabled = false;
+    btn.textContent = "Generate & Complete Job";
+    return;
+  }
+
+  const parts_used = [];
+  const container = $("opsPartsContainer");
+  if (container) {
+    container.querySelectorAll(".ops-part-row").forEach(row => {
+      const name = row.querySelector(".part-name")?.value.trim();
+      const qty = parseInt(row.querySelector(".part-qty")?.value || "1", 10);
+      const price = parseFloat(row.querySelector(".part-price")?.value || "0");
+      if (name) {
+        parts_used.push({
+          part_name: name,
+          quantity: qty || 1,
+          unit_price: price || 0,
+          total_price: (qty || 1) * (price || 0)
+        });
+      }
+    });
+  }
+
+  const canvas = $("opsTechSigCanvas");
+  const techSig = (hasDrawnOpsTechSig && canvas) ? canvas.toDataURL("image/png") : null;
+
+  try {
+    // 1. Post Job Card
+    const jcRes = await fetch(`${API_BASE_URL}/api/requests/${requestId}/job-card`, {
+      method: "POST",
+      headers: jsonHeaders(),
+      credentials: "include",
+      body: JSON.stringify({
+        work_summary,
+        parts_used,
+        labor_cost,
+        technician_signature: techSig
+      })
+    });
+    const jcData = await jcRes.json().catch(() => ({}));
+    if (!jcRes.ok) throw new Error(extractErrorMessage(jcData, "Failed to save job card"));
+
+    // 2. If not already completed, complete the job with OTP
+    if (!isAlreadyCompleted) {
+      const actionRes = await fetch(`${API_BASE_URL}/api/requests/${requestId}/action`, {
+        method: "POST",
+        headers: jsonHeaders(),
+        credentials: "include",
+        body: JSON.stringify({ action: "complete", verification_otp: otp })
+      });
+      const actionData = await actionRes.json().catch(() => ({}));
+      if (!actionRes.ok) throw new Error(extractErrorMessage(actionData, "Failed to complete service"));
+      const idx = requests.findIndex(r => r.id === requestId);
+      if (idx !== -1) requests[idx] = actionData;
+    }
+
+    showToast("Job Card generated & service completed successfully!", "success");
+    $("opsJobCardDialog")?.close();
+    setMetrics();
+    renderRequests();
+    renderInsights();
+  } catch (err) {
+    if ($("opsJcMessage")) $("opsJcMessage").textContent = err.message || "An error occurred.";
+  } finally {
+    btn.disabled = false;
+    btn.textContent = isAlreadyCompleted ? "Update Job Card" : "Generate & Complete Job";
+  }
+}
 
 let techMapAnimationTimer = null;
 function stopTechMapAnimation() {
@@ -1934,6 +2215,13 @@ function initEvents() {
     } catch (error) { if ($("technicianFormMessage")) $("technicianFormMessage").textContent = error.message; }
     finally { if (submit) submit.disabled = false; }
   });
+
+  // Digital Job Card Modal Events (Phase 1)
+  $("closeOpsJobCard")?.addEventListener("click", () => $("opsJobCardDialog")?.close());
+  $("cancelOpsJcBtn")?.addEventListener("click", () => $("opsJobCardDialog")?.close());
+  $("opsAddPartRowBtn")?.addEventListener("click", () => addOpsPartRow("", 1, 0));
+  $("opsJcLaborCost")?.addEventListener("input", recalculateOpsJobCardTotals);
+  $("opsJobCardForm")?.addEventListener("submit", submitOpsJobCard);
 }
 
 // Profile Modal & Edit Details for Ops Portals (Technician, Franchise, Company, Admin)

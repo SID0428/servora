@@ -132,3 +132,39 @@ class ServiceRequestModel(Base):
     longitude = Column(Float, nullable=True)
     verification_otp = Column(String(16), nullable=False, default="8492")
     timeline_json = Column(Text, nullable=False) # JSON string serialized timeline steps
+    defect_photo = Column(Text, nullable=True)
+    reopened_reason = Column(Text, nullable=True)
+    reopened_at = Column(String(64), nullable=True)
+
+class JobCardModel(Base):
+    __tablename__ = "job_cards"
+
+    id = Column(String(64), primary_key=True, index=True) # e.g. JC-7845
+    request_id = Column(String(64), ForeignKey("service_requests.id", ondelete="CASCADE"), nullable=False, unique=True, index=True)
+    technician_id = Column(String(64), ForeignKey("technicians.id"), nullable=False, index=True)
+    customer_id = Column(String(64), ForeignKey("users.id"), nullable=False, index=True)
+    work_summary = Column(Text, nullable=False)
+    parts_used_json = Column(Text, nullable=False, default="[]") # JSON list of {part_name, quantity, unit_price, total_price}
+    labor_cost = Column(Float, nullable=False, default=0.0)
+    parts_cost = Column(Float, nullable=False, default=0.0)
+    tax_amount = Column(Float, nullable=False, default=0.0)
+    total_amount = Column(Float, nullable=False, default=0.0)
+    technician_signature = Column(Text, nullable=True)
+    customer_signature = Column(Text, nullable=True)
+    customer_status = Column(String(32), nullable=False, default="pending_acceptance") # pending_acceptance, accepted, disputed
+    customer_remarks = Column(Text, nullable=True)
+    completed_at = Column(String(64), nullable=False)
+
+class ServiceFeedbackModel(Base):
+    __tablename__ = "service_feedbacks"
+
+    id = Column(String(64), primary_key=True, index=True) # e.g. FB-7845
+    request_id = Column(String(64), ForeignKey("service_requests.id", ondelete="CASCADE"), nullable=False, unique=True, index=True)
+    customer_id = Column(String(64), ForeignKey("users.id"), nullable=False, index=True)
+    technician_id = Column(String(64), ForeignKey("technicians.id"), nullable=False, index=True)
+    rating_overall = Column(Integer, nullable=False, default=5)
+    rating_quality = Column(Integer, nullable=False, default=5)
+    rating_behavior = Column(Integer, nullable=False, default=5)
+    rating_pricing = Column(Integer, nullable=False, default=5)
+    comment = Column(Text, nullable=True)
+    created_at = Column(String(64), nullable=False)

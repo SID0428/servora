@@ -413,6 +413,59 @@
               </div>
             </div>
 
+            <!-- Attached Defect Photo (Phase 1 FR-TKT-004) -->
+            <div id="trackingDefectCard" class="hidden rounded-2xl border border-slate-200/80 p-4 bg-white shadow-xs">
+              <div class="flex items-center justify-between mb-2">
+                <span class="text-xs font-bold uppercase tracking-wider text-slate-700 font-display">Attached Defect Photo</span>
+                <span class="text-[10px] text-slate-400">Attached by customer</span>
+              </div>
+              <div class="flex items-center gap-3">
+                <img id="trackingDefectImg" src="" alt="Defect Photo" class="w-16 h-16 rounded-xl object-cover border border-slate-200 shadow-xs cursor-pointer hover:opacity-90 transition" onclick="window.open(this.src, '_blank')">
+                <div class="text-xs text-slate-500">
+                  <p class="font-semibold text-slate-700">Appliance Defect Image</p>
+                  <p class="text-[11px] text-slate-400 mt-0.5">Click image to inspect in full resolution</p>
+                </div>
+              </div>
+            </div>
+
+            <!-- Reopened / Dispute Notification Banner (Phase 1 FR-FBK-005) -->
+            <div id="trackingReopenBanner" class="hidden rounded-2xl border border-rose-200 bg-rose-50/90 p-4">
+              <div class="flex items-start gap-3">
+                <span class="text-xl">⚠️</span>
+                <div class="text-xs">
+                  <div class="flex items-center gap-2">
+                    <strong class="text-rose-900 font-bold">Ticket Reopened / Under Review</strong>
+                    <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-200 text-rose-800">High Priority</span>
+                  </div>
+                  <p id="trackingReopenReason" class="text-rose-800 mt-1 font-medium"></p>
+                  <p class="text-[11px] text-rose-600 mt-1">Our franchise operations desk has escalated this ticket for immediate inspection.</p>
+                </div>
+              </div>
+            </div>
+
+            <!-- Service Completion & Sign-off Hub (Phase 1 FR-JOB-001 & FR-FBK-001) -->
+            <div id="trackingCompletionCard" class="hidden rounded-2xl border border-blue-200 bg-gradient-to-r from-blue-50/80 via-white to-indigo-50/70 p-4 space-y-3 shadow-xs">
+              <div class="flex items-center justify-between">
+                <div>
+                  <span class="text-[10px] font-bold text-blue-700 uppercase tracking-wider block">Service Closure & Sign-off</span>
+                  <strong class="text-xs sm:text-sm font-bold text-slate-900">Digital Job Card & Customer Feedback</strong>
+                </div>
+                <span id="jobCardStatusBadge" class="text-[10px] font-bold px-2.5 py-1 rounded-full bg-blue-100 text-blue-800 border border-blue-200">Pending Review</span>
+              </div>
+              <p class="text-xs text-slate-600">Review itemized spare parts & labor billing, provide digital sign-off, or submit technician rating.</p>
+              <div class="flex flex-wrap items-center gap-2 pt-1">
+                <button type="button" id="openJobCardBtn" class="py-2 px-3.5 bg-[#0066ff] hover:bg-blue-700 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 shadow-sm transition">
+                  <span>📄 View Digital Job Card</span>
+                </button>
+                <button type="button" id="openFeedbackBtn" class="py-2 px-3.5 bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 shadow-sm transition">
+                  <span>⭐ Rate Service</span>
+                </button>
+                <button type="button" id="openReopenBtn" class="py-2 px-3.5 bg-white hover:bg-rose-50 text-rose-600 hover:text-rose-700 border border-rose-200 font-bold text-xs rounded-xl flex items-center gap-1.5 transition sm:ml-auto">
+                  <span>⚠️ Reopen Request</span>
+                </button>
+              </div>
+            </div>
+
             <!-- 6. Bottom Direct Support Card -->
             <div class="rounded-2xl border border-slate-100 p-4 bg-slate-50 flex items-center justify-between text-xs">
               <div class="flex items-center gap-3">
@@ -714,6 +767,26 @@
         </label>
       </div>
 
+      <!-- Defect / Appliance Photo Upload (Optional, Phase 1 FR-TKT-004) -->
+      <div class="space-y-1.5 pt-1">
+        <div class="flex items-center justify-between">
+          <label class="text-xs font-semibold text-slate-700">Appliance / Defect Photo <span class="text-slate-400 font-normal">(Optional)</span></label>
+          <span class="text-[10px] text-slate-400">Max 5MB (JPG, PNG)</span>
+        </div>
+        <div class="flex items-center gap-3">
+          <label class="flex-1 cursor-pointer flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl border border-dashed border-slate-300 hover:border-blue-500 bg-slate-50 hover:bg-blue-50/50 text-xs text-slate-600 transition">
+            <svg class="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+            <span id="defectPhotoBtnLabel">Attach Photo</span>
+            <input type="file" id="bookDefectFileInput" accept="image/jpeg,image/png,image/webp" class="hidden">
+          </label>
+          <div id="defectPhotoPreviewWrap" class="hidden relative w-12 h-12 rounded-xl overflow-hidden border border-slate-200 shrink-0 shadow-xs">
+            <img id="defectPhotoPreview" src="" alt="Defect Preview" class="w-full h-full object-cover">
+            <button type="button" id="removeDefectPhotoBtn" class="absolute top-0 right-0 bg-rose-600 text-white rounded-bl p-1 text-[10px] leading-none" title="Remove Photo">×</button>
+          </div>
+        </div>
+        <input type="hidden" id="bookDefectPhoto" name="defect_photo" value="">
+      </div>
+
       <!-- Doorstep Service Address (Mandatory Address + Optional Live GPS) -->
       <div class="space-y-3 pt-1">
         <div class="flex items-center justify-between">
@@ -987,6 +1060,282 @@
         <span class="text-[11px] text-slate-400 font-medium">Powered by OpenStreetMap (Free)</span>
       </div>
     </div>
+  </dialog>
+
+  <!-- ============================================================== -->
+  <!-- 11. DIGITAL JOB CARD & SIGN-OFF MODAL (Phase 1 FR-JOB-001 to 005) -->
+  <!-- ============================================================== -->
+  <dialog id="jobCardDialog" class="w-[min(94vw,620px)] rounded-3xl border-0 p-0 shadow-2xl overflow-hidden bg-white">
+    <div class="p-6 space-y-5 max-h-[90vh] overflow-y-auto">
+      <div class="flex items-start justify-between border-b border-slate-100 pb-4">
+        <div>
+          <div class="flex items-center gap-2">
+            <span class="text-[10px] font-bold tracking-[.16em] text-[#0066ff] uppercase">OFFICIAL SERVICE INVOICE</span>
+            <span id="jcStatusPill" class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">Pending</span>
+          </div>
+          <h2 class="mt-1 font-display text-lg font-extrabold text-slate-900" id="jcTitle">Digital Job Card</h2>
+          <p class="text-xs text-slate-500" id="jcSubtitle">Service breakdown and customer sign-off</p>
+        </div>
+        <button type="button" id="closeJobCard" class="rounded-xl p-1.5 text-slate-400 hover:bg-slate-100 text-lg leading-none" aria-label="Close">✕</button>
+      </div>
+
+      <!-- Job Card Details Grid -->
+      <div class="grid grid-cols-2 gap-3 text-xs bg-slate-50 p-3.5 rounded-2xl border border-slate-100">
+        <div>
+          <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Job Card No.</span>
+          <strong id="jcCardId" class="text-slate-800 font-bold">JC-7845</strong>
+        </div>
+        <div>
+          <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Request Ref</span>
+          <strong id="jcRequestId" class="text-slate-800 font-bold">SR-7845</strong>
+        </div>
+        <div class="col-span-2">
+          <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Work Summary / Diagnosis</span>
+          <p id="jcWorkSummary" class="text-slate-700 font-medium mt-0.5 leading-relaxed">Work summary will appear here</p>
+        </div>
+      </div>
+
+      <!-- Itemized Parts Table -->
+      <div>
+        <div class="flex items-center justify-between mb-2">
+          <span class="text-xs font-bold uppercase tracking-wider text-slate-700 font-display">Itemized Spares & Materials</span>
+          <span class="text-[10px] text-slate-400 font-medium">Warranty-backed genuine parts</span>
+        </div>
+        <div class="overflow-x-auto rounded-xl border border-slate-200">
+          <table class="w-full text-left text-xs">
+            <thead class="bg-slate-50 text-[10px] font-bold uppercase tracking-wider text-slate-500 border-b border-slate-200">
+              <tr>
+                <th class="py-2.5 px-3">Part Description</th>
+                <th class="py-2.5 px-3 text-center">Qty</th>
+                <th class="py-2.5 px-3 text-right">Unit Price</th>
+                <th class="py-2.5 px-3 text-right">Total</th>
+              </tr>
+            </thead>
+            <tbody id="jcPartsBody" class="divide-y divide-slate-100">
+              <tr><td colspan="4" class="p-4 text-center text-slate-400">No spare parts billed.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Charges Calculation Breakdown (Labor + Parts + 18% GST) -->
+      <div class="bg-slate-50 p-4 rounded-2xl border border-slate-100 space-y-2 text-xs">
+        <div class="flex items-center justify-between text-slate-600">
+          <span>Spare Parts Total</span>
+          <strong id="jcPartsTotal" class="text-slate-800">₹0.00</strong>
+        </div>
+        <div class="flex items-center justify-between text-slate-600">
+          <span>Labor & Diagnostic Charges</span>
+          <strong id="jcLaborCost" class="text-slate-800">₹0.00</strong>
+        </div>
+        <div class="flex items-center justify-between text-slate-600">
+          <span>GST (18% Integrated Service Tax)</span>
+          <strong id="jcTaxAmount" class="text-slate-800">₹0.00</strong>
+        </div>
+        <div class="border-t border-slate-200 pt-2 flex items-center justify-between text-sm font-bold text-slate-900">
+          <span class="font-display">Total Amount Payable</span>
+          <strong id="jcGrandTotal" class="text-[#0066ff] text-base font-extrabold font-display">₹0.00</strong>
+        </div>
+      </div>
+
+      <!-- Signatures Section -->
+      <div class="space-y-4">
+        <div class="grid sm:grid-cols-2 gap-4">
+          <!-- Technician Signature -->
+          <div class="p-3.5 bg-slate-50 rounded-2xl border border-slate-100 space-y-1.5">
+            <span class="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">Technician Verification</span>
+            <div id="jcTechSigWrap" class="h-16 bg-white rounded-xl border border-slate-200 flex items-center justify-center overflow-hidden">
+              <span id="jcTechSigPlaceholder" class="text-[11px] text-slate-400 italic">Signed by Technician</span>
+              <img id="jcTechSigImg" src="" alt="Tech Signature" class="hidden max-h-full max-w-full object-contain">
+            </div>
+            <span class="text-[10px] text-slate-400 block text-center">Certified Technician Signature</span>
+          </div>
+
+          <!-- Customer Signature / Status -->
+          <div class="p-3.5 bg-slate-50 rounded-2xl border border-slate-100 space-y-1.5">
+            <span class="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">Customer Digital Sign-off</span>
+            <div id="jcCustomerSigWrap" class="h-16 bg-white rounded-xl border border-slate-200 flex items-center justify-center overflow-hidden">
+              <span id="jcCustomerSigPlaceholder" class="text-[11px] text-slate-400 italic">Awaiting Sign-off</span>
+              <img id="jcCustomerSigImg" src="" alt="Customer Signature" class="hidden max-h-full max-w-full object-contain">
+            </div>
+            <span id="jcCustomerSigStatus" class="text-[10px] font-semibold text-slate-500 block text-center">Touch or stylus signature</span>
+          </div>
+        </div>
+
+        <!-- Customer Interactive Signature Pad (Visible when pending_acceptance) -->
+        <div id="jcSignaturePadBlock" class="hidden space-y-2.5 p-4 bg-blue-50/50 rounded-2xl border border-blue-100">
+          <div class="flex items-center justify-between">
+            <div>
+              <span class="text-xs font-bold text-slate-900 block">Sign to approve job card</span>
+              <p class="text-[11px] text-slate-500">Draw your signature in the box below using finger or mouse.</p>
+            </div>
+            <button type="button" id="clearSigBtn" class="text-xs font-semibold text-slate-500 hover:text-slate-800 bg-white px-2.5 py-1 rounded-lg border border-slate-200 transition">Clear</button>
+          </div>
+          <div class="rounded-xl border border-slate-300 bg-white overflow-hidden shadow-inner">
+            <canvas id="customerSigCanvas" width="500" height="120" class="w-full h-28 touch-none block cursor-crosshair"></canvas>
+          </div>
+          <p id="jcActionMsg" class="min-h-4 text-xs text-rose-600" role="status"></p>
+          <div class="flex items-center justify-between gap-3 pt-1">
+            <button type="button" id="disputeJobCardBtn" class="py-2.5 px-4 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs rounded-xl border border-rose-200 transition">
+              ⚠️ Dispute Charges
+            </button>
+            <button type="button" id="approveJobCardBtn" class="py-2.5 px-5 bg-[#0066ff] hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-sm transition">
+              ✓ Approve & Sign Job Card
+            </button>
+          </div>
+        </div>
+
+        <!-- Dispute Remarks Display if Disputed -->
+        <div id="jcDisputeBlock" class="hidden p-3.5 bg-rose-50 rounded-2xl border border-rose-200 text-xs">
+          <strong class="text-rose-900 font-bold block mb-1">⚠️ Disputed by Customer</strong>
+          <p id="jcDisputeRemarks" class="text-rose-800 font-medium"></p>
+        </div>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- ============================================================== -->
+  <!-- 12. CUSTOMER FEEDBACK & REVIEW MODAL (Phase 1 FR-FBK-001 to 004) -->
+  <!-- ============================================================== -->
+  <dialog id="feedbackDialog" class="w-[min(94vw,500px)] rounded-3xl border-0 p-0 shadow-2xl overflow-hidden bg-white">
+    <form id="feedbackForm" class="p-6 space-y-4">
+      <div class="flex items-start justify-between border-b border-slate-100 pb-3">
+        <div>
+          <div class="text-[10px] font-bold tracking-[.16em] text-amber-600 uppercase">CUSTOMER REVIEW</div>
+          <h2 class="mt-1 font-display text-lg font-extrabold text-slate-900">Rate Your Service</h2>
+          <p class="text-xs text-slate-500">Help us maintain verified quality across Servora technicians.</p>
+        </div>
+        <button type="button" id="closeFeedback" class="rounded-xl p-1.5 text-slate-400 hover:bg-slate-100 text-lg leading-none" aria-label="Close">✕</button>
+      </div>
+
+      <!-- Star Rating Dimensions -->
+      <div class="space-y-3 pt-1">
+        <!-- 1. Overall -->
+        <div class="flex items-center justify-between p-3 bg-amber-50/60 rounded-2xl border border-amber-100">
+          <div>
+            <strong class="text-xs font-bold text-slate-900 block">Overall Experience</strong>
+            <span class="text-[10px] text-slate-500">How satisfied are you with the visit?</span>
+          </div>
+          <div class="star-rating flex items-center gap-1 text-xl cursor-pointer" data-rating-field="overall">
+            <span data-star="1" class="text-amber-400 hover:scale-110 transition">★</span>
+            <span data-star="2" class="text-amber-400 hover:scale-110 transition">★</span>
+            <span data-star="3" class="text-amber-400 hover:scale-110 transition">★</span>
+            <span data-star="4" class="text-amber-400 hover:scale-110 transition">★</span>
+            <span data-star="5" class="text-amber-400 hover:scale-110 transition">★</span>
+          </div>
+          <input type="hidden" id="fbRatingOverall" value="5">
+        </div>
+
+        <!-- 2. Work Quality -->
+        <div class="flex items-center justify-between p-3 bg-slate-50 rounded-2xl border border-slate-100">
+          <div>
+            <strong class="text-xs font-bold text-slate-900 block">Work Quality & Diagnosis</strong>
+            <span class="text-[10px] text-slate-500">Appliance repair & testing</span>
+          </div>
+          <div class="star-rating flex items-center gap-1 text-lg cursor-pointer" data-rating-field="quality">
+            <span data-star="1" class="text-amber-400 hover:scale-110 transition">★</span>
+            <span data-star="2" class="text-amber-400 hover:scale-110 transition">★</span>
+            <span data-star="3" class="text-amber-400 hover:scale-110 transition">★</span>
+            <span data-star="4" class="text-amber-400 hover:scale-110 transition">★</span>
+            <span data-star="5" class="text-amber-400 hover:scale-110 transition">★</span>
+          </div>
+          <input type="hidden" id="fbRatingQuality" value="5">
+        </div>
+
+        <!-- 3. Technician Behavior -->
+        <div class="flex items-center justify-between p-3 bg-slate-50 rounded-2xl border border-slate-100">
+          <div>
+            <strong class="text-xs font-bold text-slate-900 block">Technician Behavior & Punctuality</strong>
+            <span class="text-[10px] text-slate-500">Professionalism at doorstep</span>
+          </div>
+          <div class="star-rating flex items-center gap-1 text-lg cursor-pointer" data-rating-field="behavior">
+            <span data-star="1" class="text-amber-400 hover:scale-110 transition">★</span>
+            <span data-star="2" class="text-amber-400 hover:scale-110 transition">★</span>
+            <span data-star="3" class="text-amber-400 hover:scale-110 transition">★</span>
+            <span data-star="4" class="text-amber-400 hover:scale-110 transition">★</span>
+            <span data-star="5" class="text-amber-400 hover:scale-110 transition">★</span>
+          </div>
+          <input type="hidden" id="fbRatingBehavior" value="5">
+        </div>
+
+        <!-- 4. Pricing -->
+        <div class="flex items-center justify-between p-3 bg-slate-50 rounded-2xl border border-slate-100">
+          <div>
+            <strong class="text-xs font-bold text-slate-900 block">Pricing & Transparency</strong>
+            <span class="text-[10px] text-slate-500">Fairness of parts & labor charges</span>
+          </div>
+          <div class="star-rating flex items-center gap-1 text-lg cursor-pointer" data-rating-field="pricing">
+            <span data-star="1" class="text-amber-400 hover:scale-110 transition">★</span>
+            <span data-star="2" class="text-amber-400 hover:scale-110 transition">★</span>
+            <span data-star="3" class="text-amber-400 hover:scale-110 transition">★</span>
+            <span data-star="4" class="text-amber-400 hover:scale-110 transition">★</span>
+            <span data-star="5" class="text-amber-400 hover:scale-110 transition">★</span>
+          </div>
+          <input type="hidden" id="fbRatingPricing" value="5">
+        </div>
+      </div>
+
+      <!-- Review Comments -->
+      <div>
+        <label class="block text-xs font-semibold text-slate-700 mb-1">
+          Detailed Comments <span class="text-slate-400 font-normal">(Optional)</span>
+        </label>
+        <textarea id="fbComment" rows="3" maxlength="1000" placeholder="Share your experience or shoutout to the technician…" class="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20"></textarea>
+      </div>
+
+      <p id="fbMessage" class="min-h-4 text-xs text-rose-600" role="status"></p>
+
+      <div class="flex justify-end gap-2.5 pt-1">
+        <button type="button" id="cancelFeedback" class="rounded-xl px-4 py-2.5 text-xs font-semibold text-slate-600 hover:bg-slate-100">Cancel</button>
+        <button id="fbSubmitBtn" type="submit" class="rounded-xl bg-amber-500 hover:bg-amber-600 px-5 py-2.5 text-xs font-bold text-white transition shadow-sm">Submit Review</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- ============================================================== -->
+  <!-- 13. TICKET REOPENING MODAL (Phase 1 FR-FBK-005 to 008) -->
+  <!-- ============================================================== -->
+  <dialog id="reopenDialog" class="w-[min(94vw,480px)] rounded-3xl border-0 p-0 shadow-2xl overflow-hidden bg-white">
+    <form id="reopenForm" class="p-6 space-y-4">
+      <div class="flex items-start justify-between border-b border-slate-100 pb-3">
+        <div>
+          <div class="text-[10px] font-bold tracking-[.16em] text-rose-600 uppercase">CUSTOMER PROTECTION</div>
+          <h2 class="mt-1 font-display text-lg font-extrabold text-slate-900">Reopen Service Ticket</h2>
+          <p class="text-xs text-slate-500">Tickets can be reopened within 7 days for priority resolution.</p>
+        </div>
+        <button type="button" id="closeReopen" class="rounded-xl p-1.5 text-slate-400 hover:bg-slate-100 text-lg leading-none" aria-label="Close">✕</button>
+      </div>
+
+      <div class="p-3 bg-amber-50 rounded-2xl border border-amber-200 text-xs text-amber-900 leading-relaxed">
+        <strong>🛡️ 7-Day Free Revisit Guarantee</strong>
+        <p class="mt-0.5 text-[11px] text-amber-800">If the issue recurs or the repair was unsatisfactory, our franchise manager will reassign or inspect this case with highest priority.</p>
+      </div>
+
+      <label class="block text-xs font-semibold text-slate-700">
+        Reason for Reopening <span class="text-rose-500">*</span>
+        <select id="reopenReasonSelect" required class="mt-1.5 w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20">
+          <option value="">Select a reason</option>
+          <option value="Appliance still not working / cooling">Appliance still not working / cooling</option>
+          <option value="Same issue recurring within few hours">Same issue recurring within few hours</option>
+          <option value="Technician did not complete promised repair">Technician did not complete promised repair</option>
+          <option value="Spares / Parts billing discrepancy">Spares / Parts billing discrepancy</option>
+          <option value="Appliance physically damaged during service">Appliance physically damaged during service</option>
+          <option value="Other">Other</option>
+        </select>
+      </label>
+
+      <label class="block text-xs font-semibold text-slate-700">
+        Explain the issue in detail
+        <textarea id="reopenNotes" rows="3" maxlength="1000" placeholder="Please describe what is happening with the appliance now…" class="mt-1.5 w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20"></textarea>
+      </label>
+
+      <p id="reopenMessage" class="min-h-4 text-xs text-rose-600" role="status"></p>
+
+      <div class="flex justify-end gap-2.5 pt-1">
+        <button type="button" id="cancelReopen" class="rounded-xl px-4 py-2.5 text-xs font-semibold text-slate-600 hover:bg-slate-100">Cancel</button>
+        <button id="reopenSubmitBtn" type="submit" class="rounded-xl bg-rose-600 hover:bg-rose-700 px-5 py-2.5 text-xs font-bold text-white transition shadow-sm">Confirm Reopen</button>
+      </div>
+    </form>
   </dialog>
 
 </body>

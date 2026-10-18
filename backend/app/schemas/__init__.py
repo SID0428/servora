@@ -134,6 +134,9 @@ class ServiceRequestDetail(BaseModel):
     pincode: Optional[str] = None
     latitude: Optional[float] = None
     longitude: Optional[float] = None
+    defect_photo: Optional[str] = None
+    reopened_reason: Optional[str] = None
+    reopened_at: Optional[str] = None
 
 class ServiceBookingCreate(BaseModel):
     appliance_id: str
@@ -146,6 +149,64 @@ class ServiceBookingCreate(BaseModel):
     pincode: Optional[str] = None
     latitude: Optional[float] = None
     longitude: Optional[float] = None
+    defect_photo: Optional[str] = None
+
+class JobCardPartItem(BaseModel):
+    part_name: str
+    quantity: int = 1
+    unit_price: float = 0.0
+    total_price: float = 0.0
+
+class JobCardCreatePayload(BaseModel):
+    work_summary: str = Field(min_length=5, max_length=2000)
+    parts_used: List[JobCardPartItem] = Field(default_factory=list)
+    labor_cost: float = Field(default=0.0, ge=0.0)
+    technician_signature: Optional[str] = None
+
+class JobCardResponse(BaseModel):
+    id: str
+    request_id: str
+    technician_id: str
+    customer_id: str
+    work_summary: str
+    parts_used: List[JobCardPartItem] = Field(default_factory=list)
+    labor_cost: float
+    parts_cost: float
+    tax_amount: float
+    total_amount: float
+    technician_signature: Optional[str] = None
+    customer_signature: Optional[str] = None
+    customer_status: str # pending_acceptance, accepted, disputed
+    customer_remarks: Optional[str] = None
+    completed_at: str
+
+class JobCardCustomerActionPayload(BaseModel):
+    action: str # "accept" or "dispute"
+    customer_signature: Optional[str] = None
+    remarks: Optional[str] = None
+
+class ServiceFeedbackPayload(BaseModel):
+    rating_overall: int = Field(ge=1, le=5)
+    rating_quality: int = Field(default=5, ge=1, le=5)
+    rating_behavior: int = Field(default=5, ge=1, le=5)
+    rating_pricing: int = Field(default=5, ge=1, le=5)
+    comment: Optional[str] = Field(default=None, max_length=1000)
+
+class ServiceFeedbackResponse(BaseModel):
+    id: str
+    request_id: str
+    customer_id: str
+    technician_id: str
+    rating_overall: int
+    rating_quality: int
+    rating_behavior: int
+    rating_pricing: int
+    comment: Optional[str] = None
+    created_at: str
+
+class TicketReopenPayload(BaseModel):
+    reason: str = Field(min_length=3, max_length=256)
+    notes: Optional[str] = Field(default=None, max_length=1000)
 
 class UserProfileUpdate(BaseModel):
     name: str = Field(min_length=2, max_length=128)
