@@ -165,6 +165,18 @@ def get_current_user(request: Request, db: Session = Depends(get_db)):
     user = get_authenticated_user(request, db)
     return {"user": user_payload(user, db)}
 
+@router.post("/refresh")
+def refresh_session(request: Request, db: Session = Depends(get_db)):
+    user = get_authenticated_user(request, db)
+    revoke_user_session(request, db)
+    new_token = create_user_session(user, db)
+    db.commit()
+    return {
+        "status": "success",
+        "session_token": new_token,
+        "user": user_payload(user, db)
+    }
+
 @router.post("/logout")
 def logout(request: Request, response: Response, db: Session = Depends(get_db)):
     revoke_user_session(request, db)

@@ -918,6 +918,13 @@ function renderResources() {
     return `<div class="resource-card"><span class="resource-icon">${icon}</span><span><strong>${name}</strong><small>${note}</small></span></div>`;
   }).join("");
 }
+function roleMatches(userRole, routeRole) {
+  if (!userRole || !routeRole) return true;
+  if (userRole === routeRole) return true;
+  if ((userRole === "branch" || userRole === "franchise") && (routeRole === "branch" || routeRole === "franchise")) return true;
+  return false;
+}
+
 async function loadDashboard() {
   const stored = localStorage.getItem("servora_user");
   if (stored) { try { user = JSON.parse(stored); } catch { user = null; } }
@@ -925,16 +932,21 @@ async function loadDashboard() {
     const userResponse = await fetch(`${API_BASE_URL}/api/auth/me`, { credentials: "include", headers: authHeaders() });
     if (userResponse.ok) {
       const authenticated = (await userResponse.json()).user;
-      if (dashboardRouteRole && authenticated.role !== dashboardRouteRole) {
+      if (dashboardRouteRole && !roleMatches(authenticated.role, dashboardRouteRole)) {
         localStorage.removeItem("servora_user");
         window.location.replace(portalLoginPaths[dashboardRouteRole]);
         return;
       }
       user = { ...authenticated, session_token: user?.session_token || initialUser?.session_token };
       localStorage.setItem("servora_user", JSON.stringify(user));
+    } else if (userResponse.status === 401) {
+      localStorage.removeItem("servora_user");
+      window.location.replace(portalLoginPaths[dashboardRouteRole || role] || "/index.html");
+      return;
+    } else if (stored) {
+      user = JSON.parse(stored);
     }
-    else if (stored) user = JSON.parse(stored);
-    if (dashboardRouteRole && user?.role && user.role !== dashboardRouteRole) {
+    if (dashboardRouteRole && user?.role && !roleMatches(user.role, dashboardRouteRole)) {
       localStorage.removeItem("servora_user");
       window.location.replace(portalLoginPaths[dashboardRouteRole]);
       return;

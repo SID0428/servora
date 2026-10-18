@@ -38,6 +38,13 @@ def get_authenticated_user(request: Request, db: Session) -> UserModel:
             UserSessionModel.expires_at > datetime.utcnow(),
         ).first()
         if session:
+            # Automatically extend / slide session TTL forward on activity
+            if session.expires_at - datetime.utcnow() < timedelta(days=6):
+                session.expires_at = datetime.utcnow() + SESSION_TTL
+                try:
+                    db.commit()
+                except Exception:
+                    db.rollback()
             user = db.query(UserModel).filter(UserModel.id == session.user_id).first()
             if user:
                 return user

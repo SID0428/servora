@@ -134,9 +134,13 @@ async function loadCurrentCustomer() {
       }
       localStorage.setItem("servora_user", JSON.stringify(currentUser));
       return true;
+    } else if (response.status === 401) {
+      localStorage.removeItem("servora_user");
+      window.location.replace("./index.html");
+      return false;
     }
   } catch (error) {
-    console.warn("Could not confirm the customer session with the API.", error);
+    console.warn("Backend waking up or network unavailable, retaining local session.", error);
   }
 
   if (cachedUser?.role && cachedUser.role !== "customer") {
@@ -144,7 +148,7 @@ async function loadCurrentCustomer() {
     redirectForRole(cachedUser.role);
     return false;
   }
-  if (!cachedUser || cachedUser.role !== "customer") {
+  if (!cachedUser) {
     localStorage.removeItem("servora_user");
     window.location.replace("./index.html");
     return false;
