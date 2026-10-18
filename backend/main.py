@@ -55,12 +55,16 @@ async def keep_alive_ping_loop():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Initialize DB schema & seed default demo data on startup
-    db = SessionLocal()
     try:
-        seed_database(db)
-        print("✓ Database initialized & seeded successfully!")
-    finally:
-        db.close()
+        db = SessionLocal()
+        try:
+            seed_database(db)
+            print("✓ Database initialized & seeded successfully!")
+        finally:
+            db.close()
+    except Exception as exc:
+        print(f"⚠️ Warning: Database connection failed on startup: {exc}")
+        print("⚠️ Verify that your Aiven MySQL service is powered on and DATABASE_URL is valid in Render settings.")
 
     # Automatically start keep-alive worker when running on Render or if explicitly enabled
     is_render = (
@@ -122,7 +126,22 @@ def root():
 
 @app.get("/health")
 def health():
-    return {"status": "healthy"}
+    db_ok = True
+    db_msg = "connected"
+    try:
+        from sqlalchemy import text
+        db = SessionLocal()
+        try:
+            db.execute(text("SELECT 1"))
+        finally:
+            db.close()
+    except Exception as exc:
+        db_ok = False
+        db_msg = f"unreachable: {exc}"
+    return {
+        "status": "healthy" if db_ok else "degraded",
+        "database": db_msg
+    }
 
 if __name__ == "__main__":
     import uvicorn
