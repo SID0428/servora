@@ -706,18 +706,17 @@
         </label>
       </div>
 
-      <!-- Doorstep Service Address (3 Options: Saved, New, Live GPS) -->
+      <!-- Doorstep Service Address (Mandatory Address + Optional Live GPS) -->
       <div class="space-y-3 pt-1">
         <div class="flex items-center justify-between">
-          <span class="text-xs font-bold text-slate-800">Doorstep Service Address <span class="text-rose-500">*</span></span>
-          <span class="text-[10px] text-slate-400">PIN code routes to nearest franchise</span>
+          <span class="text-xs font-bold text-slate-800">1. Doorstep Service Address <span class="text-rose-500">*</span></span>
+          <span class="text-[10px] text-slate-400">Mandatory for service routing</span>
         </div>
 
-        <!-- 3 Mode Segmented Switch -->
-        <div class="grid grid-cols-3 gap-1.5 p-1 bg-slate-100 rounded-xl text-xs font-semibold">
-          <button type="button" id="addrModeSaved" class="py-2 px-2 rounded-lg bg-white text-[#0066ff] shadow-xs text-center transition">Saved Address</button>
-          <button type="button" id="addrModeNew" class="py-2 px-2 rounded-lg text-slate-600 hover:text-slate-900 text-center transition">New Address</button>
-          <button type="button" id="addrModeLive" class="py-2 px-2 rounded-lg text-slate-600 hover:text-slate-900 text-center transition">📍 Live GPS</button>
+        <!-- 2 Mode Segmented Switch: Saved vs New -->
+        <div class="grid grid-cols-2 gap-1.5 p-1 bg-slate-100 rounded-xl text-xs font-semibold">
+          <button type="button" id="addrModeSaved" class="py-2 px-3 rounded-lg bg-white text-[#0066ff] shadow-xs text-center transition">Saved Address</button>
+          <button type="button" id="addrModeNew" class="py-2 px-3 rounded-lg text-slate-600 hover:text-slate-900 text-center transition">+ Enter New Address</button>
         </div>
 
         <!-- Mode 1: Pre-saved Address View -->
@@ -747,23 +746,29 @@
           </div>
         </div>
 
-        <!-- Mode 3: Live GPS Location (Optional GPS detection with OpenStreetMap) -->
-        <div id="bookingLiveAddrView" class="hidden space-y-2.5 p-3.5 bg-slate-50 rounded-xl border border-slate-200/80">
+        <!-- Optional Live GPS Location Detection (Always available on same form) -->
+        <div class="rounded-xl border border-slate-200 bg-slate-50/80 p-3.5 space-y-2.5">
           <div class="flex items-center justify-between">
             <div>
-              <span class="text-xs font-bold text-slate-800 block">Detect GPS Coordinates</span>
-              <span class="text-[11px] text-slate-500">Optional · Pinpoints doorstep on OpenStreetMap</span>
+              <div class="flex items-center gap-1.5">
+                <span class="text-xs font-bold text-slate-800">2. Live GPS Location</span>
+                <span class="text-[10px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">Optional</span>
+              </div>
+              <p class="text-[11px] text-slate-500 mt-0.5">Help technician reach doorstep accurately without calling for directions.</p>
             </div>
-            <button type="button" id="detectGpsBtn" class="py-1.5 px-3 bg-[#0066ff] hover:bg-blue-700 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 transition">
+            <button type="button" id="detectGpsBtn" class="py-1.5 px-3 bg-[#0066ff] hover:bg-blue-700 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 transition shrink-0 shadow-xs">
               <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 2a8 8 0 0 1 8 8c0 5.25-8 12-8 12S4 15.25 4 10a8 8 0 0 1 8-8z"/><circle cx="12" cy="10" r="3"/></svg>
-              <span>Detect</span>
+              <span>Detect GPS</span>
             </button>
           </div>
-          <div id="gpsStatusPill" class="hidden text-xs p-2.5 rounded-xl bg-emerald-50 text-emerald-800 border border-emerald-200 flex items-center gap-2">
-            <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-            <span id="gpsCoordsText" class="font-medium">Detected: 28.4744° N, 77.5040° E</span>
+          <div id="gpsStatusPill" class="hidden text-xs p-2.5 rounded-xl bg-emerald-50 text-emerald-800 border border-emerald-200 flex items-center justify-between gap-2">
+            <div class="flex items-center gap-2">
+              <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+              <span id="gpsCoordsText" class="font-medium">Detected: 28.4744° N, 77.5040° E</span>
+            </div>
+            <span class="text-[10px] font-bold text-emerald-700">✓ Location Pinned</span>
           </div>
-          <div id="bookingMiniMap" class="hidden h-36 w-full rounded-xl border border-slate-200 overflow-hidden shadow-inner bg-slate-100"></div>
+          <div id="bookingMiniMap" class="hidden h-32 w-full rounded-xl border border-slate-200 overflow-hidden shadow-inner bg-slate-100"></div>
         </div>
 
         <!-- Hidden inputs preserving payload format -->

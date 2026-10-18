@@ -706,38 +706,22 @@ let liveMapInstance = null;
 function setupAddressModes() {
   const btnSaved = $("addrModeSaved");
   const btnNew = $("addrModeNew");
-  const btnLive = $("addrModeLive");
   const viewSaved = $("bookingSavedAddrView");
   const viewNew = $("bookingNewAddrView");
-  const viewLive = $("bookingLiveAddrView");
 
   function setMode(mode) {
     currentAddrMode = mode;
-    [btnSaved, btnNew, btnLive].forEach((b) => {
-      if (b) {
-        b.className = "py-2 px-2 rounded-lg text-slate-600 hover:text-slate-900 text-center transition";
-      }
-    });
-    if (mode === "saved" && btnSaved) {
-      btnSaved.className = "py-2 px-2 rounded-lg bg-white text-[#0066ff] shadow-xs text-center transition";
-    }
-    if (mode === "new" && btnNew) {
-      btnNew.className = "py-2 px-2 rounded-lg bg-white text-[#0066ff] shadow-xs text-center transition";
-    }
-    if (mode === "live" && btnLive) {
-      btnLive.className = "py-2 px-2 rounded-lg bg-white text-[#0066ff] shadow-xs text-center transition";
-    }
+    if (btnSaved) btnSaved.className = mode === "saved" ? "py-2 px-3 rounded-lg bg-white text-[#0066ff] shadow-xs text-center transition" : "py-2 px-3 rounded-lg text-slate-600 hover:text-slate-900 text-center transition";
+    if (btnNew) btnNew.className = mode === "new" ? "py-2 px-3 rounded-lg bg-white text-[#0066ff] shadow-xs text-center transition" : "py-2 px-3 rounded-lg text-slate-600 hover:text-slate-900 text-center transition";
 
     if (viewSaved) viewSaved.classList.toggle("hidden", mode !== "saved");
     if (viewNew) viewNew.classList.toggle("hidden", mode !== "new");
-    if (viewLive) viewLive.classList.toggle("hidden", mode !== "live");
 
     syncBookingAddress();
   }
 
   if (btnSaved) btnSaved.onclick = () => setMode("saved");
   if (btnNew) btnNew.onclick = () => setMode("new");
-  if (btnLive) btnLive.onclick = () => setMode("live");
 
   if ($("changeSavedAddrBtn")) {
     $("changeSavedAddrBtn").onclick = () => {
@@ -768,11 +752,6 @@ function syncBookingAddress() {
     const pin = $("bookNewPincode")?.value.trim() || "";
     if ($("bookAddress")) $("bookAddress").value = [house, city, pin].filter(Boolean).join(", ");
     if ($("bookPincode")) $("bookPincode").value = pin;
-  } else if (currentAddrMode === "live") {
-    const saved = currentUser?.address || "12, Sector 4, Greater Noida, UP - 201310";
-    if ($("bookAddress")) $("bookAddress").value = saved;
-    const m = saved.match(/\b(\d{6})\b/);
-    if ($("bookPincode")) $("bookPincode").value = m ? m[1] : "201310";
   }
 }
 
@@ -841,7 +820,9 @@ function renderTimeline(steps, request) {
           ? "font-bold text-slate-800 text-xs"
           : "font-semibold text-slate-400 text-xs";
 
-      const showLiveTracking = isWay && (current || done || true);
+      const hasTech = Boolean(request?.technician_id || request?.technician?.id || request?.technician);
+      const isDispatched = request?.status === "Technician on the Way" || request?.status === "Service In Progress";
+      const showLiveTracking = isWay && hasTech && (isDispatched || current);
 
       return `
         <div class="relative flex items-start gap-3 pb-2.5">
@@ -923,35 +904,33 @@ function populateTracking(request) {
       request.issue || "No issue description provided.";
   }
 
-  const technician = request.technician;
+  const isAssigned = Boolean(request.technician && (request.technician_id || request.technician.id));
+  const technician = isAssigned ? request.technician : null;
+
   if ($("trackingTechnician")) {
-    $("trackingTechnician").textContent = technician ? technician.name : "Not assigned yet";
+    $("trackingTechnician").textContent = technician ? technician.name : "Awaiting Technician Assignment";
   }
   if ($("trackingTechTitle")) {
-    $("trackingTechTitle").textContent = technician?.title || "Technician will be assigned soon";
+    $("trackingTechTitle").textContent = technician?.title || "Your service ticket is being reviewed by the nearest franchise";
   }
   if ($("trackingTechRating")) {
-    $("trackingTechRating").innerHTML = technician?.rating ? `★ ${technician.rating} <span class="text-slate-400 font-normal">(${technician.total_jobs || 0} jobs completed)</span>` : `<span class="text-slate-400 font-normal">Awaiting technician assignment</span>`;
+    $("trackingTechRating").innerHTML = technician?.rating
+      ? `★ ${technician.rating} <span class="text-slate-400 font-normal">(${technician.total_jobs || 0} jobs completed)</span>`
+      : `<span class="text-amber-700 bg-amber-50 px-2.5 py-0.5 rounded-full text-[10px] font-bold border border-amber-200">⏳ Franchise Assignment Pending</span>`;
   }
-  if ($("trackingTechAvatar") && technician?.avatar) {
-    $("trackingTechAvatar").src = technician.avatar;
+  if ($("trackingTechAvatar")) {
+    $("trackingTechAvatar").src = technician?.avatar || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=250&q=80";
   }
   if ($("techCallBtn")) {
-    if (technician?.phone) {
-      $("techCallBtn").style.display = "inline-flex";
-      $("techCallBtn").href = `tel:${technician.phone}`;
-    } else {
-      $("techCallBtn").style.display = "none";
-    }
+    $("techCallBtn").style.display = technician?.phone ? "inline-flex" : "none";
+    if (technician?.phone) $("techCallBtn").href = `tel:${technician.phone}`;
   }
   if ($("techMessageBtn")) {
+    $("techMessageBtn").style.display = technician?.phone ? "inline-flex" : "none";
     if (technician?.phone) {
-      $("techMessageBtn").style.display = "inline-flex";
       $("techMessageBtn").onclick = () => {
         showToast(`Contacting technician at ${technician.phone}`);
       };
-    } else {
-      $("techMessageBtn").style.display = "none";
     }
   }
 
@@ -978,18 +957,47 @@ function populateTracking(request) {
   renderTimeline(request.timeline, request);
 }
 
+let trackingAnimationTimer = null;
+
+function stopTrackingAnimation() {
+  if (trackingAnimationTimer) {
+    clearInterval(trackingAnimationTimer);
+    trackingAnimationTimer = null;
+  }
+}
+
 window.openLiveTrackingModal = function (requestId) {
   openDialog("liveTrackingMapDialog");
   const req = userRequests.find((r) => r.id === requestId) || userRequests[0] || {};
   const techName = req.technician?.name || "Assigned Technician";
-  if ($("liveMapTechEta")) {
-    $("liveMapTechEta").textContent = `${techName} is on the way · Real-time route`;
-  }
+
+  stopTrackingAnimation();
 
   const customerLat = req.latitude || 28.5355;
   const customerLng = req.longitude || 77.3910;
-  const techLat = customerLat + 0.0095;
-  const techLng = customerLng - 0.0078;
+  // Starting origin point for technician (~2.5km distance)
+  const techStartLat = customerLat + 0.016;
+  const techStartLng = customerLng - 0.014;
+
+  if ($("liveMapTechEta")) {
+    $("liveMapTechEta").textContent = `${techName} is on the way · Calculating real-time route…`;
+  }
+
+  // Generate smooth street route waypoints
+  const steps = 36;
+  const waypoints = [];
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps;
+    // Cubic bezier curve for natural road trajectory
+    const p0 = [techStartLat, techStartLng];
+    const p1 = [techStartLat - 0.005, techStartLng + 0.008];
+    const p2 = [customerLat + 0.007, techStartLng + 0.004];
+    const p3 = [customerLat, customerLng];
+
+    const lat = Math.pow(1 - t, 3) * p0[0] + 3 * Math.pow(1 - t, 2) * t * p1[0] + 3 * (1 - t) * Math.pow(t, 2) * p2[0] + Math.pow(t, 3) * p3[0];
+    const lng = Math.pow(1 - t, 3) * p0[1] + 3 * Math.pow(1 - t, 2) * t * p1[1] + 3 * (1 - t) * Math.pow(t, 2) * p2[1] + Math.pow(t, 3) * p3[1];
+    waypoints.push([lat, lng]);
+  }
 
   setTimeout(() => {
     if (liveMapInstance) {
@@ -1003,26 +1011,71 @@ window.openLiveTrackingModal = function (requestId) {
         maxZoom: 19,
       }).addTo(liveMapInstance);
 
-      const customerMarker = window.L.marker([customerLat, customerLng]).addTo(liveMapInstance);
-      customerMarker.bindPopup("<b>Customer Doorstep</b><br>Service location").openPopup();
+      // Customer Doorstep Marker (Green Home Pin)
+      const homeIcon = window.L.divIcon({
+        className: "custom-doorstep-pin",
+        html: `<div style="background:#10b981;color:white;width:34px;height:34px;border-radius:50%;display:grid;place-items:center;font-size:16px;box-shadow:0 4px 12px rgba(16,185,129,0.45);border:2.5px solid white;">🏠</div>`,
+        iconSize: [34, 34],
+        iconAnchor: [17, 17]
+      });
+      const customerMarker = window.L.marker([customerLat, customerLng], { icon: homeIcon }).addTo(liveMapInstance);
+      customerMarker.bindPopup(`<b>Customer Doorstep</b><br>${escapeHtml(req.customer_address || "Service Location")}`);
 
-      const techMarker = window.L.circleMarker([techLat, techLng], {
-        color: "#0066ff",
-        fillColor: "#0066ff",
-        fillOpacity: 0.9,
-        radius: 9,
-      }).addTo(liveMapInstance);
-      techMarker.bindPopup(`<b>${req.technician?.name || "Technician"}</b><br>On the way · ETA ~12 mins`);
+      // Technician Vehicle Marker (Blue Bike with Pulsing Radar Ring - Swiggy/Zomato style)
+      const techIcon = window.L.divIcon({
+        className: "custom-tech-pin",
+        html: `<div style="position:relative;display:flex;align-items:center;justify-content:center;">
+          <div style="position:absolute;width:44px;height:44px;border-radius:50%;background:rgba(0,102,255,0.22);animation:ping 1.5s cubic-bezier(0,0,0.2,1) infinite;"></div>
+          <div style="position:relative;background:#0066ff;color:white;width:34px;height:34px;border-radius:50%;display:grid;place-items:center;font-size:16px;box-shadow:0 4px 14px rgba(0,102,255,0.45);border:2.5px solid white;">🛵</div>
+        </div>`,
+        iconSize: [34, 34],
+        iconAnchor: [17, 17]
+      });
 
-      const latlngs = [
-        [techLat, techLng],
-        [techLat - 0.004, techLng + 0.003],
-        [customerLat, customerLng],
-      ];
-      window.L.polyline(latlngs, { color: "#0066ff", weight: 4, dashArray: "6, 8" }).addTo(liveMapInstance);
-      liveMapInstance.invalidateSize();
+      let currentStep = 0;
+      const techMarker = window.L.marker(waypoints[0], { icon: techIcon }).addTo(liveMapInstance);
+      techMarker.bindPopup(`<b>${escapeHtml(techName)}</b><br><span id="livePopupEta">On the way · Moving</span>`).openPopup();
+
+      // Background planned route (dashed light gray)
+      window.L.polyline(waypoints, { color: "#cbd5e1", weight: 5, dashArray: "6, 8" }).addTo(liveMapInstance);
+
+      // Remaining live active route (solid vibrant blue)
+      const activeRouteLine = window.L.polyline(waypoints, { color: "#0066ff", weight: 5 }).addTo(liveMapInstance);
+
+      liveMapInstance.fitBounds(window.L.latLngBounds([waypoints[0], [customerLat, customerLng]]), { padding: [50, 50] });
+
+      // Animate technician movement incrementally
+      trackingAnimationTimer = setInterval(() => {
+        if (!liveMapInstance) {
+          stopTrackingAnimation();
+          return;
+        }
+        if (currentStep < waypoints.length - 1) {
+          currentStep++;
+          const nextPos = waypoints[currentStep];
+          techMarker.setLatLng(nextPos);
+
+          const remainingWaypoints = waypoints.slice(currentStep);
+          activeRouteLine.setLatLngs(remainingWaypoints);
+
+          const remainingSteps = waypoints.length - 1 - currentStep;
+          const etaMins = Math.max(1, Math.ceil((remainingSteps / waypoints.length) * 11));
+          const distKm = ((remainingSteps / waypoints.length) * 2.5).toFixed(1);
+
+          const statusText = remainingSteps === 0
+            ? `✓ ${techName} has arrived at your doorstep!`
+            : `${techName} is on the way · Arriving in ~${etaMins} mins (${distKm} km · 28 km/h)`;
+
+          if ($("liveMapTechEta")) $("liveMapTechEta").textContent = statusText;
+          const popupSpan = document.getElementById("livePopupEta");
+          if (popupSpan) popupSpan.textContent = `ETA ~${etaMins} mins (${distKm} km)`;
+        } else {
+          stopTrackingAnimation();
+          if ($("liveMapTechEta")) $("liveMapTechEta").textContent = `✓ ${techName} has arrived at your doorstep! Share your safety OTP with the technician.`;
+        }
+      }, 1000);
     }
-  }, 150);
+  }, 200);
 };
 
 window.openEditProfileModal = function () {
@@ -1079,6 +1132,7 @@ function openDialog(id) {
 }
 
 function closeDialog(id) {
+  if (id === "liveTrackingMapDialog") stopTrackingAnimation();
   const dialog = $(id);
   if (dialog?.close) dialog.close();
   else dialog?.classList.add("hidden");

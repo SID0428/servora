@@ -7,9 +7,13 @@ from datetime import datetime, timedelta
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
-from app.db.models import CompanyOnboardingModel, UserModel
+from app.db.models import (
+    CompanyOnboardingModel, UserModel, CompanyBranchModel,
+    TechnicianModel, BranchTechnicianModel, ApplianceModel, ServiceRequestModel
+)
 from app.db.session import get_db
 from app.schemas import CompanyCreate, CompanyCredentialsEmail, CompanyOtpVerify, CompanyPasswordSetup
 from app.security import get_authenticated_user
@@ -70,6 +74,152 @@ def list_companies(request: Request, db: Session = Depends(get_db)):
     rows = db.query(UserModel).filter(UserModel.role == "company").order_by(UserModel.name).all()
     onboarding = {item.company_id: item for item in db.query(CompanyOnboardingModel).all()}
     return [company_payload(user, onboarding.get(user.id)) for user in rows]
+
+
+@router.get("/companies/{company_id}")
+def get_company_details(company_id: str, request: Request, db: Session = Depends(get_db)):
+    require_admin(request, db)
+    company = db.query(UserModel).filter(UserModel.id == company_id, UserModel.role == "company").first()
+    if not company:
+        raise HTTPException(status_code=404, detail="Company not found")
+
+    onboarding = db.query(CompanyOnboardingModel).filter_by(company_id=company.id).first()
+
+    branches = (
+        db.query(CompanyBranchModel)
+        .filter(CompanyBranchModel.company_id == company.id)
+        .order_by(CompanyBranchModel.branch_name)
+        .all()
+    )
+    branch_ids = [b.id for b in branches]
+
+    branch_tech_links = (
+        db.query(BranchTechnicianModel)
+        .filter(BranchTechnicianModel.branch_id.in_(branch_ids))
+        .all()
+    ) if branch_ids else []
+    tech_ids = [bt.technician_id for bt in branch_tech_links]
+
+    technicians = (
+        db.query(TechnicianModel)
+        .filter(TechnicianModel.id.in_(tech_ids))
+        .all()
+    ) if tech_ids else []
+
+    if not technicians and branches:
+        branch_names = [b.branch_name for b in branches]
+        technicians = (
+            db.query(TechnicianModel)
+            .filter(
+                or_(
+                    TechnicianModel.company_branch.in_(branch_names),
+                    TechnicianModel.company_branch.ilike(f"%{company.name}%")
+                )
+            )
+            .all()
+        )
+
+    products = (
+        db.query(ApplianceModel)
+        .filter(
+            or_(
+                ApplianceModel.company_id == company.id,
+                ApplianceModel.brand.ilike(company.name.strip())
+            )
+        )
+        .all()
+    )
+
+    services = (
+        db.query(ServiceRequestModel)
+        .filter(
+            or_(
+                ServiceRequestModel.company_id == company.id,
+                ServiceRequestModel.brand.ilike(company.name.strip())
+            )
+        )
+        .order_by(ServiceRequestModel.created_at.desc())
+        .all()
+    )
+
+    ongoing_services = [s for s in services if s.status_badge in ("In Progress", "Scheduled") or s.status not in ("Completed", "Cancelled")]
+    completed_services = [s for s in services if s.status_badge == "Completed" or s.status == "Completed"]
+    pending_services = [s for s in services if not s.technician_id]
+
+    tech_map = {t.id: t.name for t in technicians}
+
+    return {
+        "company": company_payload(company, onboarding),
+        "stats": {
+            "total_branches": len(branches),
+            "total_technicians": len(technicians),
+            "total_products": len(products),
+            "total_services": len(services),
+            "ongoing_services": len(ongoing_services),
+            "completed_services": len(completed_services),
+            "pending_services": len(pending_services),
+        },
+        "branches": [
+            {
+                "id": b.id,
+                "branch_name": b.branch_name,
+                "manager_name": b.manager_name,
+                "email": b.email,
+                "mobile": b.mobile,
+                "address": b.address,
+                "pincode": b.pincode,
+                "technicians_count": sum(1 for bt in branch_tech_links if bt.branch_id == b.id)
+            }
+            for b in branches
+        ],
+        "technicians": [
+            {
+                "id": t.id,
+                "name": t.name,
+                "title": t.title,
+                "company_branch": t.company_branch,
+                "rating": t.rating,
+                "total_jobs": t.total_jobs,
+                "phone": t.phone,
+                "avatar": t.avatar,
+                "is_verified": t.is_verified,
+            }
+            for t in technicians
+        ],
+        "products": [
+            {
+                "id": p.id,
+                "brand": p.brand,
+                "category": p.category,
+                "model_no": p.model_no,
+                "serial_no": p.serial_no or "Standard",
+                "warranty_status": p.warranty_status or "Active",
+                "registered_on": p.registered_on,
+                "customer_id": p.user_id,
+            }
+            for p in products
+        ],
+        "services": [
+            {
+                "id": s.id,
+                "customer_name": s.customer_name,
+                "customer_phone": s.customer_phone,
+                "customer_address": s.customer_address,
+                "appliance_name": s.appliance_name,
+                "issue": s.issue,
+                "priority": s.priority,
+                "status": s.status,
+                "status_badge": s.status_badge,
+                "appointment_date": s.appointment_date,
+                "appointment_slot": s.appointment_slot,
+                "technician_id": s.technician_id,
+                "technician_name": tech_map.get(s.technician_id, "Unassigned"),
+                "pincode": s.pincode,
+                "verification_otp": s.verification_otp,
+            }
+            for s in services
+        ]
+    }
 
 
 @router.get("/directory/{role}")

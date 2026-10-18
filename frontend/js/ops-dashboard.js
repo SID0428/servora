@@ -200,18 +200,26 @@ function renderCompanies() {
   $("pageContent").hidden = false;
   $("metricGrid").hidden = true;
   $("tableTitle").textContent = "Companies on Servora";
-  $("tableSubtitle").textContent = "Manage platform partners and their company portal access.";
+  $("tableSubtitle").textContent = "Click any company to view its branches, technicians, products, and services.";
   $("sidePanelTitle").textContent = "Company access";
   $("healthContent").innerHTML = `<div class="section-empty"><strong>${companies.length}</strong> partner companies are listed on Servora.</div>`;
-  $("activityContent").innerHTML = `<div class="section-empty">Create a company account, then send its portal credentials to the administrator email.</div>`;
+  $("activityContent").innerHTML = `<div class="section-empty">Click on any company row or "View Details →" to inspect its branches, technicians, registered appliances, and active tickets.</div>`;
   $("bottomTitle").textContent = "Company directory";
   $("bottomSubtitle").textContent = "Company portal accounts registered on Servora.";
-  $("requestHead").innerHTML = ["Company", "Administrator email", "Phone", "Portal", "Action"].map((name) => `<th>${name}</th>`).join("");
+  $("requestHead").innerHTML = ["Company", "Administrator email", "Phone", "Portal", "Details", "Action"].map((name) => `<th>${name}</th>`).join("");
   $("requestRows").innerHTML = companies.length ? companies.map((company) => {
     const passwordDate = company.password_set_at ? new Intl.DateTimeFormat("en-IN", { dateStyle: "medium", timeStyle: "short" }).format(new Date(company.password_set_at)) : "Not set yet";
     const setupStatus = company.password_set ? `Password set · ${passwordDate}` : "Password not set";
-    return `<tr><td><div class="customer-cell"><span class="customer-avatar">${safe(company.name.split(/\s+/).map((part) => part[0]).slice(0, 2).join(""))}</span><span class="customer-name">${safe(company.name)}<small>${safe(company.id)}</small><small class="company-password-state ${company.password_set ? "is-set" : "is-pending"}">${safe(setupStatus)}</small></span></div></td><td>${safe(company.email)}</td><td>${safe(company.phone)}</td><td><span class="status-pill completed">Company portal</span></td><td>${company.password_set ? `<span class="status-pill completed">Active</span>` : `<button class="table-action" data-send-credentials="${safe(company.id)}">Resend setup link →</button>`}</td></tr>`;
-  }).join("") : `<tr><td class="empty-row" colspan="5">No companies yet. Add your first company to get started.</td></tr>`;
+    return `<tr class="cursor-pointer hover:bg-blue-50/40 transition" onclick="viewCompanyDetails('${safe(company.id)}')">
+      <td><div class="customer-cell"><span class="customer-avatar">${safe(company.name.split(/\s+/).map((part) => part[0]).slice(0, 2).join(""))}</span><span class="customer-name">${safe(company.name)}<small>${safe(company.id)}</small><small class="company-password-state ${company.password_set ? "is-set" : "is-pending"}">${safe(setupStatus)}</small></span></div></td>
+      <td>${safe(company.email)}</td>
+      <td>${safe(company.phone)}</td>
+      <td><span class="status-pill completed">Company portal</span></td>
+      <td><button class="table-action px-2.5 py-1 rounded bg-blue-50 text-blue-700 hover:bg-blue-100 font-semibold text-xs" onclick="event.stopPropagation(); viewCompanyDetails('${safe(company.id)}')">View Details →</button></td>
+      <td>${company.password_set ? `<span class="status-pill completed">Active</span>` : `<button class="table-action" onclick="event.stopPropagation();" data-send-credentials="${safe(company.id)}">Resend setup link →</button>`}</td>
+    </tr>`;
+  }).join("") : `<tr><td class="empty-row" colspan="6">No companies yet. Add your first company to get started.</td></tr>`;
+
   document.querySelectorAll("[data-send-credentials]").forEach((button) => button.addEventListener("click", async () => {
     const company = companies.find((item) => item.id === button.dataset.sendCredentials);
     if (!company || !window.confirm(`Resend the password setup link to ${company.email}?`)) return;
@@ -221,6 +229,175 @@ function renderCompanies() {
     finally { button.disabled = false; button.textContent = "Resend setup link →"; }
   }));
 }
+
+window.viewCompanyDetails = async function(companyId) {
+  const modal = $("companyDetailModal");
+  if (!modal) return;
+  modal.showModal();
+
+  if ($("companyDetailName")) $("companyDetailName").textContent = "Loading company…";
+  if ($("companyDetailAvatar")) $("companyDetailAvatar").textContent = "…";
+  if ($("companyDetailEmail")) $("companyDetailEmail").textContent = "…";
+  if ($("companyDetailPhone")) $("companyDetailPhone").textContent = "…";
+  if ($("companyDetailAddress")) $("companyDetailAddress").textContent = "…";
+  ["companyStatBranches", "companyStatTechs", "companyStatProducts", "companyStatTotalServices", "companyStatOngoing", "companyStatCompleted"].forEach(id => {
+    if ($(id)) $(id).textContent = "…";
+  });
+  ["companyTabBranches", "companyTabTechnicians", "companyTabProducts", "companyTabServices"].forEach(id => {
+    if ($(id)) $(id).innerHTML = `<div class="p-8 text-center text-slate-400 text-xs">Loading operational records…</div>`;
+  });
+
+  try {
+    const res = await adminApi(`/companies/${companyId}`);
+    const company = res.company;
+    const stats = res.stats;
+    const branches = res.branches || [];
+    const technicians = res.technicians || [];
+    const products = res.products || [];
+    const services = res.services || [];
+
+    if ($("companyDetailName")) $("companyDetailName").textContent = company.name;
+    if ($("companyDetailAvatar")) $("companyDetailAvatar").textContent = company.name.split(/\s+/).map(p => p[0]).slice(0, 2).join("");
+    if ($("companyDetailEmail")) $("companyDetailEmail").textContent = company.email;
+    if ($("companyDetailPhone")) $("companyDetailPhone").textContent = company.phone;
+    if ($("companyDetailAddress")) $("companyDetailAddress").textContent = company.address || "Registered Corporate Office";
+
+    if ($("companyStatBranches")) $("companyStatBranches").textContent = stats.total_branches;
+    if ($("companyStatTechs")) $("companyStatTechs").textContent = stats.total_technicians;
+    if ($("companyStatProducts")) $("companyStatProducts").textContent = stats.total_products;
+    if ($("companyStatTotalServices")) $("companyStatTotalServices").textContent = stats.total_services;
+    if ($("companyStatOngoing")) $("companyStatOngoing").textContent = stats.ongoing_services;
+    if ($("companyStatCompleted")) $("companyStatCompleted").textContent = stats.completed_services;
+
+    if ($("tabCountBranches")) $("tabCountBranches").textContent = branches.length;
+    if ($("tabCountTechs")) $("tabCountTechs").textContent = technicians.length;
+    if ($("tabCountProducts")) $("tabCountProducts").textContent = products.length;
+    if ($("tabCountServices")) $("tabCountServices").textContent = services.length;
+
+    // 1. Branches Tab
+    if ($("companyTabBranches")) {
+      $("companyTabBranches").innerHTML = branches.length ? `
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-xs">
+            <thead class="bg-slate-50 text-slate-500 uppercase tracking-wider text-[10px]">
+              <tr><th class="p-2.5">Branch Name</th><th class="p-2.5">Manager</th><th class="p-2.5">Contact</th><th class="p-2.5">PIN Code</th><th class="p-2.5">Address</th><th class="p-2.5">Techs</th></tr>
+            </thead>
+            <tbody>
+              ${branches.map(b => `
+                <tr class="border-t border-slate-100">
+                  <td class="p-2.5 font-bold text-slate-800">${safe(b.branch_name)}</td>
+                  <td class="p-2.5 font-medium">${safe(b.manager_name)}</td>
+                  <td class="p-2.5 text-slate-600">${safe(b.mobile)}<br><small class="text-slate-400">${safe(b.email)}</small></td>
+                  <td class="p-2.5 font-mono font-semibold text-blue-600">${safe(b.pincode)}</td>
+                  <td class="p-2.5 text-slate-500 max-w-xs truncate">${safe(b.address)}</td>
+                  <td class="p-2.5"><span class="px-2 py-0.5 rounded bg-blue-50 text-blue-700 font-bold text-[10px]">${b.technicians_count || 0} active</span></td>
+                </tr>
+              `).join("")}
+            </tbody>
+          </table>
+        </div>
+      ` : `<div class="p-8 text-center text-slate-400 text-xs">No franchise branches registered under this company yet.</div>`;
+    }
+
+    // 2. Technicians Tab
+    if ($("companyTabTechnicians")) {
+      $("companyTabTechnicians").innerHTML = technicians.length ? `
+        <div class="grid sm:grid-cols-2 gap-3">
+          ${technicians.map(t => `
+            <div class="p-3.5 bg-slate-50 rounded-2xl border border-slate-100 flex items-center justify-between gap-3">
+              <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-full bg-blue-600 text-white font-bold flex items-center justify-center shrink-0">
+                  ${t.avatar ? `<img src="${safe(t.avatar)}" class="w-full h-full rounded-full object-cover">` : safe(t.name[0])}
+                </div>
+                <div>
+                  <strong class="text-xs font-bold text-slate-900 block">${safe(t.name)}</strong>
+                  <span class="text-[11px] text-slate-500 block">${safe(t.title)}</span>
+                  <span class="text-[10px] text-blue-600 font-semibold mt-0.5 block">📍 ${safe(t.company_branch)}</span>
+                </div>
+              </div>
+              <div class="text-right">
+                <span class="text-xs font-bold text-amber-600">★ ${t.rating || '5.0'}</span>
+                <span class="text-[10px] text-slate-400 block">${t.total_jobs || 0} jobs</span>
+                <a href="tel:${safe(t.phone)}" class="text-[10px] text-blue-600 font-semibold hover:underline mt-1 block">📞 ${safe(t.phone)}</a>
+              </div>
+            </div>
+          `).join("")}
+        </div>
+      ` : `<div class="p-8 text-center text-slate-400 text-xs">No technicians assigned under this company's branches yet.</div>`;
+    }
+
+    // 3. Products Tab
+    if ($("companyTabProducts")) {
+      $("companyTabProducts").innerHTML = products.length ? `
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-xs">
+            <thead class="bg-slate-50 text-slate-500 uppercase tracking-wider text-[10px]">
+              <tr><th class="p-2.5">Appliance / Category</th><th class="p-2.5">Brand</th><th class="p-2.5">Model No</th><th class="p-2.5">Serial No</th><th class="p-2.5">Warranty</th><th class="p-2.5">Registered On</th></tr>
+            </thead>
+            <tbody>
+              ${products.map(p => `
+                <tr class="border-t border-slate-100">
+                  <td class="p-2.5 font-bold text-slate-800">${safe(p.category)}</td>
+                  <td class="p-2.5 text-slate-600">${safe(p.brand)}</td>
+                  <td class="p-2.5 font-mono text-slate-700">${safe(p.model_no)}</td>
+                  <td class="p-2.5 font-mono text-slate-400">${safe(p.serial_no)}</td>
+                  <td class="p-2.5"><span class="px-2 py-0.5 rounded text-[10px] font-bold ${p.warranty_status === 'Expired' ? 'bg-rose-50 text-rose-700' : 'bg-emerald-50 text-emerald-700'}">${safe(p.warranty_status)}</span></td>
+                  <td class="p-2.5 text-slate-500">${safe(p.registered_on)}</td>
+                </tr>
+              `).join("")}
+            </tbody>
+          </table>
+        </div>
+      ` : `<div class="p-8 text-center text-slate-400 text-xs">No customer appliances registered under this company yet.</div>`;
+    }
+
+    // 4. Services Tab
+    if ($("companyTabServices")) {
+      $("companyTabServices").innerHTML = services.length ? `
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-xs">
+            <thead class="bg-slate-50 text-slate-500 uppercase tracking-wider text-[10px]">
+              <tr><th class="p-2.5">Ticket ID</th><th class="p-2.5">Customer</th><th class="p-2.5">Issue</th><th class="p-2.5">Technician</th><th class="p-2.5">Scheduled Date</th><th class="p-2.5">Status</th></tr>
+            </thead>
+            <tbody>
+              ${services.map(s => `
+                <tr class="border-t border-slate-100">
+                  <td class="p-2.5 font-bold font-mono text-blue-600">${safe(s.id)}</td>
+                  <td class="p-2.5"><strong class="text-slate-800 block">${safe(s.customer_name)}</strong><small class="text-slate-400">${safe(s.customer_phone)}</small></td>
+                  <td class="p-2.5 text-slate-700 max-w-xs truncate">${safe(s.appliance_name)}: ${safe(s.issue)}</td>
+                  <td class="p-2.5 font-medium text-slate-600">${safe(s.technician_name || 'Unassigned')}</td>
+                  <td class="p-2.5 text-slate-500">${safe(s.appointment_date)} · ${safe(s.appointment_slot || 'Regular')}</td>
+                  <td class="p-2.5"><span class="status-pill ${statusClass(s.status_badge)}">${safe(s.status_badge)}</span></td>
+                </tr>
+              `).join("")}
+            </tbody>
+          </table>
+        </div>
+      ` : `<div class="p-8 text-center text-slate-400 text-xs">No service requests recorded for this company yet.</div>`;
+    }
+
+  } catch (err) {
+    showToast(err.message || "Failed to load company details", "error");
+  }
+};
+
+document.addEventListener("click", (e) => {
+  const tabBtn = e.target.closest(".company-tab");
+  if (!tabBtn) return;
+  const targetTab = tabBtn.dataset.companyTab;
+  document.querySelectorAll(".company-tab").forEach(btn => {
+    btn.classList.remove("active", "border-b-2", "border-blue-600", "text-blue-600");
+    btn.classList.add("text-slate-500");
+  });
+  tabBtn.classList.add("active", "border-b-2", "border-blue-600", "text-blue-600");
+  tabBtn.classList.remove("text-slate-500");
+
+  document.querySelectorAll(".company-tab-panel").forEach(p => p.classList.add("hidden"));
+  if (targetTab === "branches" && $("companyTabBranches")) $("companyTabBranches").classList.remove("hidden");
+  if (targetTab === "technicians" && $("companyTabTechnicians")) $("companyTabTechnicians").classList.remove("hidden");
+  if (targetTab === "products" && $("companyTabProducts")) $("companyTabProducts").classList.remove("hidden");
+  if (targetTab === "services" && $("companyTabServices")) $("companyTabServices").classList.remove("hidden");
+});
 async function adminApi(path, options = {}) {
   const response = await fetch(`${API_BASE_URL}/api/admin${path}`, { ...options, credentials: "include", headers: { "Content-Type": "application/json", ...authHeaders(), ...options.headers } });
   const data = await response.json().catch(() => ({}));
@@ -546,7 +723,7 @@ function renderRequests() {
           <span class="text-base leading-none">🗺️</span>
           <span class="text-[10px]">Map</span>
         </button>
-        <button onclick="document.getElementById('logoutBtn')?.click()" class="flex flex-col items-center gap-1 hover:text-rose-600">
+        <button onclick="window.openOpsProfileModal()" class="flex flex-col items-center gap-1 hover:text-blue-600">
           <span class="text-base leading-none">👤</span>
           <span class="text-[10px]">Profile</span>
         </button>
@@ -561,6 +738,9 @@ function renderRequests() {
             <span class="text-[11px] font-bold uppercase tracking-wider text-blue-600 font-mono">${safe(item.id)}</span>
             <h3 class="text-base font-bold text-slate-800 mt-0.5">${safe(item.appliance_name || item.brand)}</h3>
             <p class="text-xs text-slate-500 mt-0.5">Issue: <span class="font-medium text-slate-700">${safe(item.issue)}</span></p>
+            <div class="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-blue-50 border border-blue-200 text-blue-700 text-xs font-semibold">
+              <span>📌 You have been assigned this work</span>
+            </div>
           </div>
           <span class="status-pill ${statusClass(item.status_badge)}">${safe(item.status_badge)}</span>
         </div>
@@ -581,11 +761,6 @@ function renderRequests() {
         </div>
 
         <div class="flex flex-wrap items-center gap-2 pt-1 border-t border-slate-100">
-          ${item.status_badge !== 'Completed' && item.status !== 'Technician on the Way' && item.status !== 'Service In Progress' ? `
-            <button type="button" class="px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs shadow-sm transition flex items-center gap-1.5" onclick="techAction('${safe(item.id)}', 'accept')">
-              ✓ Accept Job
-            </button>
-          ` : ''}
           ${item.status_badge !== 'Completed' ? `
             <button type="button" class="px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs shadow-sm transition flex items-center gap-1.5" onclick="techAction('${safe(item.id)}', 'start_visit')">
               📍 Start Visit
@@ -626,8 +801,10 @@ function renderRequests() {
 
     if (role === "franchise") {
       const priorityBadge = `<span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${priorityClass(item.priority || 'Medium')}">${safe(item.priority || 'Medium')}</span>`;
+      const isDispatched = item.status === "Technician on the Way" || item.technician_id;
+      const trackBtn = isDispatched ? `<button class="table-action px-2.5 py-1 rounded bg-indigo-50 text-indigo-700 hover:bg-indigo-100 font-semibold text-xs ml-1.5" onclick="openTechRouteMap('${safe(item.id)}')">Track 📍</button>` : '';
       const assignBtn = `<button class="table-action px-3 py-1 rounded bg-blue-50 text-blue-700 hover:bg-blue-100 font-semibold text-xs" onclick="selectRequestForAssignment('${safe(item.id)}')">Assign →</button>`;
-      const cells = [safe(item.id), customer, safe(item.appliance_name), safe(item.issue), priorityBadge, assignBtn];
+      const cells = [safe(item.id), customer, safe(item.appliance_name), safe(item.issue), priorityBadge, `<div class="flex items-center gap-1">${assignBtn}${trackBtn}</div>`];
       return `<tr>${cells.map((cell) => `<td>${cell}</td>`).join("")}</tr>`;
     }
 
@@ -636,8 +813,10 @@ function renderRequests() {
       const branchObj = branches.find((b) => b.id === item.branch_id);
       const routedBranch = safe(branchObj ? branchObj.branch_name : (item.branch_id || "Unassigned"));
       const statusPill = `<span class="status-pill ${statusClass(item.status_badge)}">${safe(item.status_badge)}</span>`;
+      const isDispatched = item.status === "Technician on the Way" || item.technician_id;
+      const trackBtn = isDispatched ? `<button class="table-action font-semibold text-xs text-indigo-600 hover:text-indigo-800 ml-2" onclick="openTechRouteMap('${safe(item.id)}')">Track 📍</button>` : '';
       const actionBtn = `<button class="table-action font-semibold text-xs text-blue-600 hover:text-blue-800" onclick="showToast('Viewing ticket ${safe(item.id)}')">View Details →</button>`;
-      const cells = [safe(item.id), customer, pinCode, routedBranch, statusPill, actionBtn];
+      const cells = [safe(item.id), customer, pinCode, routedBranch, statusPill, `<div class="flex items-center gap-1">${actionBtn}${trackBtn}</div>`];
       return `<tr>${cells.map((cell) => `<td>${cell}</td>`).join("")}</tr>`;
     }
 
@@ -826,47 +1005,167 @@ window.techDiagnosisModal = function(requestId) {
   }
 };
 
+let techMapAnimationTimer = null;
+function stopTechMapAnimation() {
+  if (techMapAnimationTimer) {
+    clearInterval(techMapAnimationTimer);
+    techMapAnimationTimer = null;
+  }
+}
+
 window.openTechRouteMap = function(requestId) {
   const dialog = $("techMapDialog");
   if (!dialog) return;
+  stopTechMapAnimation();
   dialog.showModal();
+
+  const liveBanner = $("techMapLiveBanner");
+  const mapTitle = $("techMapTitle");
+  const mapSubtitle = $("techMapSubtitle");
+  const targetReq = requestId ? requests.find((r) => r.id === requestId) : null;
+
+  if (targetReq) {
+    if (liveBanner) liveBanner.classList.remove("hidden");
+    if (mapTitle) mapTitle.textContent = `Live Field Tracking · ${targetReq.id}`;
+    if (mapSubtitle) mapSubtitle.textContent = `Tracking field technician movement to ${targetReq.customer_name || 'Customer'}`;
+  } else {
+    if (liveBanner) liveBanner.classList.add("hidden");
+    if (mapTitle) mapTitle.textContent = "Today's Route & Field Jobs";
+    if (mapSubtitle) mapSubtitle.textContent = "Assigned customer service visits on OpenStreetMap";
+  }
+
   setTimeout(() => {
     if (!window.L) return;
     if (window._techMapInstance) {
       window._techMapInstance.remove();
       window._techMapInstance = null;
     }
-    const map = L.map("techOsmMap").setView([28.5355, 77.3910], 12);
-    window._techMapInstance = map;
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-    }).addTo(map);
 
-    const targetReq = requestId ? requests.find(r => r.id === requestId) : null;
-    const points = [];
+    if (targetReq) {
+      // Swiggy / Zomato live animated tracking
+      const customerLat = targetReq.latitude || 28.5355;
+      const customerLng = targetReq.longitude || 77.3910;
+      // Start origin ~2.3km away
+      const techStartLat = customerLat + 0.015;
+      const techStartLng = customerLng - 0.013;
 
-    requests.forEach((req, idx) => {
-      const lat = req.latitude || (28.5355 + (idx * 0.015 - 0.03));
-      const lng = req.longitude || (77.3910 + (idx * 0.018 - 0.02));
-      points.push([lat, lng]);
+      const map = L.map("techOsmMap").setView([customerLat, customerLng], 14);
+      window._techMapInstance = map;
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+        maxZoom: 19
+      }).addTo(map);
 
-      const isCurrent = targetReq && targetReq.id === req.id;
-      const marker = L.marker([lat, lng]).addTo(map);
-      marker.bindPopup(`
-        <div style="font-family:sans-serif;font-size:12px;line-height:1.4">
-          <strong style="color:#1d4ed8">${safe(req.id)}</strong><br>
-          <b>${safe(req.customer_name)}</b><br>
-          ${safe(req.appliance_name || 'Appliance')}<br>
-          <span style="color:#64748b">${safe(req.customer_address || '')} (PIN: ${safe(req.pincode || '201310')})</span><br>
-          <span style="display:inline-block;margin-top:4px;padding:2px 6px;border-radius:4px;background:#e0f2fe;color:#0369a1;font-weight:600">${safe(req.status_badge)}</span>
-        </div>
-      `);
-      if (isCurrent) marker.openPopup();
-    });
+      // Customer Doorstep Marker (Green Home Pin)
+      const homeIcon = L.divIcon({
+        className: "custom-doorstep-pin",
+        html: `<div style="background:#10b981;color:white;width:34px;height:34px;border-radius:50%;display:grid;place-items:center;font-size:16px;box-shadow:0 4px 12px rgba(16,185,129,0.45);border:2.5px solid white;">🏠</div>`,
+        iconSize: [34, 34],
+        iconAnchor: [17, 17]
+      });
+      L.marker([customerLat, customerLng], { icon: homeIcon }).addTo(map)
+        .bindPopup(`<b>Customer Doorstep</b><br><b>${safe(targetReq.customer_name)}</b><br>${safe(targetReq.customer_address || 'Service Location')}<br><small>PIN: ${safe(targetReq.pincode || '201310')}</small>`);
 
-    if (points.length) {
-      const bounds = L.latLngBounds(points);
-      map.fitBounds(bounds, { padding: [40, 40], maxZoom: 14 });
+      // 36 bezier curve waypoints for realistic road trajectory
+      const steps = 36;
+      const waypoints = [];
+      for (let i = 0; i <= steps; i++) {
+        const t = i / steps;
+        const p0 = [techStartLat, techStartLng];
+        const p1 = [techStartLat - 0.005, techStartLng + 0.007];
+        const p2 = [customerLat + 0.006, techStartLng + 0.003];
+        const p3 = [customerLat, customerLng];
+
+        const lat = Math.pow(1 - t, 3) * p0[0] + 3 * Math.pow(1 - t, 2) * t * p1[0] + 3 * (1 - t) * Math.pow(t, 2) * p2[0] + Math.pow(t, 3) * p3[0];
+        const lng = Math.pow(1 - t, 3) * p0[1] + 3 * Math.pow(1 - t, 2) * t * p1[1] + 3 * (1 - t) * Math.pow(t, 2) * p2[1] + Math.pow(t, 3) * p3[1];
+        waypoints.push([lat, lng]);
+      }
+
+      // Background route (dashed)
+      L.polyline(waypoints, { color: "#cbd5e1", weight: 5, dashArray: "6, 8" }).addTo(map);
+
+      // Active vibrant route
+      const activeRouteLine = L.polyline(waypoints, { color: "#2563eb", weight: 5 }).addTo(map);
+
+      // Technician Marker (Blue Bike with expanding pulse radar ring)
+      const techIcon = L.divIcon({
+        className: "custom-tech-pin",
+        html: `<div style="position:relative;display:flex;align-items:center;justify-content:center;">
+          <div style="position:absolute;width:44px;height:44px;border-radius:50%;background:rgba(37,99,235,0.25);animation:ping 1.5s cubic-bezier(0,0,0.2,1) infinite;"></div>
+          <div style="position:relative;background:#2563eb;color:white;width:34px;height:34px;border-radius:50%;display:grid;place-items:center;font-size:16px;box-shadow:0 4px 14px rgba(37,99,235,0.45);border:2.5px solid white;">🛵</div>
+        </div>`,
+        iconSize: [34, 34],
+        iconAnchor: [17, 17]
+      });
+
+      const techName = targetReq.technician?.name || user?.name || "Field Technician";
+      let currentStep = 0;
+      const techMarker = L.marker(waypoints[0], { icon: techIcon }).addTo(map);
+      techMarker.bindPopup(`<b>${safe(techName)}</b><br><span id="opsLivePopupEta">En route · Moving to doorstep</span>`).openPopup();
+
+      map.fitBounds(L.latLngBounds([waypoints[0], [customerLat, customerLng]]), { padding: [50, 50] });
+
+      techMapAnimationTimer = setInterval(() => {
+        if (!window._techMapInstance) {
+          stopTechMapAnimation();
+          return;
+        }
+        currentStep++;
+        if (currentStep >= waypoints.length) {
+          stopTechMapAnimation();
+          techMarker.setLatLng([customerLat, customerLng]);
+          techMarker.getPopup()?.setContent(`<b>${safe(techName)}</b><br><span style="color:#10b981;font-weight:bold;">✓ Arrived at Customer Doorstep</span>`).openPopup();
+          if ($("techMapEtaText")) $("techMapEtaText").textContent = `${techName} has arrived at the customer doorstep!`;
+          if ($("techMapDistText")) $("techMapDistText").textContent = "Arrived · 0 meters away · Service starting";
+          showToast(`Technician ${techName} has arrived at ${targetReq.customer_name}'s location!`);
+          return;
+        }
+
+        const currentPos = waypoints[currentStep];
+        techMarker.setLatLng(currentPos);
+        activeRouteLine.setLatLngs(waypoints.slice(currentStep));
+
+        const remainingSteps = waypoints.length - currentStep;
+        const etaMinutes = Math.max(1, Math.ceil((remainingSteps / waypoints.length) * 14));
+        const remainingKm = ((remainingSteps / waypoints.length) * 2.4).toFixed(1);
+        const speed = Math.floor(25 + Math.sin(currentStep) * 6);
+
+        if ($("techMapEtaText")) $("techMapEtaText").textContent = `${techName} is en route · ${etaMinutes} mins away`;
+        if ($("techMapDistText")) $("techMapDistText").textContent = `Remaining distance: ${remainingKm} km · Speed: ${speed} km/h`;
+        const popupEta = document.getElementById("opsLivePopupEta");
+        if (popupEta) popupEta.textContent = `En route · ${etaMinutes} mins away (${remainingKm} km)`;
+      }, 1200);
+
+    } else {
+      // General map with all jobs
+      const map = L.map("techOsmMap").setView([28.5355, 77.3910], 12);
+      window._techMapInstance = map;
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+      }).addTo(map);
+
+      const points = [];
+      requests.forEach((req, idx) => {
+        const lat = req.latitude || (28.5355 + (idx * 0.015 - 0.03));
+        const lng = req.longitude || (77.3910 + (idx * 0.018 - 0.02));
+        points.push([lat, lng]);
+
+        const marker = L.marker([lat, lng]).addTo(map);
+        marker.bindPopup(`
+          <div style="font-family:sans-serif;font-size:12px;line-height:1.4">
+            <strong style="color:#1d4ed8">${safe(req.id)}</strong><br>
+            <b>${safe(req.customer_name)}</b><br>
+            ${safe(req.appliance_name || 'Appliance')}<br>
+            <span style="color:#64748b">${safe(req.customer_address || '')} (PIN: ${safe(req.pincode || '201310')})</span><br>
+            <span style="display:inline-block;margin-top:4px;padding:2px 6px;border-radius:4px;background:#e0f2fe;color:#0369a1;font-weight:600">${safe(req.status_badge)}</span>
+          </div>
+        `);
+      });
+
+      if (points.length) {
+        const bounds = L.latLngBounds(points);
+        map.fitBounds(bounds, { padding: [40, 40], maxZoom: 14 });
+      }
     }
   }, 250);
 };
@@ -1043,7 +1342,118 @@ $("closeBranchDialog").addEventListener("click", () => $("branchDialog").close()
 $("cancelBranch").addEventListener("click", () => $("branchDialog").close());
 $("closeTechnicianDialog").addEventListener("click", () => $("technicianDialog").close());
 $("cancelTechnician").addEventListener("click", () => $("technicianDialog").close());
-$("closeTechMap")?.addEventListener("click", () => $("techMapDialog")?.close());
+$("closeTechMap")?.addEventListener("click", () => { stopTechMapAnimation(); $("techMapDialog")?.close(); });
+$("techMapDialog")?.addEventListener("close", () => stopTechMapAnimation());
+$("closeCompanyDetail")?.addEventListener("click", () => $("companyDetailModal")?.close());
+
+// Profile Modal & Edit Details for Ops Portals (Technician, Franchise, Company, Admin)
+window.openOpsProfileModal = function() {
+  const dialog = $("opsProfileDialog");
+  if (!dialog) return;
+
+  const displayName = user?.name || "Servora User";
+  const displayRole = user?.role || role || "technician";
+  const displayEmail = user?.email || "user@servora.in";
+  const displayPhone = user?.phone || "+91 98765 43210";
+  const displayAddr = user?.address || "Not provided";
+
+  if ($("opsProfileNameText")) $("opsProfileNameText").textContent = displayName;
+  if ($("opsProfileRoleBadge")) $("opsProfileRoleBadge").textContent = displayRole.toUpperCase();
+  if ($("opsProfileAvatar")) $("opsProfileAvatar").textContent = displayName.split(/\s+/).map((p) => p[0]).slice(0, 2).join("").toUpperCase() || "U";
+  if ($("opsProfileEmailText")) $("opsProfileEmailText").textContent = displayEmail;
+  if ($("opsProfilePhoneText")) $("opsProfilePhoneText").textContent = displayPhone;
+  if ($("opsProfileAddressText")) $("opsProfileAddressText").textContent = displayAddr;
+
+  if (user?.branch_name || user?.branch_id) {
+    if ($("opsProfileBranchRow")) $("opsProfileBranchRow").classList.remove("hidden");
+    if ($("opsProfileBranchText")) $("opsProfileBranchText").textContent = user?.branch_name || `Branch #${user?.branch_id}`;
+  } else if ($("opsProfileBranchRow")) {
+    $("opsProfileBranchRow").classList.add("hidden");
+  }
+
+  if ($("editOpsName")) $("editOpsName").value = displayName;
+  if ($("editOpsPhone")) $("editOpsPhone").value = (displayPhone === "+91 98765 43210" && !user?.phone) ? "" : displayPhone;
+  if ($("editOpsAddress")) $("editOpsAddress").value = user?.address || "";
+  if ($("editOpsMessage")) $("editOpsMessage").textContent = "";
+
+  if ($("opsProfileViewMode")) $("opsProfileViewMode").classList.remove("hidden");
+  if ($("opsProfileEditForm")) $("opsProfileEditForm").classList.add("hidden");
+
+  dialog.showModal();
+};
+
+$("profileButton")?.addEventListener("click", () => window.openOpsProfileModal());
+$("closeOpsProfile")?.addEventListener("click", () => $("opsProfileDialog")?.close());
+$("openEditOpsProfileBtn")?.addEventListener("click", () => {
+  $("opsProfileViewMode")?.classList.add("hidden");
+  $("opsProfileEditForm")?.classList.remove("hidden");
+});
+$("cancelOpsEditBtn")?.addEventListener("click", () => {
+  $("opsProfileViewMode")?.classList.remove("hidden");
+  $("opsProfileEditForm")?.classList.add("hidden");
+});
+$("opsModalSignOutBtn")?.addEventListener("click", () => {
+  $("opsProfileDialog")?.close();
+  $("logoutBtn")?.click();
+});
+
+$("opsProfileEditForm")?.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const btn = $("saveOpsEditBtn");
+  const msg = $("editOpsMessage");
+  btn.disabled = true;
+  msg.className = "min-h-4 text-xs text-blue-600 font-semibold";
+  msg.textContent = "Saving profile changes…";
+  const name = $("editOpsName")?.value.trim();
+  const phone = $("editOpsPhone")?.value.trim();
+  const address = $("editOpsAddress")?.value.trim();
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/auth/profile`, {
+      method: "PUT",
+      credentials: "include",
+      headers: authHeaders(),
+      body: JSON.stringify({ name, phone, address })
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.detail || "Failed to update profile");
+    }
+    const data = await res.json();
+    user = { ...user, name: data.name, phone: data.phone, address: data.address };
+    localStorage.setItem("servora_user", JSON.stringify(user));
+    setProfile();
+
+    if ($("opsProfileNameText")) $("opsProfileNameText").textContent = user.name;
+    if ($("opsProfilePhoneText")) $("opsProfilePhoneText").textContent = user.phone;
+    if ($("opsProfileAddressText")) $("opsProfileAddressText").textContent = user.address || "Not provided";
+    if ($("opsProfileAvatar")) $("opsProfileAvatar").textContent = user.name.split(/\s+/).map((p) => p[0]).slice(0, 2).join("").toUpperCase();
+
+    msg.className = "min-h-4 text-xs text-emerald-600 font-semibold";
+    msg.textContent = "Profile updated successfully!";
+    showToast("Profile details updated successfully!");
+    setTimeout(() => {
+      $("opsProfileViewMode")?.classList.remove("hidden");
+      $("opsProfileEditForm")?.classList.add("hidden");
+      msg.textContent = "";
+    }, 700);
+  } catch (err) {
+    msg.className = "min-h-4 text-xs text-rose-600 font-semibold";
+    msg.textContent = err.message;
+    showToast(err.message, "error");
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+// Mobile Sidebar Tap-outside Auto-Close
+document.addEventListener("click", (e) => {
+  const sidebar = $("opsNav")?.closest(".ops-sidebar");
+  if (!sidebar || !sidebar.classList.contains("open")) return;
+  if (!sidebar.contains(e.target) && !$("menuToggle")?.contains(e.target)) {
+    sidebar.classList.remove("open");
+  }
+});
+
 $("companyForm").addEventListener("submit", async (event) => {
   event.preventDefault(); const form = event.currentTarget; const submit = form.querySelector('[type="submit"]');
   submit.disabled = true; $("companyFormMessage").textContent = "Creating company…";

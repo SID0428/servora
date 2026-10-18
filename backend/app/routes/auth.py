@@ -214,6 +214,15 @@ def update_user_profile(payload: UserProfileUpdate, request: Request, db: Sessio
         user.email = payload.email.strip().lower()
     user.name = payload.name.strip()
     user.phone = payload.phone.strip()
+    if payload.address is not None:
+        user.address = payload.address.strip()
+    if user.role == "technician":
+        tech = db.query(TechnicianModel).filter(TechnicianModel.id == user.id).first()
+        if not tech:
+            tech = db.query(TechnicianModel).filter(TechnicianModel.phone == user.phone).first()
+        if tech:
+            tech.name = user.name
+            tech.phone = user.phone
     db.commit()
     db.refresh(user)
     return {

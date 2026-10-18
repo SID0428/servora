@@ -212,18 +212,6 @@ def create_request(payload: ServiceBookingCreate, request: Request, db: Session 
     if matched_branch:
         branch_id = matched_branch.id
 
-    # Assign technician from branch if available, else first technician
-    tech = None
-    if branch_id:
-        branch_tech = db.query(BranchTechnicianModel).filter(
-            BranchTechnicianModel.branch_id == branch_id
-        ).first()
-        if branch_tech:
-            tech = db.query(TechnicianModel).filter(TechnicianModel.id == branch_tech.technician_id).first()
-
-    if not tech:
-        tech = db.query(TechnicianModel).first()
-
     req_num = random.randint(7850, 9999)
     new_id = f"SR-{req_num}"
     now_str = datetime.now().strftime("%d %b %Y, %I:%M %p")
@@ -239,16 +227,16 @@ def create_request(payload: ServiceBookingCreate, request: Request, db: Session 
         },
         {
             "id": "step_2",
-            "title": "Technician Assigned",
-            "timestamp": now_str,
-            "description": f"Assigned to {tech.name} ({tech.title})" if tech else "Assigning technician",
-            "state": "current"
+            "title": "Technician Assignment",
+            "timestamp": None,
+            "description": "Awaiting assignment by local franchise",
+            "state": "pending"
         },
         {
             "id": "step_3",
             "title": "Technician on the Way",
             "timestamp": None,
-            "description": "Live tracking will activate prior to appointment",
+            "description": "Live route tracking activates when technician starts visit",
             "state": "pending"
         },
         {
@@ -280,12 +268,12 @@ def create_request(payload: ServiceBookingCreate, request: Request, db: Session 
         issue=payload.issue,
         description=payload.description or f"Requested on-site repair service for {app_name}.",
         priority=payload.priority,
-        status="Technician Assigned",
-        status_badge="Scheduled",
+        status="Request Created",
+        status_badge="Pending",
         created_at=now_str,
         appointment_date=payload.preferred_date,
         appointment_slot=payload.preferred_slot,
-        technician_id=tech.id if tech else None,
+        technician_id=None,
         branch_id=branch_id,
         company_id=company_id,
         pincode=pincode or "201310",
@@ -325,6 +313,7 @@ def assign_technician(request_id: str, payload: FranchiseAssignPayload, request:
             step["description"] = f"Assigned to {tech.name} ({tech.title})"
         elif step.get("id") == "step_3" and step.get("state") == "pending":
             step["state"] = "current"
+            step["description"] = "Technician notified; ready for dispatch"
     
     req.timeline_json = json.dumps(timeline)
     req.status = "Technician Assigned"

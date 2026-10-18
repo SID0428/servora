@@ -151,6 +151,7 @@ class UserProfileUpdate(BaseModel):
     name: str = Field(min_length=2, max_length=128)
     phone: str = Field(min_length=7, max_length=32)
     email: Optional[str] = None
+    address: Optional[str] = None
 
 class FranchiseAssignPayload(BaseModel):
     request_id: str
