@@ -104,6 +104,32 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+from fastapi import Request
+from fastapi.responses import JSONResponse
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    origin = request.headers.get("origin", "")
+    headers = {}
+    if origin:
+        headers["Access-Control-Allow-Origin"] = origin
+        headers["Access-Control-Allow-Credentials"] = "true"
+        headers["Access-Control-Allow-Headers"] = "*"
+        headers["Access-Control-Allow-Methods"] = "*"
+
+    exc_str = str(exc)
+    if "Can't connect to MySQL" in exc_str or "OperationalError" in type(exc).__name__:
+        return JSONResponse(
+            status_code=503,
+            content={"detail": "Database connection error. Your Aiven MySQL service may be powered off or unreachable."},
+            headers=headers,
+        )
+    return JSONResponse(
+        status_code=500,
+        content={"detail": f"Server error: {exc_str}"},
+        headers=headers,
+    )
+
 # Include API Routers
 app.include_router(auth.router)
 app.include_router(appliances.router)
