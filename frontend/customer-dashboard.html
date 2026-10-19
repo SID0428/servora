@@ -74,6 +74,7 @@
     // Synchronous authentication guard & hydration
     (function() {
       try {
+        var u = JSON.parse(localStorage.getItem("servora_user") || "null");
         var roleRoutes = {
           customer: "./customer-dashboard.html",
           company: "./company-dashboard.html",
