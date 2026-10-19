@@ -647,5 +647,46 @@
       </div>
     </div>
   </dialog>
+
+  <!-- Franchise Warehouse Restock Modal (Phase 2 FR-INV-002) -->
+  <dialog id="restockModal" class="w-[min(94vw,480px)] rounded-3xl border-0 p-0 shadow-2xl overflow-hidden bg-white">
+    <div class="p-6 space-y-4">
+      <div class="flex items-start justify-between border-b border-slate-100 pb-3">
+        <div>
+          <div class="flex items-center gap-2">
+            <span class="text-[10px] font-bold tracking-[.16em] text-blue-600 uppercase">WAREHOUSE LOGISTICS</span>
+            <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-800">STOCK IN</span>
+          </div>
+          <h3 class="font-display text-base font-bold text-slate-900 mt-1" id="restockPartTitle">Restock Spare Part</h3>
+          <p class="text-xs text-slate-400" id="restockPartSubtitle">Record incoming inventory shipment to local franchise warehouse</p>
+        </div>
+        <button type="button" id="closeRestockModalBtn" class="rounded-xl p-1.5 text-slate-400 hover:bg-slate-100 text-lg leading-none" aria-label="Close">✕</button>
+      </div>
+
+      <form id="restockForm" class="space-y-3.5 text-xs">
+        <input type="hidden" id="restockPartId">
+        <input type="hidden" id="restockBranchId">
+
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">Quantity Received <span class="text-rose-500">*</span></label>
+          <input type="number" id="restockQty" required min="1" max="1000" value="10" class="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-xs bg-white font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20">
+        </div>
+
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">Batch / Shipment Notes</label>
+          <input type="text" id="restockNotes" placeholder="e.g. Received shipment from central OEM warehouse (Challan #8921)" class="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20">
+        </div>
+
+        <p id="restockFormMsg" class="min-h-4 text-xs text-rose-600" role="status"></p>
+
+        <div class="flex justify-end gap-2.5 pt-2 border-t border-slate-100">
+          <button type="button" id="cancelRestockBtn" class="rounded-xl px-4 py-2.5 text-xs font-semibold text-slate-600 hover:bg-slate-100">Cancel</button>
+          <button type="submit" id="submitRestockBtn" class="rounded-xl bg-[#0066ff] hover:bg-blue-700 px-6 py-2.5 text-xs font-bold text-white shadow-sm transition">
+            Confirm Stock-In
+          </button>
+        </div>
+      </form>
+    </div>
+  </dialog>
 </body>
 </html>

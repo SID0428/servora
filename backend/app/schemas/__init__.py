@@ -80,6 +80,11 @@ class ApplianceBase(BaseModel):
     model_no: str
     registered_on: str
     warranty_status: str
+    warranty_start_date: Optional[str] = None
+    warranty_end_date: Optional[str] = None
+    amc_active: Optional[bool] = False
+    amc_plan_name: Optional[str] = None
+    amc_end_date: Optional[str] = None
     serial_no: Optional[str] = None
     icon: str
 
@@ -109,10 +114,13 @@ class TimelineStep(BaseModel):
     state: str # completed, current, pending
 
 class JobCardPartItem(BaseModel):
+    part_id: Optional[str] = None
+    part_code: Optional[str] = None
     part_name: str
     quantity: int = 1
     unit_price: float = 0.0
     total_price: float = 0.0
+    hsn_code: Optional[str] = "8418"
 
 class JobCardResponse(BaseModel):
     id: str
@@ -121,10 +129,15 @@ class JobCardResponse(BaseModel):
     customer_id: str
     work_summary: str
     parts_used: List[JobCardPartItem] = Field(default_factory=list)
-    labor_cost: float
-    parts_cost: float
-    tax_amount: float
-    total_amount: float
+    inspection_fee: float = 299.0
+    labor_cost: float = 0.0
+    parts_cost: float = 0.0
+    discount_amount: float = 0.0
+    cgst_amount: float = 0.0
+    sgst_amount: float = 0.0
+    tax_amount: float = 0.0
+    total_amount: float = 0.0
+    is_warranty_covered: bool = False
     technician_signature: Optional[str] = None
     customer_signature: Optional[str] = None
     customer_status: str # pending_acceptance, accepted, disputed
@@ -159,7 +172,11 @@ class ServiceRequestDetail(BaseModel):
     previous_job_card: Optional[JobCardResponse] = None
     job_card: Optional[JobCardResponse] = None
     is_reopened: Optional[bool] = False
+    is_under_warranty: Optional[bool] = False
     payment_status: Optional[str] = "Pending"
+    payment_method: Optional[str] = None
+    payment_transaction_id: Optional[str] = None
+    paid_at: Optional[str] = None
     branch_id: Optional[str] = None
     company_id: Optional[str] = None
     pincode: Optional[str] = None
@@ -185,7 +202,10 @@ class ServiceBookingCreate(BaseModel):
 class JobCardCreatePayload(BaseModel):
     work_summary: str = Field(min_length=5, max_length=2000)
     parts_used: List[JobCardPartItem] = Field(default_factory=list)
+    inspection_fee: Optional[float] = Field(default=299.0, ge=0.0)
     labor_cost: float = Field(default=0.0, ge=0.0)
+    discount_amount: Optional[float] = Field(default=0.0, ge=0.0)
+    is_warranty_covered: Optional[bool] = False
     technician_signature: Optional[str] = None
     completion_otp: Optional[str] = None
 
@@ -255,3 +275,124 @@ class CompanyCustomerProductResponse(BaseModel):
     customer_email: str
     customer_phone: str
     customer_address: Optional[str] = None
+
+# ==========================================
+# Phase 2: Inventory & Spare Parts Schemas
+# ==========================================
+class SparePartSchema(BaseModel):
+    id: str
+    part_code: str
+    name: str
+    category: str
+    brand: str
+    unit_price: float
+    hsn_code: str
+    description: Optional[str] = None
+    is_active: bool = True
+
+class SparePartCreatePayload(BaseModel):
+    part_code: str = Field(min_length=2, max_length=64)
+    name: str = Field(min_length=2, max_length=128)
+    category: str = Field(min_length=2, max_length=64)
+    brand: str = Field(min_length=2, max_length=64)
+    unit_price: float = Field(ge=0.0)
+    hsn_code: str = Field(default="8418", max_length=32)
+    description: Optional[str] = None
+
+class FranchiseInventoryItemSchema(BaseModel):
+    id: str
+    branch_id: str
+    part_id: str
+    part_code: str
+    name: str
+    category: str
+    brand: str
+    unit_price: float
+    hsn_code: str
+    quantity_available: int
+    reorder_level: int
+    is_low_stock: bool
+    last_restocked_at: Optional[str] = None
+
+class StockMovementPayload(BaseModel):
+    branch_id: str
+    part_id: str
+    transaction_type: str # stock_in, stock_out, transfer
+    quantity: int = Field(ge=1)
+    notes: Optional[str] = None
+
+# ==========================================
+# Phase 2: Billing & Payment Schemas
+# ==========================================
+class PaymentCheckoutPayload(BaseModel):
+    payment_method: str = Field(pattern=r"^(upi|card|netbanking|cash)$")
+    amount: float = Field(ge=0.0)
+    transaction_ref: Optional[str] = None
+    payment_details: Optional[dict] = None
+
+class PaymentResponse(BaseModel):
+    success: bool
+    request_id: str
+    payment_status: str
+    payment_method: str
+    amount_paid: float
+    transaction_ref: str
+    receipt_no: str
+    paid_at: str
+
+# ==========================================
+# Phase 2: Warranty & AMC Claims Schemas
+# ==========================================
+class WarrantyClaimSchema(BaseModel):
+    id: str
+    request_id: str
+    company_id: str
+    company_name: Optional[str] = None
+    branch_id: str
+    branch_name: Optional[str] = None
+    appliance_id: str
+    appliance_name: Optional[str] = None
+    brand: Optional[str] = None
+    claim_amount: float
+    parts_claimed: List[JobCardPartItem] = Field(default_factory=list)
+    status: str # Pending Review, Approved, Settled, Rejected
+    claim_notes: Optional[str] = None
+    submitted_at: str
+    settled_at: Optional[str] = None
+
+class WarrantyClaimVerifyPayload(BaseModel):
+    action: str = Field(pattern=r"^(approve|reject)$")
+    notes: Optional[str] = None
+
+class AMCPlanSchema(BaseModel):
+    id: str
+    name: str
+    category: str
+    duration_months: int
+    price: float
+    free_services: int
+    discount_parts_pct: float
+    zero_labor: bool
+    description: Optional[str] = None
+
+class AMCSubscriptionCreatePayload(BaseModel):
+    appliance_id: str
+    plan_id: str
+    payment_method: str = "card"
+
+class AMCSubscriptionSchema(BaseModel):
+    id: str
+    customer_id: str
+    appliance_id: str
+    appliance_name: Optional[str] = None
+    brand: Optional[str] = None
+    plan_id: str
+    plan_name: str
+    start_date: str
+    end_date: str
+    status: str # Active, Renewal Due, Expired
+    services_included: int
+    services_used: int
+    amount_paid: float
+    created_at: str
+

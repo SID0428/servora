@@ -49,8 +49,8 @@ if (!checkInitialAuth()) {
 let role = dashboardRouteRole || initialUser?.role || (typeof document !== "undefined" ? document.body?.dataset?.role : null) || "company";
 const roleConfig = {
   technician: { title: "Technician workspace", kicker: "FIELD SERVICE", nav: ["My jobs", "Job history", "Route & schedule", "Earnings", "Help center"], columns: ["Ticket", "Customer", "Appliance", "Appointment", "Status", "Action"], tableTitle: "My assigned jobs", tableSubtitle: "Your service calls and the next step for each job.", bottomTitle: "Today's schedule", sideTitle: "My performance", resources: [["Assigned today", "Jobs on your schedule", "▤"], ["Completed", "Jobs closed this week", "✓"], ["Customer rating", "From recent service visits", "☆"], ["Service area", "Your assigned territory", "⌖"]] },
-  franchise: { title: "Franchise workspace", kicker: "BRANCH OPERATIONS", nav: ["Dashboard", "Service requests", "Technicians", "Active jobs", "Customers", "Reports", "Settings"], columns: ["Request ID", "Customer", "Appliance", "Issue", "Technician", "Status", "Action"], tableTitle: "Incoming service requests", tableSubtitle: "Review requests and coordinate local service work.", bottomTitle: "Branch resources", sideTitle: "Branch performance", resources: [["Technicians", "Available in this branch", "♙"], ["Active jobs", "Assigned and in progress", "⚒"], ["Service area", "Local coverage", "⌖"], ["Response time", "Average first response", "◷"]] },
-  company: { title: "Company workspace", kicker: "COMPANY OPERATIONS", nav: ["Dashboard", "Branches", "Technicians", "Customers", "Service requests", "Reports", "Settings"], columns: ["Request ID", "Customer", "Company", "Appliance", "Status", "Date", "Action"], tableTitle: "Recent service requests", tableSubtitle: "Monitor service activity across the company network.", bottomTitle: "Network resources", sideTitle: "Network health", resources: [["Branches", "Locations in your network", "▥"], ["Technicians", "Field service professionals", "♙"], ["Customers", "Customers served", "♧"], ["Service brands", "Connected product brands", "◈"]] },
+  franchise: { title: "Franchise workspace", kicker: "BRANCH OPERATIONS", nav: ["Dashboard", "Service requests", "Technicians", "Inventory & Spares", "Active jobs", "Customers", "Reports", "Settings"], columns: ["Request ID", "Customer", "Appliance", "Issue", "Technician", "Status", "Action"], tableTitle: "Incoming service requests", tableSubtitle: "Review requests and coordinate local service work.", bottomTitle: "Branch resources", sideTitle: "Branch performance", resources: [["Technicians", "Available in this branch", "♙"], ["Active jobs", "Assigned and in progress", "⚒"], ["Inventory items", "Parts in local warehouse", "📦"], ["Service area", "Local coverage", "⌖"]] },
+  company: { title: "Company workspace", kicker: "COMPANY OPERATIONS", nav: ["Dashboard", "Branches", "Technicians", "Warranty Claims", "Spares Catalog", "Customers", "Service requests", "Reports", "Settings"], columns: ["Request ID", "Customer", "Company", "Appliance", "Status", "Date", "Action"], tableTitle: "Recent service requests", tableSubtitle: "Monitor service activity across the company network.", bottomTitle: "Network resources", sideTitle: "Network health", resources: [["Branches", "Locations in your network", "▥"], ["Warranty claims", "OEM reimbursement requests", "🛡️"], ["Technicians", "Field service professionals", "♙"], ["Customers", "Customers served", "♧"]] },
   admin: { title: "Platform overview", kicker: "SERVORA PLATFORM", nav: ["Overview", "Companies", "Branches", "Technicians", "Customers", "Service requests", "Reports", "System settings"], columns: ["Request ID", "Customer", "Company", "Appliance", "Status", "Date", "Action"], tableTitle: "Platform service activity", tableSubtitle: "A view of requests moving across Servora.", bottomTitle: "Platform directory", sideTitle: "Platform health", resources: [["Companies", "Service partners", "▥"], ["Branches", "Operational locations", "⌖"], ["Technicians", "Verified professionals", "♙"], ["Customers", "Registered accounts", "♧"]] },
 };
 let config = roleConfig[role] || roleConfig.company;
@@ -62,6 +62,9 @@ let branches = [];
 let technicians = [];
 let directoryRows = [];
 let companyCustomers = [];
+let franchiseInventory = [];
+let companyWarrantyClaims = [];
+let companySparesCatalog = [];
 let user = initialUser;
 
 try {
@@ -70,9 +73,12 @@ try {
   branches = JSON.parse(localStorage.getItem("servora_cache_branches") || "[]");
   companies = JSON.parse(localStorage.getItem("servora_cache_companies") || "[]");
   companyCustomers = JSON.parse(localStorage.getItem("servora_cache_customers") || "[]");
+  franchiseInventory = JSON.parse(localStorage.getItem("servora_cache_inventory") || "[]");
+  companyWarrantyClaims = JSON.parse(localStorage.getItem("servora_cache_claims") || "[]");
+  companySparesCatalog = JSON.parse(localStorage.getItem("servora_cache_catalog") || "[]");
 } catch {}
 
-const icons = { Dashboard: "⌂", Overview: "⌂", "My jobs": "▤", "Job history": "◷", "Route & schedule": "⌖", Earnings: "$", "Help center": "?", "Service requests": "▣", "Incoming service requests": "▣", Technicians: "♙", "Active jobs": "⚒", Customers: "♧", Reports: "▥", Settings: "⚙", Companies: "▦", Branches: "⌖", "System settings": "⚙" };
+const icons = { Dashboard: "⌂", Overview: "⌂", "My jobs": "▤", "Job history": "◷", "Route & schedule": "⌖", Earnings: "$", "Help center": "?", "Service requests": "▣", "Incoming service requests": "▣", Technicians: "♙", "Inventory & Spares": "📦", "Warranty Claims": "🛡️", "Spares Catalog": "🔧", "Active jobs": "⚒", Customers: "♧", Reports: "▥", Settings: "⚙", Companies: "▦", Branches: "⌖", "System settings": "⚙" };
 function safe(value) { const node = document.createElement("span"); node.textContent = value ?? ""; return node.innerHTML; }
 function authHeaders(extraHeaders = {}) {
   const token = user?.session_token || initialUser?.session_token;
@@ -173,10 +179,13 @@ function renderPage(page) {
   // Company routes
   if (role === "company" && page === "Branches") { renderCompanyBranches(); return; }
   if (role === "company" && page === "Customers") { renderCompanyCustomers(); return; }
+  if (role === "company" && page === "Warranty Claims") { renderCompanyWarrantyClaims(); return; }
+  if (role === "company" && page === "Spares Catalog") { renderCompanySparesCatalog(); return; }
 
   // Franchise routes
   if (role === "franchise" && page === "Technicians") { renderFranchiseTechnicians(); return; }
   if (role === "franchise" && page === "Customers") { renderFranchiseCustomers(); return; }
+  if (role === "franchise" && page === "Inventory & Spares") { renderFranchiseInventory(); return; }
 
   // Common or role-specific views
   if (["Dashboard", "Overview", "My jobs"].includes(page)) {
@@ -768,6 +777,18 @@ async function franchiseApi(path, options = {}) {
   if (!response.ok) throw new Error(extractErrorMessage(data, "Could not complete the request."));
   return data;
 }
+async function generalApi(path, options = {}) {
+  let response;
+  try {
+    response = await fetch(`${API_BASE_URL}${path}`, { ...options, credentials: "include", headers: jsonHeaders(options.headers) });
+  } catch (error) {
+    if (error instanceof TypeError) throw new Error("The Servora API did not return a response. Check that the backend is running and allows this frontend origin in CORS settings.");
+    throw error;
+  }
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(extractErrorMessage(data, "Could not complete the request."));
+  return data;
+}
 async function loadFranchiseTechnicians() {
   try {
     technicians = await franchiseApi("/technicians");
@@ -871,12 +892,500 @@ function renderCompanyCustomers() {
   } shown`;
   $("resourceGrid").innerHTML = "";
 }
+// ==========================================
+// Phase 2: Franchise Warehouse & Spares Inventory
+// ==========================================
+async function loadFranchiseInventory() {
+  try {
+    const branchId = user?.branch_id || user?.id || "me";
+    franchiseInventory = await generalApi(`/api/inventory/branch/${encodeURIComponent(branchId)}`);
+    try { localStorage.setItem("servora_cache_inventory", JSON.stringify(franchiseInventory)); } catch {}
+    renderFranchiseInventory();
+  } catch (error) {
+    franchiseInventory = [];
+    renderFranchiseInventory();
+    if ($("requestRows")) {
+      $("requestRows").innerHTML = `<tr><td class="empty-row" colspan="7">${safe(error.message)}. Check your connection and try again.</td></tr>`;
+    }
+    if ($("requestCount")) $("requestCount").textContent = "Could not load warehouse inventory";
+    showToast(`Inventory could not load: ${error.message}`, "error");
+  }
+}
+
+function renderFranchiseInventory() {
+  if ($("crumbTitle")) $("crumbTitle").textContent = "Inventory & Spares";
+  setHidden("addCompanyButton", true);
+  setHidden("addBranchButton", true);
+  setHidden("addTechnicianButton", true);
+  setHidden("companyInlineAdd", true);
+  setHidden("exportButton", false);
+  setHidden("pageContent", false);
+  setHidden("metricGrid", true);
+
+  if ($("tableTitle")) $("tableTitle").textContent = "Franchise warehouse inventory";
+  if ($("tableSubtitle")) $("tableSubtitle").textContent = "Track spare parts, current stock on hand, and record incoming OEM shipments.";
+  if ($("sidePanelTitle")) $("sidePanelTitle").textContent = "Warehouse status";
+
+  const lowStockItems = franchiseInventory.filter((item) => item.is_low_stock || item.quantity_available <= item.reorder_level);
+  if ($("healthContent")) {
+    $("healthContent").innerHTML = `
+      <div class="space-y-2.5">
+        <div class="p-3 bg-white rounded-xl border border-slate-100 flex items-center justify-between">
+          <span class="text-xs text-slate-500 font-medium">Catalog parts tracked:</span>
+          <strong class="text-sm font-bold text-slate-800">${franchiseInventory.length}</strong>
+        </div>
+        <div class="p-3 ${lowStockItems.length > 0 ? 'bg-amber-50 border-amber-200' : 'bg-emerald-50 border-emerald-200'} rounded-xl border flex items-center justify-between">
+          <span class="text-xs ${lowStockItems.length > 0 ? 'text-amber-800' : 'text-emerald-800'} font-semibold">Low stock warnings:</span>
+          <strong class="text-sm font-bold ${lowStockItems.length > 0 ? 'text-amber-700' : 'text-emerald-700'}">${lowStockItems.length} item${lowStockItems.length === 1 ? '' : 's'}</strong>
+        </div>
+      </div>
+    `;
+  }
+  if ($("activityContent")) {
+    $("activityContent").innerHTML = `<div class="section-empty text-xs leading-relaxed">Automatic inventory deduction is performed whenever a digital job card is closed with replaced spare parts.</div>`;
+  }
+  if ($("bottomTitle")) $("bottomTitle").textContent = "Inventory logistics";
+  if ($("bottomSubtitle")) $("bottomSubtitle").textContent = "Replenish stock directly from authorized OEM parts distribution.";
+
+  if ($("requestHead")) {
+    $("requestHead").innerHTML = [
+      "Part name & code",
+      "Brand / Category",
+      "HSN code",
+      "Unit price (₹)",
+      "Stock on hand",
+      "Status",
+      "Logistics action"
+    ].map((label) => `<th>${safe(label)}</th>`).join("");
+  }
+
+  const query = $("requestSearch") ? $("requestSearch").value.trim().toLowerCase() : "";
+  if ($("requestSearch")) $("requestSearch").placeholder = "Search parts by name, code, brand, or HSN";
+
+  const filtered = franchiseInventory.filter((item) =>
+    [item.name, item.part_code, item.brand, item.category, item.hsn_code]
+      .join(" ")
+      .toLowerCase()
+      .includes(query)
+  );
+
+  if ($("requestRows")) {
+    $("requestRows").innerHTML = filtered.length
+      ? filtered
+          .map((item) => {
+            const isLow = item.is_low_stock || item.quantity_available <= item.reorder_level;
+            const statusBadge = isLow
+              ? `<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-50 text-amber-800 border border-amber-200">⚠️ Low stock (${item.quantity_available})</span>`
+              : `<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">✓ In stock (${item.quantity_available})</span>`;
+            
+            return `
+              <tr>
+                <td>
+                  <strong class="text-slate-900 block font-semibold">${safe(item.name)}</strong>
+                  <span class="font-mono text-[11px] text-blue-600 font-bold block">${safe(item.part_code)}</span>
+                </td>
+                <td>
+                  <span class="font-medium text-slate-800">${safe(item.brand)}</span>
+                  <small class="text-slate-400 block">${safe(item.category)}</small>
+                </td>
+                <td><span class="font-mono text-slate-600 bg-slate-100 px-2 py-0.5 rounded text-[11px]">${safe(item.hsn_code || "841890")}</span></td>
+                <td><strong class="font-display text-slate-900 text-sm">₹${Number(item.unit_price || 0).toFixed(2)}</strong></td>
+                <td>
+                  <strong class="text-sm ${isLow ? 'text-amber-700' : 'text-slate-800'}">${item.quantity_available} units</strong>
+                  <small class="text-slate-400 block">Min threshold: ${item.reorder_level}</small>
+                </td>
+                <td>${statusBadge}</td>
+                <td>
+                  <button type="button" class="table-action font-semibold text-blue-600 hover:text-blue-800 flex items-center gap-1" data-restock-btn="${safe(item.part_id)}" data-part-name="${safe(item.name)}" data-branch-id="${safe(item.branch_id || user?.branch_id || user?.id || 'me')}">
+                    <span>📦</span> Stock In →
+                  </button>
+                </td>
+              </tr>
+            `;
+          })
+          .join("")
+      : `<tr><td class="empty-row" colspan="7">${query ? "No parts match your search." : "No spare parts found in warehouse inventory."}</td></tr>`;
+  }
+
+  if ($("requestCount")) {
+    $("requestCount").textContent = `${filtered.length} part${filtered.length === 1 ? "" : "s"} shown`;
+  }
+  if ($("resourceGrid")) $("resourceGrid").innerHTML = "";
+
+  document.querySelectorAll("[data-restock-btn]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      openRestockModal(btn.dataset.restockBtn, btn.dataset.partName, btn.dataset.branchId);
+    });
+  });
+}
+
+function openRestockModal(partId, partName, branchId) {
+  const modal = $("restockModal");
+  if (!modal) return;
+  if ($("restockPartId")) $("restockPartId").value = partId;
+  if ($("restockBranchId")) $("restockBranchId").value = branchId || user?.branch_id || user?.id || "me";
+  if ($("restockPartTitle")) $("restockPartTitle").textContent = `Restock: ${partName}`;
+  if ($("restockPartSubtitle")) $("restockPartSubtitle").textContent = `Replenish warehouse stock for ${partName}`;
+  if ($("restockQty")) $("restockQty").value = "10";
+  if ($("restockNotes")) $("restockNotes").value = "Shipment received from central OEM depot";
+  if ($("restockFormMsg")) $("restockFormMsg").textContent = "";
+
+  if (typeof modal.showModal === "function") modal.showModal();
+  else modal.hidden = false;
+}
+window.openRestockModal = openRestockModal;
+
+function initRestockModalEvents() {
+  const modal = $("restockModal");
+  if (!modal) return;
+
+  $("closeRestockModalBtn")?.addEventListener("click", () => {
+    if (typeof modal.close === "function") modal.close();
+    else modal.hidden = true;
+  });
+
+  $("cancelRestockBtn")?.addEventListener("click", () => {
+    if (typeof modal.close === "function") modal.close();
+    else modal.hidden = true;
+  });
+
+  $("restockForm")?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const partId = $("restockPartId")?.value;
+    const branchId = $("restockBranchId")?.value || user?.branch_id || user?.id || "me";
+    const qty = parseInt($("restockQty")?.value || "0", 10);
+    const notes = $("restockNotes")?.value || "";
+
+    if (!partId || qty <= 0) {
+      if ($("restockFormMsg")) $("restockFormMsg").textContent = "Please specify a valid quantity greater than 0.";
+      return;
+    }
+
+    const submitBtn = $("submitRestockBtn");
+    if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = "Updating stock…"; }
+
+    try {
+      await generalApi("/api/inventory/stock-movement", {
+        method: "POST",
+        body: JSON.stringify({
+          branch_id: branchId,
+          part_id: partId,
+          movement_type: "IN",
+          quantity: qty,
+          notes: notes
+        })
+      });
+
+      showToast(`Stock replenished: +${qty} units added to local warehouse.`);
+      if (typeof modal.close === "function") modal.close();
+      else modal.hidden = true;
+      await loadFranchiseInventory();
+    } catch (err) {
+      if ($("restockFormMsg")) $("restockFormMsg").textContent = err.message || "Failed to update stock.";
+      showToast(err.message || "Failed to update stock", "error");
+    } finally {
+      if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = "Confirm Stock-In"; }
+    }
+  });
+}
+
+// ==========================================
+// Phase 2: OEM Warranty Claims Management
+// ==========================================
+async function loadCompanyWarrantyClaims() {
+  try {
+    companyWarrantyClaims = await generalApi("/api/warranty-amc/claims");
+    try { localStorage.setItem("servora_cache_claims", JSON.stringify(companyWarrantyClaims)); } catch {}
+    renderCompanyWarrantyClaims();
+  } catch (error) {
+    companyWarrantyClaims = [];
+    renderCompanyWarrantyClaims();
+    if ($("requestRows")) {
+      $("requestRows").innerHTML = `<tr><td class="empty-row" colspan="7">${safe(error.message)}. Check your company session and try again.</td></tr>`;
+    }
+    if ($("requestCount")) $("requestCount").textContent = "Could not load warranty claims";
+    showToast(`Warranty claims could not load: ${error.message}`, "error");
+  }
+}
+
+function renderCompanyWarrantyClaims() {
+  if ($("crumbTitle")) $("crumbTitle").textContent = "Warranty Claims";
+  setHidden("addCompanyButton", true);
+  setHidden("addBranchButton", true);
+  setHidden("addTechnicianButton", true);
+  setHidden("companyInlineAdd", true);
+  setHidden("exportButton", false);
+  setHidden("pageContent", false);
+  setHidden("metricGrid", true);
+
+  if ($("tableTitle")) $("tableTitle").textContent = "OEM Warranty Reimbursement Claims";
+  if ($("tableSubtitle")) $("tableSubtitle").textContent = "Audit and settle warranty claims raised by franchise branches for in-warranty repairs.";
+  if ($("sidePanelTitle")) $("sidePanelTitle").textContent = "Claims audit";
+
+  const pendingCount = companyWarrantyClaims.filter((c) => c.status === "Pending Review").length;
+  const totalClaimAmount = companyWarrantyClaims.reduce((acc, c) => acc + (c.claim_amount || 0), 0);
+
+  if ($("healthContent")) {
+    $("healthContent").innerHTML = `
+      <div class="space-y-2.5">
+        <div class="p-3 bg-white rounded-xl border border-slate-100 flex items-center justify-between">
+          <span class="text-xs text-slate-500 font-medium">Total claims received:</span>
+          <strong class="text-sm font-bold text-slate-800">${companyWarrantyClaims.length}</strong>
+        </div>
+        <div class="p-3 ${pendingCount > 0 ? 'bg-amber-50 border-amber-200' : 'bg-emerald-50 border-emerald-200'} rounded-xl border flex items-center justify-between">
+          <span class="text-xs ${pendingCount > 0 ? 'text-amber-800' : 'text-emerald-800'} font-semibold">Pending review:</span>
+          <strong class="text-sm font-bold ${pendingCount > 0 ? 'text-amber-700' : 'text-emerald-700'}">${pendingCount} claims</strong>
+        </div>
+        <div class="p-3 bg-blue-50 border border-blue-100 rounded-xl flex items-center justify-between">
+          <span class="text-xs text-blue-800 font-semibold">Total claims value:</span>
+          <strong class="text-sm font-bold text-blue-700 font-display">₹${totalClaimAmount.toFixed(2)}</strong>
+        </div>
+      </div>
+    `;
+  }
+  if ($("activityContent")) {
+    $("activityContent").innerHTML = `<div class="section-empty text-xs leading-relaxed">Under SRS §6.9 (FR-WAR-003), consumer pays ₹0.00 for repairs during warranty. Parts reimbursement is approved and credited to the servicing franchise here.</div>`;
+  }
+  if ($("bottomTitle")) $("bottomTitle").textContent = "OEM Reimbursement";
+  if ($("bottomSubtitle")) $("bottomSubtitle").textContent = "Warranty policy & parts settlement";
+
+  if ($("requestHead")) {
+    $("requestHead").innerHTML = [
+      "Claim ID",
+      "Service request",
+      "Franchise branch",
+      "Appliance",
+      "Claim amount",
+      "Audit status",
+      "Action"
+    ].map((label) => `<th>${safe(label)}</th>`).join("");
+  }
+
+  const query = $("requestSearch") ? $("requestSearch").value.trim().toLowerCase() : "";
+  if ($("requestSearch")) $("requestSearch").placeholder = "Search claims by ID, branch, appliance, or status";
+
+  const filtered = companyWarrantyClaims.filter((item) =>
+    [item.id, item.request_id, item.branch_name, item.appliance_name, item.status]
+      .join(" ")
+      .toLowerCase()
+      .includes(query)
+  );
+
+  if ($("requestRows")) {
+    $("requestRows").innerHTML = filtered.length
+      ? filtered
+          .map((item) => {
+            let statusBadge = "";
+            if (item.status === "Approved") {
+              statusBadge = `<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">✓ Approved</span>`;
+            } else if (item.status === "Rejected") {
+              statusBadge = `<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-rose-50 text-rose-800 border border-rose-200">✕ Rejected</span>`;
+            } else {
+              statusBadge = `<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-50 text-amber-800 border border-amber-200">⏳ Pending Review</span>`;
+            }
+
+            const canReview = item.status === "Pending Review";
+            const actionBtn = canReview
+              ? `<button type="button" class="table-action font-semibold text-blue-600 hover:text-blue-800 flex items-center gap-1" data-review-claim-id="${safe(item.id)}"><span>🛡️</span> Review Claim →</button>`
+              : `<span class="text-xs text-slate-400 font-medium">${safe(item.settled_at || 'Settled')}</span>`;
+
+            return `
+              <tr>
+                <td><strong class="font-mono text-blue-600 block">${safe(item.id)}</strong><small class="text-slate-400">${safe(item.submitted_at || '—')}</small></td>
+                <td><span class="font-mono font-semibold text-slate-800">${safe(item.request_id)}</span></td>
+                <td><span class="font-medium text-slate-800 block">${safe(item.branch_name || 'Franchise Branch')}</span></td>
+                <td><span class="font-bold text-slate-800">${safe(item.appliance_name || 'Appliance')}</span></td>
+                <td><strong class="font-display text-slate-900 text-sm">₹${Number(item.claim_amount || 0).toFixed(2)}</strong></td>
+                <td>${statusBadge}</td>
+                <td>${actionBtn}</td>
+              </tr>
+            `;
+          })
+          .join("")
+      : `<tr><td class="empty-row" colspan="7">${query ? "No warranty claims match your search." : "No warranty reimbursement claims submitted yet."}</td></tr>`;
+  }
+
+  if ($("requestCount")) {
+    $("requestCount").textContent = `${filtered.length} claim${filtered.length === 1 ? "" : "s"} shown`;
+  }
+  if ($("resourceGrid")) $("resourceGrid").innerHTML = "";
+
+  document.querySelectorAll("[data-review-claim-id]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const claim = companyWarrantyClaims.find((c) => c.id === btn.dataset.reviewClaimId);
+      if (claim) openClaimReviewModal(claim);
+    });
+  });
+}
+
+function openClaimReviewModal(claim) {
+  const modal = $("claimReviewModal");
+  if (!modal) return;
+  if ($("reviewClaimHiddenId")) $("reviewClaimHiddenId").value = claim.id;
+  if ($("reviewClaimId")) $("reviewClaimId").textContent = claim.id;
+  if ($("reviewClaimReqId")) $("reviewClaimReqId").textContent = claim.request_id;
+  if ($("reviewClaimBranch")) $("reviewClaimBranch").textContent = claim.branch_name || "Franchise Branch";
+  if ($("reviewClaimAmount")) $("reviewClaimAmount").textContent = `₹${Number(claim.claim_amount || 0).toFixed(2)}`;
+  if ($("reviewClaimNotes")) $("reviewClaimNotes").value = "Valid manufacturing warranty claim verified against replacement parts.";
+  if ($("claimReviewMsg")) $("claimReviewMsg").textContent = "";
+
+  if (typeof modal.showModal === "function") modal.showModal();
+  else modal.hidden = false;
+}
+window.openClaimReviewModal = openClaimReviewModal;
+
+function initClaimReviewModalEvents() {
+  const modal = $("claimReviewModal");
+  if (!modal) return;
+
+  $("closeClaimReviewModalBtn")?.addEventListener("click", () => {
+    if (typeof modal.close === "function") modal.close();
+    else modal.hidden = true;
+  });
+
+  $("cancelClaimReviewBtn")?.addEventListener("click", () => {
+    if (typeof modal.close === "function") modal.close();
+    else modal.hidden = true;
+  });
+
+  const handleVerify = async (action) => {
+    const claimId = $("reviewClaimHiddenId")?.value;
+    const notes = $("reviewClaimNotes")?.value || "";
+    if (!claimId) return;
+
+    const approveBtn = $("approveClaimBtn");
+    const rejectBtn = $("rejectClaimBtn");
+    if (approveBtn) approveBtn.disabled = true;
+    if (rejectBtn) rejectBtn.disabled = true;
+
+    try {
+      await generalApi(`/api/warranty-amc/claims/${encodeURIComponent(claimId)}/verify`, {
+        method: "POST",
+        body: JSON.stringify({
+          action: action,
+          notes: notes
+        })
+      });
+
+      showToast(`Claim ${claimId} marked as ${action === "approve" ? "Approved" : "Rejected"}.`);
+      if (typeof modal.close === "function") modal.close();
+      else modal.hidden = true;
+      await loadCompanyWarrantyClaims();
+    } catch (err) {
+      if ($("claimReviewMsg")) $("claimReviewMsg").textContent = err.message || "Failed to verify claim.";
+      showToast(err.message || "Failed to verify claim", "error");
+    } finally {
+      if (approveBtn) approveBtn.disabled = false;
+      if (rejectBtn) rejectBtn.disabled = false;
+    }
+  };
+
+  $("approveClaimBtn")?.addEventListener("click", () => handleVerify("approve"));
+  $("rejectClaimBtn")?.addEventListener("click", () => handleVerify("reject"));
+}
+
+// ==========================================
+// Phase 2: Central Spares Catalog Master
+// ==========================================
+async function loadCompanySparesCatalog() {
+  try {
+    companySparesCatalog = await generalApi("/api/inventory/parts");
+    try { localStorage.setItem("servora_cache_catalog", JSON.stringify(companySparesCatalog)); } catch {}
+    renderCompanySparesCatalog();
+  } catch (error) {
+    companySparesCatalog = [];
+    renderCompanySparesCatalog();
+    if ($("requestRows")) {
+      $("requestRows").innerHTML = `<tr><td class="empty-row" colspan="6">${safe(error.message)}. Check your connection and try again.</td></tr>`;
+    }
+    if ($("requestCount")) $("requestCount").textContent = "Could not load spares catalog";
+    showToast(`Spare parts catalog could not load: ${error.message}`, "error");
+  }
+}
+
+function renderCompanySparesCatalog() {
+  if ($("crumbTitle")) $("crumbTitle").textContent = "Spares Catalog";
+  setHidden("addCompanyButton", true);
+  setHidden("addBranchButton", true);
+  setHidden("addTechnicianButton", true);
+  setHidden("companyInlineAdd", true);
+  setHidden("exportButton", false);
+  setHidden("pageContent", false);
+  setHidden("metricGrid", true);
+
+  if ($("tableTitle")) $("tableTitle").textContent = "Master Spare Parts Catalog";
+  if ($("tableSubtitle")) $("tableSubtitle").textContent = "Standardized components catalog with brand compatibility, unit pricing, and GST HSN codes.";
+  if ($("sidePanelTitle")) $("sidePanelTitle").textContent = "Catalog master";
+
+  if ($("healthContent")) {
+    $("healthContent").innerHTML = `
+      <div class="space-y-2.5">
+        <div class="p-3 bg-white rounded-xl border border-slate-100 flex items-center justify-between">
+          <span class="text-xs text-slate-500 font-medium">Standard catalog parts:</span>
+          <strong class="text-sm font-bold text-slate-800">${companySparesCatalog.length}</strong>
+        </div>
+      </div>
+    `;
+  }
+  if ($("activityContent")) {
+    $("activityContent").innerHTML = `<div class="section-empty text-xs leading-relaxed">HSN codes (e.g. 841890, 845090) are required under GST Act §31 for standard 18% tax invoicing on consumer job cards.</div>`;
+  }
+  if ($("bottomTitle")) $("bottomTitle").textContent = "Spare parts inventory";
+  if ($("bottomSubtitle")) $("bottomSubtitle").textContent = "Centralized component master data";
+
+  if ($("requestHead")) {
+    $("requestHead").innerHTML = [
+      "Part code",
+      "Part name",
+      "Brand & category",
+      "HSN code",
+      "Standard unit price",
+      "Status"
+    ].map((label) => `<th>${safe(label)}</th>`).join("");
+  }
+
+  const query = $("requestSearch") ? $("requestSearch").value.trim().toLowerCase() : "";
+  if ($("requestSearch")) $("requestSearch").placeholder = "Search catalog by name, code, brand, or HSN";
+
+  const filtered = companySparesCatalog.filter((item) =>
+    [item.name, item.part_code, item.brand, item.category, item.hsn_code]
+      .join(" ")
+      .toLowerCase()
+      .includes(query)
+  );
+
+  if ($("requestRows")) {
+    $("requestRows").innerHTML = filtered.length
+      ? filtered
+          .map((item) => `
+            <tr>
+              <td><span class="font-mono font-bold text-blue-600">${safe(item.part_code)}</span></td>
+              <td><strong class="text-slate-900 block font-semibold">${safe(item.name)}</strong><small class="text-slate-400">${safe(item.description || '')}</small></td>
+              <td><strong class="text-slate-800 block">${safe(item.brand)}</strong><small class="text-slate-500">${safe(item.category)}</small></td>
+              <td><span class="font-mono text-slate-600 bg-slate-100 px-2 py-0.5 rounded text-[11px]">${safe(item.hsn_code || '841890')}</span></td>
+              <td><strong class="font-display text-slate-900 text-sm">₹${Number(item.unit_price || 0).toFixed(2)}</strong></td>
+              <td><span class="status-pill completed">Active</span></td>
+            </tr>
+          `)
+          .join("")
+      : `<tr><td class="empty-row" colspan="6">${query ? "No parts match your search." : "No spare parts in central catalog."}</td></tr>`;
+  }
+
+  if ($("requestCount")) {
+    $("requestCount").textContent = `${filtered.length} part${filtered.length === 1 ? "" : "s"} shown`;
+  }
+  if ($("resourceGrid")) $("resourceGrid").innerHTML = "";
+}
+
 async function loadWorkspacePageData(page) {
   if (role === "admin") { await loadAdminPageData(page); return; }
   if (role === "company" && page === "Branches") { await loadCompanyBranches(); return; }
   if (role === "company" && page === "Customers") { await loadCompanyCustomers(); return; }
+  if (role === "company" && page === "Warranty Claims") { await loadCompanyWarrantyClaims(); return; }
+  if (role === "company" && page === "Spares Catalog") { await loadCompanySparesCatalog(); return; }
   if (role === "franchise" && page === "Technicians") { await loadFranchiseTechnicians(); return; }
   if (role === "franchise" && page === "Customers") { renderFranchiseCustomers(); return; }
+  if (role === "franchise" && page === "Inventory & Spares") { await loadFranchiseInventory(); return; }
   renderPage(page);
 }
 async function loadAdminPageData(page) {
@@ -1562,14 +2071,52 @@ window.openOpsReceiptModal = async function(requestId, showPrevious = false) {
   if ($("opsReceiptApplianceDetails")) $("opsReceiptApplianceDetails").textContent = `${req.brand || ''} ${req.appliance_name || 'Appliance'} (${req.model_no || 'Standard'})`;
   if ($("opsReceiptIssueDescription")) $("opsReceiptIssueDescription").textContent = `Service: ${req.issue || 'Repair inspection'}`;
 
+  const isWarranty = Boolean(req.is_under_warranty);
   const parts = (jc && Array.isArray(jc.parts_used)) ? jc.parts_used : [];
   const partsCost = jc ? Number(jc.parts_cost || 0) : 0;
   const laborCost = jc ? Number(jc.labor_cost || 350) : 350;
-  const taxAmount = jc ? Number(jc.tax_amount || (partsCost + laborCost) * 0.18) : ((partsCost + laborCost) * 0.18);
-  const totalAmount = jc ? Number(jc.total_amount || (partsCost + laborCost + taxAmount)) : (partsCost + laborCost + taxAmount);
+  const inspectionFee = jc ? Number(jc.inspection_fee || 299) : 299;
+  const discount = jc ? Number(jc.discount_amount || jc.discount || 0) : 0;
+  const taxAmount = isWarranty ? 0.0 : (jc ? Number(jc.tax_amount || ((inspectionFee + laborCost + partsCost - discount) * 0.18)) : ((inspectionFee + laborCost + partsCost - discount) * 0.18));
+  const totalAmount = isWarranty ? 0.0 : (jc ? Number(jc.total_amount || (inspectionFee + laborCost + partsCost - discount + taxAmount)) : (inspectionFee + laborCost + partsCost - discount + taxAmount));
+
+  if ($("opsReceiptPaidBadge")) {
+    const isPaid = req.payment_status === "Paid" || isWarranty || jc;
+    if (isWarranty) {
+      $("opsReceiptPaidBadge").textContent = "✓ OEM WARRANTY COVERED";
+      $("opsReceiptPaidBadge").className = "mt-1 inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold border bg-blue-100 text-blue-800 border-blue-200";
+    } else {
+      $("opsReceiptPaidBadge").textContent = isPaid ? "✓ PAID IN FULL" : "PAYMENT PENDING";
+      $("opsReceiptPaidBadge").className = `mt-1 inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
+        isPaid ? "bg-emerald-100 text-emerald-800 border-emerald-200" : "bg-amber-100 text-amber-800 border-amber-200"
+      }`;
+    }
+  }
 
   if ($("opsReceiptItemsBody")) {
-    let rowsHtml = "";
+    let rowsHtml = `
+      <tr>
+        <td class="py-2.5 px-3 text-slate-400 font-mono">1</td>
+        <td class="py-2.5 px-3 font-medium text-slate-800">
+          Doorstep Inspection & Diagnostic Evaluation
+          <span class="text-[10px] text-slate-400 block font-mono">SAC: 9987 · Standard Diagnostic Visit</span>
+        </td>
+        <td class="py-2.5 px-3 text-center text-slate-600 font-semibold">1</td>
+        <td class="py-2.5 px-3 text-right text-slate-600">${isWarranty ? '<s class="text-slate-400">₹' + inspectionFee.toFixed(2) + '</s>' : '₹' + inspectionFee.toFixed(2)}</td>
+        <td class="py-2.5 px-3 text-right font-bold text-slate-800">${isWarranty ? '₹0.00' : '₹' + inspectionFee.toFixed(2)}</td>
+      </tr>
+      <tr>
+        <td class="py-2.5 px-3 text-slate-400 font-mono">2</td>
+        <td class="py-2.5 px-3 font-medium text-slate-800">
+          Labor & Technical Repair Charges
+          <span class="text-[10px] text-slate-400 block font-mono">SAC: 9987 · Certified Field Service</span>
+        </td>
+        <td class="py-2.5 px-3 text-center text-slate-600 font-semibold">1</td>
+        <td class="py-2.5 px-3 text-right text-slate-600">${isWarranty ? '<s class="text-slate-400">₹' + laborCost.toFixed(2) + '</s>' : '₹' + laborCost.toFixed(2)}</td>
+        <td class="py-2.5 px-3 text-right font-bold text-slate-800">${isWarranty ? '₹0.00' : '₹' + laborCost.toFixed(2)}</td>
+      </tr>
+    `;
+
     if (parts.length > 0) {
       parts.forEach((p, idx) => {
         const pQty = p.quantity || 1;
@@ -1577,31 +2124,34 @@ window.openOpsReceiptModal = async function(requestId, showPrevious = false) {
         const pTotal = Number(p.total_price || (pQty * pRate));
         rowsHtml += `
           <tr>
-            <td class="py-2.5 px-3 text-slate-400 font-mono">${idx + 1}</td>
-            <td class="py-2.5 px-3 font-medium text-slate-800">${safe(p.part_name)} <span class="text-[10px] text-slate-400 block font-normal">Genuine OEM Part</span></td>
+            <td class="py-2.5 px-3 text-slate-400 font-mono">${idx + 3}</td>
+            <td class="py-2.5 px-3 font-medium text-slate-800">
+              ${safe(p.part_name)}
+              <span class="text-[10px] text-slate-400 block font-mono">HSN: ${safe(p.hsn_code || '841890')} · Genuine OEM Part</span>
+            </td>
             <td class="py-2.5 px-3 text-center text-slate-600 font-semibold">${pQty}</td>
-            <td class="py-2.5 px-3 text-right text-slate-600">₹${pRate.toFixed(2)}</td>
-            <td class="py-2.5 px-3 text-right font-bold text-slate-800">₹${pTotal.toFixed(2)}</td>
+            <td class="py-2.5 px-3 text-right text-slate-600">${isWarranty ? '<s class="text-slate-400">₹' + pRate.toFixed(2) + '</s>' : '₹' + pRate.toFixed(2)}</td>
+            <td class="py-2.5 px-3 text-right font-bold text-slate-800">${isWarranty ? '₹0.00' : '₹' + pTotal.toFixed(2)}</td>
           </tr>
         `;
       });
-    } else {
+    }
+
+    if (isWarranty) {
       rowsHtml += `
-        <tr>
-          <td class="py-2.5 px-3 text-slate-400 font-mono">1</td>
-          <td class="py-2.5 px-3 font-medium text-slate-800">Standard Technical Inspection & Doorstep Diagnostics</td>
-          <td class="py-2.5 px-3 text-center text-slate-600 font-semibold">1</td>
-          <td class="py-2.5 px-3 text-right text-slate-600">₹${laborCost.toFixed(2)}</td>
-          <td class="py-2.5 px-3 text-right font-bold text-slate-800">₹${laborCost.toFixed(2)}</td>
+        <tr class="bg-blue-50/60 font-semibold text-blue-900">
+          <td colspan="4" class="py-2 px-3 text-right text-[11px]">🛡️ 100% Brand Manufacturer Warranty Coverage:</td>
+          <td class="py-2 px-3 text-right text-emerald-600 text-xs">-₹${(inspectionFee + laborCost + partsCost).toFixed(2)}</td>
         </tr>
       `;
     }
+
     $("opsReceiptItemsBody").innerHTML = rowsHtml;
   }
 
-  if ($("opsReceiptPartsSubtotal")) $("opsReceiptPartsSubtotal").textContent = `₹${partsCost.toFixed(2)}`;
-  if ($("opsReceiptLaborCost")) $("opsReceiptLaborCost").textContent = `₹${laborCost.toFixed(2)}`;
-  if ($("opsReceiptGstTax")) $("opsReceiptGstTax").textContent = `₹${taxAmount.toFixed(2)}`;
+  if ($("opsReceiptPartsSubtotal")) $("opsReceiptPartsSubtotal").textContent = isWarranty ? "₹0.00 (Covered)" : `₹${partsCost.toFixed(2)}`;
+  if ($("opsReceiptLaborCost")) $("opsReceiptLaborCost").textContent = isWarranty ? "₹0.00 (Covered)" : `₹${(inspectionFee + laborCost).toFixed(2)}`;
+  if ($("opsReceiptGstTax")) $("opsReceiptGstTax").textContent = isWarranty ? "₹0.00" : `₹${taxAmount.toFixed(2)} (CGST 9% + SGST 9%)`;
   if ($("opsReceiptGrandTotal")) $("opsReceiptGrandTotal").textContent = `₹${totalAmount.toFixed(2)}`;
 
   if ($("opsReceiptTechSigImg") && jc && jc.technician_signature) {
@@ -2506,6 +3056,8 @@ function renderResources() {
     let note = detail;
     if (role === "technician" && index === 0) note = requests.length + " jobs on your schedule";
     if (role === "company" && name === "Customers") note = companyCustomers.length + " registered product" + (companyCustomers.length === 1 ? "" : "s");
+    if (role === "franchise" && name === "Inventory items") note = franchiseInventory.length + " parts in warehouse";
+    if (role === "company" && name === "Warranty claims") note = companyWarrantyClaims.length + " reimbursement claims";
     return `<div class="resource-card"><span class="resource-icon">${icon}</span><span><strong>${name}</strong><small>${note}</small></span></div>`;
   }).join("");
 }
@@ -2571,12 +3123,25 @@ async function loadDashboard() {
         branches = await companyApi("/branches");
         localStorage.setItem("servora_cache_branches", JSON.stringify(branches));
       } catch { branches = []; }
+      try {
+        companyWarrantyClaims = await generalApi("/api/warranty-amc/claims");
+        localStorage.setItem("servora_cache_claims", JSON.stringify(companyWarrantyClaims));
+      } catch { companyWarrantyClaims = []; }
+      try {
+        companySparesCatalog = await generalApi("/api/inventory/parts");
+        localStorage.setItem("servora_cache_catalog", JSON.stringify(companySparesCatalog));
+      } catch { companySparesCatalog = []; }
     }
     if (role === "franchise") {
       try {
         technicians = await franchiseApi("/technicians");
         localStorage.setItem("servora_cache_techs", JSON.stringify(technicians));
       } catch { technicians = []; }
+      try {
+        const branchId = user?.branch_id || user?.id || "me";
+        franchiseInventory = await generalApi(`/api/inventory/branch/${encodeURIComponent(branchId)}`);
+        localStorage.setItem("servora_cache_inventory", JSON.stringify(franchiseInventory));
+      } catch { franchiseInventory = []; }
     }
   } catch (error) {
     const detail = error instanceof TypeError ? "Connecting to Servora API…" : error.message;
@@ -2594,8 +3159,11 @@ function initEvents() {
     if (role === "admin" && page === "Companies") renderCompanies();
     else if (role === "company" && page === "Branches") renderCompanyBranches();
     else if (role === "company" && page === "Customers") renderCompanyCustomers();
+    else if (role === "company" && page === "Warranty Claims") renderCompanyWarrantyClaims();
+    else if (role === "company" && page === "Spares Catalog") renderCompanySparesCatalog();
     else if (role === "franchise" && page === "Technicians") renderFranchiseTechnicians();
     else if (role === "franchise" && page === "Customers") renderFranchiseCustomers();
+    else if (role === "franchise" && page === "Inventory & Spares") renderFranchiseInventory();
     else if (role === "admin" && ["Branches", "Technicians", "Customers"].includes(page)) renderDirectory(page);
     else if (role === "admin" && page === "Service requests") renderRequestDirectory();
     else renderRequests();
@@ -2626,6 +3194,38 @@ function initEvents() {
         ...visibleReqs.map((r) => [r.customer_name, r.customer_phone || "", r.customer_address || "", r.pincode || "", r.appliance_name || "", r.appointment_date || ""])
       ];
       downloadCsv(`servora-franchise-customers.csv`, rows);
+      return;
+    }
+    if (role === "franchise" && page === "Inventory & Spares") {
+      const rows = [
+        ["Part Code", "Part Name", "Brand", "Category", "HSN Code", "Unit Price", "Stock Available", "Reorder Level", "Low Stock"],
+        ...franchiseInventory.map((item) => [
+          item.part_code, item.name, item.brand, item.category, item.hsn_code || "841890",
+          item.unit_price, item.quantity_available, item.reorder_level, item.is_low_stock ? "YES" : "NO"
+        ])
+      ];
+      downloadCsv("servora-franchise-inventory.csv", rows);
+      return;
+    }
+    if (role === "company" && page === "Warranty Claims") {
+      const rows = [
+        ["Claim ID", "Request ID", "Branch Name", "Appliance", "Claim Amount", "Status", "Submitted At", "Settled At"],
+        ...companyWarrantyClaims.map((item) => [
+          item.id, item.request_id, item.branch_name, item.appliance_name,
+          item.claim_amount, item.status, item.submitted_at || "", item.settled_at || ""
+        ])
+      ];
+      downloadCsv("servora-warranty-claims.csv", rows);
+      return;
+    }
+    if (role === "company" && page === "Spares Catalog") {
+      const rows = [
+        ["Part Code", "Part Name", "Brand", "Category", "HSN Code", "Unit Price"],
+        ...companySparesCatalog.map((item) => [
+          item.part_code, item.name, item.brand, item.category, item.hsn_code || "841890", item.unit_price
+        ])
+      ];
+      downloadCsv("servora-spares-catalog.csv", rows);
       return;
     }
     const rows = [["Request ID", "Customer", "Appliance", "Issue", "Status", "Date"], ...requests.map((item) => [item.id, item.customer_name, item.appliance_name, item.issue, item.status_badge, item.appointment_date])];
@@ -2781,6 +3381,10 @@ function initEvents() {
   $("opsAddPartRowBtn")?.addEventListener("click", () => addOpsPartRow("", 1, 0));
   $("opsJcLaborCost")?.addEventListener("input", recalculateOpsJobCardTotals);
   $("opsJobCardForm")?.addEventListener("submit", submitOpsJobCard);
+
+  // Phase 2 Modals (Warehouse Restock & Warranty Claim Review)
+  initRestockModalEvents();
+  initClaimReviewModalEvents();
 }
 
 // Profile Modal & Edit Details for Ops Portals (Technician, Franchise, Company, Admin)

@@ -447,5 +447,64 @@
       </div>
     </div>
   </dialog>
+
+  <!-- OEM Brand Warranty Claim Verification Modal (Phase 2 FR-WAR-003) -->
+  <dialog id="claimReviewModal" class="w-[min(94vw,520px)] rounded-3xl border-0 p-0 shadow-2xl overflow-hidden bg-white">
+    <div class="p-6 space-y-4">
+      <div class="flex items-start justify-between border-b border-slate-100 pb-3">
+        <div>
+          <div class="flex items-center gap-2">
+            <span class="text-[10px] font-bold tracking-[.16em] text-blue-600 uppercase">OEM BRAND VERIFICATION</span>
+            <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">REIMBURSEMENT</span>
+          </div>
+          <h3 class="font-display text-base font-bold text-slate-900 mt-1" id="reviewClaimTitle">Review Warranty Claim</h3>
+          <p class="text-xs text-slate-400" id="reviewClaimSubtitle">Validate parts consumption and approve reimbursement to franchise</p>
+        </div>
+        <button type="button" id="closeClaimReviewModalBtn" class="rounded-xl p-1.5 text-slate-400 hover:bg-slate-100 text-lg leading-none" aria-label="Close">✕</button>
+      </div>
+
+      <div class="p-3 bg-slate-50 rounded-2xl border border-slate-100 text-xs space-y-1.5">
+        <div class="flex justify-between">
+          <span class="text-slate-400">Claim ID:</span>
+          <strong id="reviewClaimId" class="text-slate-800 font-mono">CLM-8808</strong>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-slate-400">Service Request:</span>
+          <strong id="reviewClaimReqId" class="text-slate-800 font-mono">SR-7845</strong>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-slate-400">Claiming Franchise:</span>
+          <strong id="reviewClaimBranch" class="text-slate-800">Noida Sector 63 Branch</strong>
+        </div>
+        <div class="flex justify-between items-baseline pt-1 border-t border-slate-200/60">
+          <span class="text-slate-500 font-bold">Total Claim Amount:</span>
+          <strong id="reviewClaimAmount" class="text-base font-black text-blue-700 font-display">₹0.00</strong>
+        </div>
+      </div>
+
+      <form id="claimReviewForm" class="space-y-3 text-xs">
+        <input type="hidden" id="reviewClaimHiddenId">
+
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">Audit Notes / Decision Reason</label>
+          <textarea id="reviewClaimNotes" rows="2" placeholder="e.g. Valid manufacturing defect verified under standard 1-year product warranty." class="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20"></textarea>
+        </div>
+
+        <p id="claimReviewMsg" class="min-h-4 text-xs text-rose-600" role="status"></p>
+
+        <div class="flex items-center justify-between pt-2 border-t border-slate-100">
+          <button type="button" id="rejectClaimBtn" class="rounded-xl px-4 py-2.5 text-xs font-bold text-rose-600 hover:bg-rose-50 border border-rose-200 transition">
+            ✕ Reject Claim
+          </button>
+          <div class="flex gap-2">
+            <button type="button" id="cancelClaimReviewBtn" class="rounded-xl px-4 py-2.5 text-xs font-semibold text-slate-600 hover:bg-slate-100">Cancel</button>
+            <button type="button" id="approveClaimBtn" class="rounded-xl bg-emerald-600 hover:bg-emerald-700 px-6 py-2.5 text-xs font-bold text-white shadow-sm transition">
+              ✓ Approve & Settle
+            </button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </dialog>
 </body>
 </html>

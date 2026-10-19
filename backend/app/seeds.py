@@ -4,7 +4,9 @@ from sqlalchemy.orm import Session
 from app.db.session import engine, Base, SessionLocal
 from app.db.models import (
     UserModel, TechnicianModel, ApplianceModel, ServiceRequestModel,
-    CompanyBranchModel, BranchTechnicianModel, JobCardModel, ServiceFeedbackModel
+    CompanyBranchModel, BranchTechnicianModel, JobCardModel, ServiceFeedbackModel,
+    SparePartModel, FranchiseInventoryModel, InventoryTransactionModel,
+    WarrantyClaimModel, AMCPlanModel, AMCSubscriptionModel
 )
 
 def seed_database(db: Session):
@@ -22,6 +24,21 @@ def seed_database(db: Session):
     if "company_id" not in appliance_columns:
         with engine.begin() as connection:
             connection.execute(text("ALTER TABLE appliances ADD COLUMN company_id VARCHAR(64) NULL"))
+    if "warranty_start_date" not in appliance_columns:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE appliances ADD COLUMN warranty_start_date VARCHAR(32) NULL"))
+    if "warranty_end_date" not in appliance_columns:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE appliances ADD COLUMN warranty_end_date VARCHAR(32) NULL"))
+    if "amc_active" not in appliance_columns:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE appliances ADD COLUMN amc_active BOOLEAN DEFAULT 0"))
+    if "amc_plan_name" not in appliance_columns:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE appliances ADD COLUMN amc_plan_name VARCHAR(64) NULL"))
+    if "amc_end_date" not in appliance_columns:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE appliances ADD COLUMN amc_end_date VARCHAR(32) NULL"))
 
     req_columns = {column["name"] for column in inspect(engine).get_columns("service_requests")}
     if "pincode" not in req_columns:
@@ -66,9 +83,38 @@ def seed_database(db: Session):
     if "is_reopened" not in req_columns:
         with engine.begin() as connection:
             connection.execute(text("ALTER TABLE service_requests ADD COLUMN is_reopened BOOLEAN DEFAULT 0"))
+    if "is_under_warranty" not in req_columns:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE service_requests ADD COLUMN is_under_warranty BOOLEAN DEFAULT 0"))
     if "payment_status" not in req_columns:
         with engine.begin() as connection:
             connection.execute(text("ALTER TABLE service_requests ADD COLUMN payment_status VARCHAR(32) DEFAULT 'Pending'"))
+    if "payment_method" not in req_columns:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE service_requests ADD COLUMN payment_method VARCHAR(32) NULL"))
+    if "payment_transaction_id" not in req_columns:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE service_requests ADD COLUMN payment_transaction_id VARCHAR(64) NULL"))
+    if "paid_at" not in req_columns:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE service_requests ADD COLUMN paid_at VARCHAR(64) NULL"))
+
+    jc_columns = {column["name"] for column in inspect(engine).get_columns("job_cards")}
+    if "inspection_fee" not in jc_columns:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE job_cards ADD COLUMN inspection_fee FLOAT DEFAULT 299.0"))
+    if "discount_amount" not in jc_columns:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE job_cards ADD COLUMN discount_amount FLOAT DEFAULT 0.0"))
+    if "cgst_amount" not in jc_columns:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE job_cards ADD COLUMN cgst_amount FLOAT DEFAULT 0.0"))
+    if "sgst_amount" not in jc_columns:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE job_cards ADD COLUMN sgst_amount FLOAT DEFAULT 0.0"))
+    if "is_warranty_covered" not in jc_columns:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE job_cards ADD COLUMN is_warranty_covered BOOLEAN DEFAULT 0"))
 
     # 1. Seed Users if not present
     if not db.query(UserModel).first():
@@ -187,7 +233,10 @@ def seed_database(db: Session):
                 category="Air Conditioner",
                 model_no="GL-5292",
                 registered_on="12 Jun 2024",
-                warranty_status="Active (Expires Jun 2026)",
+                warranty_status="Under Warranty",
+                warranty_start_date="12 Jun 2024",
+                warranty_end_date="12 Jun 2026",
+                amc_active=False,
                 serial_no="CR-AC-2024-8841",
                 icon="air-vent"
             ),
@@ -198,7 +247,12 @@ def seed_database(db: Session):
                 category="Refrigerator",
                 model_no="GL-382",
                 registered_on="03 Feb 2023",
-                warranty_status="AMC Covered",
+                warranty_status="AMC Active",
+                warranty_start_date="03 Feb 2023",
+                warranty_end_date="03 Feb 2024",
+                amc_active=True,
+                amc_plan_name="Gold Comprehensive",
+                amc_end_date="03 Feb 2026",
                 serial_no="LG-REF-9921",
                 icon="refrigerator"
             ),
@@ -208,8 +262,11 @@ def seed_database(db: Session):
                 brand="Samsung",
                 category="Microwave Oven",
                 model_no="MC-288",
-                registered_on="15 Nov 2023",
-                warranty_status="Active",
+                registered_on="15 Nov 2022",
+                warranty_status="Out of Warranty",
+                warranty_start_date="15 Nov 2022",
+                warranty_end_date="15 Nov 2023",
+                amc_active=False,
                 serial_no="SAM-MW-4412",
                 icon="microwave"
             )
@@ -286,3 +343,163 @@ def seed_database(db: Session):
         )
         db.add(req)
         db.commit()
+
+    # 5. Seed Spare Parts Catalog (Phase 2 FR-INV-001)
+    if not db.query(SparePartModel).first():
+        parts = [
+            SparePartModel(
+                id="part_crm_cap01",
+                part_code="PART-CRM-CAP01",
+                name="Dual Run Capacitor 50+5 uF",
+                category="Air Conditioner",
+                brand="Crompton",
+                unit_price=650.0,
+                hsn_code="8532",
+                description="Heavy duty AC run capacitor for outdoor compressor & fan motor"
+            ),
+            SparePartModel(
+                id="part_crm_blw01",
+                part_code="PART-CRM-BLW01",
+                name="Cross Flow Indoor Blower Wheel",
+                category="Air Conditioner",
+                brand="Crompton",
+                unit_price=1200.0,
+                hsn_code="8414",
+                description="Dynamically balanced ultra-quiet cross flow blower"
+            ),
+            SparePartModel(
+                id="part_lg_comp01",
+                part_code="PART-LG-COMP01",
+                name="Inverter Linear Compressor 240V",
+                category="Refrigerator",
+                brand="LG",
+                unit_price=4500.0,
+                hsn_code="8418",
+                description="High efficiency smart inverter linear compressor"
+            ),
+            SparePartModel(
+                id="part_sam_mag01",
+                part_code="PART-SAM-MAG01",
+                name="High Voltage Magnetron 2M219J",
+                category="Microwave Oven",
+                brand="Samsung",
+                unit_price=1850.0,
+                hsn_code="8516",
+                description="OEM grade heating magnetron for convection & grill microwaves"
+            ),
+            SparePartModel(
+                id="part_whr_mtr01",
+                part_code="PART-WHR-MTR01",
+                name="Direct Drive Drain Pump Motor",
+                category="Washing Machine",
+                brand="Whirlpool",
+                unit_price=1450.0,
+                hsn_code="8450",
+                description="Submersible drain pump assembly with lint filter interface"
+            ),
+            SparePartModel(
+                id="part_unv_thm01",
+                part_code="PART-UNV-THM01",
+                name="Defrost Bi-Metal Thermostat Sensor",
+                category="Refrigerator",
+                brand="Universal",
+                unit_price=450.0,
+                hsn_code="9032",
+                description="Snap-action defrost termination sensor with fuse"
+            ),
+            SparePartModel(
+                id="part_vol_pcb01",
+                part_code="PART-VOL-PCB01",
+                name="Inverter AC Outdoor Main PCB Board",
+                category="Air Conditioner",
+                brand="Voltas",
+                unit_price=3200.0,
+                hsn_code="8534",
+                description="Microcontroller drive PCB with IP65 moisture conformal coating"
+            )
+        ]
+        db.add_all(parts)
+        db.commit()
+
+    # 6. Seed Franchise Warehouse Stock (Phase 2 FR-INV-002, FR-INV-004)
+    if not db.query(FranchiseInventoryModel).first():
+        stocks = [
+            FranchiseInventoryModel(
+                id="inv_br1_01",
+                branch_id="branch_1",
+                part_id="part_crm_cap01",
+                quantity_available=18,
+                reorder_level=5
+            ),
+            FranchiseInventoryModel(
+                id="inv_br1_02",
+                branch_id="branch_1",
+                part_id="part_crm_blw01",
+                quantity_available=8,
+                reorder_level=4
+            ),
+            FranchiseInventoryModel(
+                id="inv_br1_03",
+                branch_id="branch_1",
+                part_id="part_lg_comp01",
+                quantity_available=3, # Low stock demo!
+                reorder_level=5
+            ),
+            FranchiseInventoryModel(
+                id="inv_br1_04",
+                branch_id="branch_1",
+                part_id="part_sam_mag01",
+                quantity_available=2, # Low stock demo!
+                reorder_level=3
+            ),
+            FranchiseInventoryModel(
+                id="inv_br1_05",
+                branch_id="branch_1",
+                part_id="part_unv_thm01",
+                quantity_available=24,
+                reorder_level=6
+            )
+        ]
+        db.add_all(stocks)
+        db.commit()
+
+    # 7. Seed AMC Packages (Phase 2 FR-WAR-005)
+    if not db.query(AMCPlanModel).first():
+        plans = [
+            AMCPlanModel(
+                id="AMC-SILVER",
+                name="Silver Care",
+                category="All",
+                duration_months=12,
+                price=999.0,
+                free_services=2,
+                discount_parts_pct=10.0,
+                zero_labor=True,
+                description="2 routine tune-up visits per year, 10% off spare parts, and 100% free labor on breakdowns."
+            ),
+            AMCPlanModel(
+                id="AMC-GOLD",
+                name="Gold Comprehensive",
+                category="All",
+                duration_months=12,
+                price=1999.0,
+                free_services=3,
+                discount_parts_pct=20.0,
+                zero_labor=True,
+                description="3 seasonal maintenance visits, 20% discount on genuine OEM parts, zero labor fee, priority 4-hour technician dispatch."
+            ),
+            AMCPlanModel(
+                id="AMC-PLATINUM",
+                name="Platinum Total Care",
+                category="All",
+                duration_months=24,
+                price=3499.0,
+                free_services=6,
+                discount_parts_pct=100.0,
+                zero_labor=True,
+                description="24 months total protection. 6 maintenance visits, 100% free spare parts and labor, zero deductible."
+            )
+        ]
+        db.add_all(plans)
+        db.commit()
+

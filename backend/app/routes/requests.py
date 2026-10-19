@@ -1,6 +1,7 @@
 import json
 import random
 import re
+import uuid
 from datetime import datetime
 from typing import List, Optional
 from fastapi import APIRouter, Depends, Request, HTTPException
@@ -15,7 +16,12 @@ from app.db.models import (
     BranchTechnicianModel,
     UserModel,
     JobCardModel,
-    ServiceFeedbackModel
+    ServiceFeedbackModel,
+    SparePartModel,
+    FranchiseInventoryModel,
+    InventoryTransactionModel,
+    WarrantyClaimModel,
+    AMCSubscriptionModel
 )
 from app.schemas import (
     ServiceRequestDetail,
@@ -30,7 +36,9 @@ from app.schemas import (
     JobCardCustomerActionPayload,
     ServiceFeedbackPayload,
     ServiceFeedbackResponse,
-    TicketReopenPayload
+    TicketReopenPayload,
+    PaymentCheckoutPayload,
+    PaymentResponse
 )
 from app.security import get_authenticated_user
 
@@ -38,7 +46,7 @@ router = APIRouter(prefix="/api/requests", tags=["requests"])
 
 def format_job_card(jc: JobCardModel) -> JobCardResponse:
     parts_raw = json.loads(jc.parts_used_json) if jc.parts_used_json else []
-    parts = [JobCardPartItem(**p) for p in parts_raw]
+    parts = [JobCardPartItem(**p) if isinstance(p, dict) else p for p in parts_raw]
     return JobCardResponse(
         id=jc.id,
         request_id=jc.request_id,
@@ -46,10 +54,15 @@ def format_job_card(jc: JobCardModel) -> JobCardResponse:
         customer_id=jc.customer_id,
         work_summary=jc.work_summary,
         parts_used=parts,
+        inspection_fee=getattr(jc, "inspection_fee", 299.0) if getattr(jc, "inspection_fee", 299.0) is not None else 299.0,
         labor_cost=jc.labor_cost,
         parts_cost=jc.parts_cost,
+        discount_amount=getattr(jc, "discount_amount", 0.0) if getattr(jc, "discount_amount", 0.0) is not None else 0.0,
+        cgst_amount=getattr(jc, "cgst_amount", 0.0) if getattr(jc, "cgst_amount", 0.0) is not None else round(jc.tax_amount / 2, 2),
+        sgst_amount=getattr(jc, "sgst_amount", 0.0) if getattr(jc, "sgst_amount", 0.0) is not None else round(jc.tax_amount / 2, 2),
         tax_amount=jc.tax_amount,
         total_amount=jc.total_amount,
+        is_warranty_covered=bool(getattr(jc, "is_warranty_covered", False)),
         technician_signature=jc.technician_signature,
         customer_signature=jc.customer_signature,
         customer_status=jc.customer_status,
@@ -162,7 +175,11 @@ def format_request_detail(req: ServiceRequestModel, db: Session) -> ServiceReque
         previous_job_card=previous_job_card,
         job_card=current_job_card,
         is_reopened=bool(getattr(req, "is_reopened", False)),
+        is_under_warranty=bool(getattr(req, "is_under_warranty", False)),
         payment_status=payment_status_val,
+        payment_method=getattr(req, "payment_method", None),
+        payment_transaction_id=getattr(req, "payment_transaction_id", None),
+        paid_at=getattr(req, "paid_at", None),
         branch_id=req.branch_id,
         company_id=req.company_id,
         pincode=req.pincode,
@@ -356,6 +373,14 @@ def create_request(payload: ServiceBookingCreate, request: Request, db: Session 
         }
     ]
 
+    appliance_rec = db.query(ApplianceModel).filter(ApplianceModel.id == payload.appliance_id).first()
+    is_warranty = False
+    if appliance_rec:
+        if appliance_rec.amc_active:
+            is_warranty = True
+        elif appliance_rec.warranty_status and ("under" in appliance_rec.warranty_status.lower() or "active" in appliance_rec.warranty_status.lower()):
+            is_warranty = True
+
     new_req = ServiceRequestModel(
         id=new_id,
         customer_id=user.id,
@@ -385,6 +410,7 @@ def create_request(payload: ServiceBookingCreate, request: Request, db: Session 
         start_otp=start_otp_code,
         completion_otp=completion_otp_code,
         is_reopened=False,
+        is_under_warranty=is_warranty,
         payment_status="Pending",
         timeline_json=json.dumps(initial_timeline)
     )
@@ -631,20 +657,48 @@ def create_job_card(request_id: str, payload: JobCardCreatePayload, request: Req
     else:
         tech_id = req.technician_id or "tech-default"
 
-    parts_cost = round(sum(p.total_price if p.total_price else (p.quantity * p.unit_price) for p in payload.parts_used), 2)
-    labor_cost = round(payload.labor_cost, 2)
-    tax_amount = round((parts_cost + labor_cost) * 0.18, 2)
-    total_amount = round(parts_cost + labor_cost + tax_amount, 2)
+    # Phase 2 Price Engine (FR-BILL-001)
+    is_warranty_covered = bool(payload.is_warranty_covered or getattr(req, "is_under_warranty", False))
+    raw_parts_cost = round(sum(p.total_price if p.total_price else (p.quantity * p.unit_price) for p in payload.parts_used), 2)
+    raw_labor_cost = round(payload.labor_cost, 2)
+    raw_inspection_fee = round(payload.inspection_fee if payload.inspection_fee is not None else 299.0, 2)
+
+    if is_warranty_covered:
+        inspection_fee = 0.0
+        labor_cost = 0.0
+        parts_cost = 0.0
+        discount_amount = 0.0
+        subtotal = 0.0
+        cgst_amount = 0.0
+        sgst_amount = 0.0
+        tax_amount = 0.0
+        total_amount = 0.0
+    else:
+        inspection_fee = raw_inspection_fee
+        labor_cost = raw_labor_cost
+        parts_cost = raw_parts_cost
+        discount_amount = round(payload.discount_amount or 0.0, 2)
+        subtotal = max(0.0, round(inspection_fee + labor_cost + parts_cost - discount_amount, 2))
+        cgst_amount = round(subtotal * 0.09, 2)
+        sgst_amount = round(subtotal * 0.09, 2)
+        tax_amount = round(cgst_amount + sgst_amount, 2)
+        total_amount = round(subtotal + tax_amount, 2)
+
     now_str = datetime.now().strftime("%d %b %Y, %I:%M %p")
 
     jc = db.query(JobCardModel).filter(JobCardModel.request_id == request_id).first()
     if jc:
         jc.work_summary = payload.work_summary
         jc.parts_used_json = json.dumps([(p.model_dump() if hasattr(p, "model_dump") else p.dict()) for p in payload.parts_used])
+        jc.inspection_fee = inspection_fee
         jc.labor_cost = labor_cost
         jc.parts_cost = parts_cost
+        jc.discount_amount = discount_amount
+        jc.cgst_amount = cgst_amount
+        jc.sgst_amount = sgst_amount
         jc.tax_amount = tax_amount
         jc.total_amount = total_amount
+        jc.is_warranty_covered = is_warranty_covered
         if payload.technician_signature:
             jc.technician_signature = payload.technician_signature
         jc.completed_at = now_str
@@ -657,10 +711,15 @@ def create_job_card(request_id: str, payload: JobCardCreatePayload, request: Req
             customer_id=req.customer_id,
             work_summary=payload.work_summary,
             parts_used_json=json.dumps([(p.model_dump() if hasattr(p, "model_dump") else p.dict()) for p in payload.parts_used]),
+            inspection_fee=inspection_fee,
             labor_cost=labor_cost,
             parts_cost=parts_cost,
+            discount_amount=discount_amount,
+            cgst_amount=cgst_amount,
+            sgst_amount=sgst_amount,
             tax_amount=tax_amount,
             total_amount=total_amount,
+            is_warranty_covered=is_warranty_covered,
             technician_signature=payload.technician_signature,
             customer_signature=None,
             customer_status="pending_acceptance",
@@ -668,6 +727,68 @@ def create_job_card(request_id: str, payload: JobCardCreatePayload, request: Req
             completed_at=now_str
         )
         db.add(jc)
+
+    # Phase 2 FR-INV-003: Automatic inventory deduction for parts used
+    branch_id = req.branch_id
+    if not branch_id and tech_id:
+        bt = db.query(BranchTechnicianModel).filter(BranchTechnicianModel.technician_id == tech_id).first()
+        if bt:
+            branch_id = bt.branch_id
+        if not branch_id:
+            first_branch = db.query(CompanyBranchModel).first()
+            if first_branch:
+                branch_id = first_branch.id
+        req.branch_id = branch_id
+
+    if payload.parts_used and branch_id:
+        for p in payload.parts_used:
+            part_id = getattr(p, "part_id", None)
+            part_code = getattr(p, "part_code", None)
+            part_obj = None
+            if part_id:
+                part_obj = db.query(SparePartModel).filter(SparePartModel.id == part_id).first()
+            if not part_obj and part_code:
+                part_obj = db.query(SparePartModel).filter(SparePartModel.part_code == part_code).first()
+            if not part_obj and p.part_name:
+                part_obj = db.query(SparePartModel).filter(SparePartModel.name.ilike(f"%{p.part_name}%")).first()
+
+            if part_obj:
+                inv = db.query(FranchiseInventoryModel).filter(
+                    FranchiseInventoryModel.branch_id == branch_id,
+                    FranchiseInventoryModel.part_id == part_obj.id
+                ).first()
+                if inv:
+                    inv.quantity_available = max(0, inv.quantity_available - p.quantity)
+                    txn = InventoryTransactionModel(
+                        id=f"TXN-{uuid.uuid4().hex[:8].upper()}",
+                        branch_id=branch_id,
+                        part_id=part_obj.id,
+                        transaction_type="job_consumption",
+                        quantity=p.quantity,
+                        reference_id=jc.id,
+                        performed_by=f"Technician ({tech_id})",
+                        notes=f"Automatic deduction: {p.quantity}x {part_obj.name} consumed on {req.id}"
+                    )
+                    db.add(txn)
+
+    # Phase 2 FR-WAR-002: Automatic OEM Warranty Claim creation
+    if is_warranty_covered and (raw_parts_cost > 0 or raw_labor_cost > 0) and req.company_id:
+        claim_id = f"CLM-{req.id.replace('SR-', '')}"
+        existing_claim = db.query(WarrantyClaimModel).filter(WarrantyClaimModel.id == claim_id).first()
+        if not existing_claim:
+            w_claim = WarrantyClaimModel(
+                id=claim_id,
+                request_id=req.id,
+                company_id=req.company_id,
+                branch_id=req.branch_id or "branch_1",
+                appliance_id=req.appliance_id,
+                claim_amount=round(raw_parts_cost + raw_labor_cost, 2),
+                parts_claimed_json=json.dumps([(p.model_dump() if hasattr(p, "model_dump") else p.dict()) for p in payload.parts_used]),
+                status="Pending Review",
+                claim_notes=f"OEM Warranty reimbursement claim for {req.appliance_name} ({req.model_no}). Consumer billed ₹0.00.",
+                submitted_at=now_str
+            )
+            db.add(w_claim)
 
     # Update timeline and completion if completion_otp is provided
     timeline = json.loads(req.timeline_json) if req.timeline_json else []
@@ -678,14 +799,22 @@ def create_job_card(request_id: str, payload: JobCardCreatePayload, request: Req
         jc.customer_status = "accepted"
         req.status = "Completed"
         req.status_badge = "Completed"
-        req.payment_status = "Paid"
+        if is_warranty_covered or total_amount == 0:
+            req.payment_status = "Paid (Warranty Covered)"
+            req.paid_at = now_str
+        elif not req.payment_status or req.payment_status == "Pending":
+            req.payment_status = "Paid"
+            req.paid_at = now_str
         for step in timeline:
             step["state"] = "completed"
             if not step.get("timestamp"):
                 step["timestamp"] = now_str
             if step.get("id") == "step_5":
                 step["timestamp"] = now_str
-                step["description"] = f"Job card generated (₹{total_amount:.2f}) & verified with customer Completion OTP. Service closed and payment settled (PAID)."
+                if is_warranty_covered:
+                    step["description"] = f"Job card finalized (₹0.00 - Covered under Manufacturer Warranty). Replaced spares & labor reimbursed by OEM Brand."
+                else:
+                    step["description"] = f"Job card generated (₹{total_amount:.2f}) & verified with customer Completion OTP. Service closed and payment settled (PAID)."
     else:
         for step in timeline:
             if step.get("id") == "step_5":
@@ -756,6 +885,58 @@ def respond_job_card(request_id: str, payload: JobCardCustomerActionPayload, req
     db.refresh(jc)
     db.refresh(req)
     return format_job_card(jc)
+
+@router.post("/{request_id}/payment", response_model=PaymentResponse)
+def process_request_payment(
+    request_id: str,
+    payload: PaymentCheckoutPayload,
+    request: Request,
+    db: Session = Depends(get_db)
+):
+    user = get_authenticated_user(request, db)
+    req = db.query(ServiceRequestModel).filter(ServiceRequestModel.id == request_id).first()
+    if not req:
+        raise HTTPException(status_code=404, detail="Service request not found")
+
+    if user.role == "customer" and req.customer_id != user.id:
+        raise HTTPException(status_code=403, detail="Not authorized to make payment for this request")
+
+    now_str = datetime.now().strftime("%d %b %Y, %I:%M %p")
+    txn_ref = payload.transaction_ref or f"PAY-{uuid.uuid4().hex[:8].upper()}"
+    receipt_no = f"REC-{req.id}"
+
+    req.payment_status = "Paid"
+    req.payment_method = payload.payment_method
+    req.payment_transaction_id = txn_ref
+    req.paid_at = now_str
+
+    # Update timeline
+    timeline = json.loads(req.timeline_json) if req.timeline_json else []
+    for step in timeline:
+        if step.get("id") == "step_5":
+            step["description"] = f"Payment of ₹{payload.amount:.2f} received via {payload.payment_method.upper()} (Ref: {txn_ref}). Official tax invoice generated."
+    req.timeline_json = json.dumps(timeline)
+
+    # If job card exists and pending acceptance, mark accepted
+    jc = db.query(JobCardModel).filter(JobCardModel.request_id == request_id).first()
+    if jc:
+        jc.customer_status = "accepted"
+        if not jc.customer_remarks:
+            jc.customer_remarks = f"Settled via online {payload.payment_method.upper()} payment."
+
+    db.commit()
+    db.refresh(req)
+
+    return PaymentResponse(
+        success=True,
+        request_id=req.id,
+        payment_status="Paid",
+        payment_method=payload.payment_method,
+        amount_paid=payload.amount,
+        transaction_ref=txn_ref,
+        receipt_no=receipt_no,
+        paid_at=now_str
+    )
 
 @router.post("/{request_id}/feedback", response_model=ServiceFeedbackResponse)
 def submit_feedback(request_id: str, payload: ServiceFeedbackPayload, request: Request, db: Session = Depends(get_db)):

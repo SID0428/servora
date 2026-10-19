@@ -454,29 +454,45 @@ function renderAppliances() {
                     appliance.serial_no || "N/A"
                   )}</strong></span>
                 </div>
-                <div class="mt-2 flex items-center gap-2">
+                <div class="mt-2 flex flex-wrap items-center gap-2">
                   <span class="rounded-full px-2.5 py-0.5 text-[10px] font-bold ${
                     String(appliance.warranty_status || "")
                       .toLowerCase()
                       .includes("active") ||
                     String(appliance.warranty_status || "")
                       .toLowerCase()
-                      .includes("covered")
-                      ? "bg-emerald-50 text-emerald-700"
+                      .includes("covered") ||
+                    String(appliance.warranty_status || "")
+                      .toLowerCase()
+                      .includes("under")
+                      ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
                       : "bg-slate-100 text-slate-600"
                   }">
                     ${escapeHtml(
                       appliance.warranty_status || "Warranty details unavailable"
                     )}
                   </span>
-                  <span class="text-[11px] text-slate-400">Registered: ${escapeHtml(
-                    appliance.registered_on ||
-                      formatDate(appliance.created_at, "12 Jan 2024")
-                  )}</span>
+                  ${
+                    appliance.warranty_end_date
+                      ? `<span class="text-[11px] text-slate-500 font-medium">Valid until: <strong class="text-slate-700">${escapeHtml(appliance.warranty_end_date)}</strong></span>`
+                      : ""
+                  }
+                  ${
+                    appliance.amc_active
+                      ? `<span class="rounded-full px-2.5 py-0.5 text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">🛡️ AMC: ${escapeHtml(appliance.amc_plan_name || 'Active')} · Exp: ${escapeHtml(appliance.amc_end_date || '')}</span>`
+                      : ""
+                  }
                 </div>
               </div>
             </div>
             <div class="flex items-center gap-2 self-end sm:self-center">
+              ${
+                !appliance.amc_active
+                  ? `<button class="buy-amc-btn px-3.5 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs rounded-xl border border-indigo-200 transition" data-id="${escapeHtml(appliance.id)}">
+                      🛡️ Buy AMC
+                    </button>`
+                  : ""
+              }
               <button class="book-catalog-btn px-4 py-2 bg-[#0066ff] hover:bg-blue-700 text-white font-bold text-xs rounded-xl transition shadow-sm" data-id="${escapeHtml(
                 appliance.id
               )}">
@@ -489,6 +505,9 @@ function renderAppliances() {
 
       catalog.querySelectorAll(".book-catalog-btn").forEach((btn) => {
         btn.addEventListener("click", () => openBookingModal(btn.dataset.id));
+      });
+      catalog.querySelectorAll(".buy-amc-btn").forEach((btn) => {
+        btn.addEventListener("click", () => openAmcModal(btn.dataset.id));
       });
     }
   }
@@ -1084,20 +1103,35 @@ function populateTracking(request) {
 
       readApiJson(`/api/requests/${encodeURIComponent(request.id)}/job-card`)
         .then(jc => {
+          const isWarranty = Boolean(request.is_under_warranty || jc.is_warranty_covered);
+          const isPaid = request.payment_status === "Paid" || request.payment_status === "Paid (Warranty Covered)";
+
+          if ($("openPayNowBtn")) {
+            $("openPayNowBtn").classList.toggle("hidden", isPaid || isWarranty);
+            if (!isPaid && !isWarranty) {
+              $("openPayNowBtn").innerHTML = `<span>💳 Pay Now (₹${Number(jc.total_amount || 0).toFixed(2)})</span>`;
+              $("openPayNowBtn").onclick = () => window.openPaymentModal(request.id);
+            }
+          }
+
           if ($("jobCardStatusBadge")) {
-            if (jc.customer_status === "accepted") {
-              $("jobCardStatusBadge").textContent = "✓ Signed & Approved";
+            if (isWarranty) {
+              $("jobCardStatusBadge").textContent = "✓ Brand Warranty (₹0.00)";
+              $("jobCardStatusBadge").className = "text-[10px] font-bold px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200";
+            } else if (isPaid) {
+              $("jobCardStatusBadge").textContent = "✓ Paid & Settled";
               $("jobCardStatusBadge").className = "text-[10px] font-bold px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200";
             } else if (jc.customer_status === "disputed") {
               $("jobCardStatusBadge").textContent = "⚠️ Disputed";
               $("jobCardStatusBadge").className = "text-[10px] font-bold px-2.5 py-1 rounded-full bg-rose-100 text-rose-800 border border-rose-200";
             } else {
-              $("jobCardStatusBadge").textContent = "Awaiting Sign-off";
+              $("jobCardStatusBadge").textContent = `Payment Pending (₹${Number(jc.total_amount || 0).toFixed(2)})`;
               $("jobCardStatusBadge").className = "text-[10px] font-bold px-2.5 py-1 rounded-full bg-amber-100 text-amber-800 border border-amber-200";
             }
           }
         })
         .catch(() => {
+          if ($("openPayNowBtn")) $("openPayNowBtn").classList.add("hidden");
           if ($("jobCardStatusBadge")) {
             $("jobCardStatusBadge").textContent = "Pending Technician Submission";
             $("jobCardStatusBadge").className = "text-[10px] font-bold px-2.5 py-1 rounded-full bg-slate-100 text-slate-700 border border-slate-200";
@@ -1952,13 +1986,22 @@ window.openReceiptModal = async function(requestId, showPrevious = false) {
 
   const invoiceNo = `REC-${reqId}${showPrevious ? '-PREV' : ''}`;
   if ($("receiptInvoiceNo")) $("receiptInvoiceNo").textContent = invoiceNo;
-  if ($("receiptDate")) $("receiptDate").textContent = (jc && jc.completed_at) || targetReq.appointment_date || new Date().toLocaleDateString('en-IN');
+  if ($("receiptDate")) $("receiptDate").textContent = (jc && jc.completed_at) || targetReq.paid_at || targetReq.appointment_date || new Date().toLocaleDateString('en-IN');
+
+  const isWarranty = Boolean(targetReq.is_under_warranty || (jc && jc.is_warranty_covered));
+  const isPaid = targetReq.payment_status === "Paid" || targetReq.payment_status === "Paid (Warranty Covered)" || (jc && isWarranty);
+
   if ($("receiptPaidBadge")) {
-    const isPaid = targetReq.payment_status === "Paid" || jc;
-    $("receiptPaidBadge").textContent = isPaid ? "✓ PAID IN FULL" : "PAYMENT PENDING";
+    $("receiptPaidBadge").textContent = isWarranty ? "✓ COVERED UNDER BRAND WARRANTY" : (isPaid ? "✓ PAID IN FULL" : "PAYMENT PENDING");
     $("receiptPaidBadge").className = `mt-1 inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
       isPaid ? "bg-emerald-100 text-emerald-800 border-emerald-200" : "bg-amber-100 text-amber-800 border-amber-200"
     }`;
+  }
+
+  if ($("receiptPaymentMeta")) {
+    const pMethod = targetReq.payment_method ? targetReq.payment_method.toUpperCase() : "UPI / ONLINE";
+    const pTxn = targetReq.payment_transaction_id || `PAY-${reqId}`;
+    $("receiptPaymentMeta").textContent = isWarranty ? "OEM Brand Reimbursed · Customer Liability ₹0.00" : `${pMethod} · Ref: ${pTxn}`;
   }
 
   // Customer info
@@ -1975,48 +2018,82 @@ window.openReceiptModal = async function(requestId, showPrevious = false) {
   if ($("receiptApplianceDetails")) $("receiptApplianceDetails").textContent = `${targetReq.brand || ''} ${targetReq.appliance_name || 'Home Appliance'} (${targetReq.model_no || 'Standard'})`;
   if ($("receiptIssueDescription")) $("receiptIssueDescription").textContent = `Service: ${targetReq.issue || 'Routine Service'}`;
 
-  // Itemized parts & labor
+  // Itemized breakdown adhering to Phase 2 automated price engine
   const parts = (jc && Array.isArray(jc.parts_used)) ? jc.parts_used : [];
+  const inspectFee = jc ? Number(jc.inspection_fee || 299) : 299;
+  const laborCost = jc ? Number(jc.labor_cost || 0) : 350;
   const partsCost = jc ? Number(jc.parts_cost || 0) : 0;
-  const laborCost = jc ? Number(jc.labor_cost || 350) : 350;
-  const taxAmount = jc ? Number(jc.tax_amount || (partsCost + laborCost) * 0.18) : ((partsCost + laborCost) * 0.18);
-  const totalAmount = jc ? Number(jc.total_amount || (partsCost + laborCost + taxAmount)) : (partsCost + laborCost + taxAmount);
+  const discountAmount = jc ? Number(jc.discount_amount || 0) : 0;
+  const cgst = jc ? Number(jc.cgst_amount || 0) : Number(((inspectFee + laborCost + partsCost - discountAmount) * 0.09).toFixed(2));
+  const sgst = jc ? Number(jc.sgst_amount || 0) : Number(((inspectFee + laborCost + partsCost - discountAmount) * 0.09).toFixed(2));
+  const totalAmount = isWarranty ? 0.0 : (jc ? Number(jc.total_amount || 0) : Number((inspectFee + laborCost + partsCost - discountAmount + cgst + sgst).toFixed(2)));
 
   if ($("receiptItemsBody")) {
     let rowsHtml = "";
-    if (parts.length > 0) {
-      parts.forEach((p, idx) => {
-        const pQty = p.quantity || 1;
-        const pRate = Number(p.unit_price || 0);
-        const pTotal = Number(p.total_price || (pQty * pRate));
-        rowsHtml += `
-          <tr>
-            <td class="py-2.5 px-3 text-slate-400 font-mono">${idx + 1}</td>
-            <td class="py-2.5 px-3 font-medium text-slate-800">${escapeHtml(p.part_name)} <span class="text-[10px] text-slate-400 block font-normal">Genuine OEM Part</span></td>
-            <td class="py-2.5 px-3 text-center text-slate-600 font-semibold">${pQty}</td>
-            <td class="py-2.5 px-3 text-right text-slate-600">₹${pRate.toFixed(2)}</td>
-            <td class="py-2.5 px-3 text-right font-bold text-slate-800">₹${pTotal.toFixed(2)}</td>
-          </tr>
-        `;
-      });
-    } else {
+    // Line 1: Inspection Fee (SAC 9987)
+    rowsHtml += `
+      <tr>
+        <td class="py-2.5 px-3 text-slate-400 font-mono">1</td>
+        <td class="py-2.5 px-3 font-medium text-slate-800">
+          Standard Doorstep Inspection & Technical Diagnostics
+          <span class="text-[10px] text-slate-400 block font-normal font-mono">SAC 9987 · GST 18%</span>
+        </td>
+        <td class="py-2.5 px-3 text-center text-slate-600 font-semibold">1</td>
+        <td class="py-2.5 px-3 text-right text-slate-600">₹${inspectFee.toFixed(2)}</td>
+        <td class="py-2.5 px-3 text-right font-bold text-slate-800">₹${inspectFee.toFixed(2)}</td>
+      </tr>
+    `;
+
+    // Line 2: Labor & Service
+    if (laborCost > 0) {
       rowsHtml += `
         <tr>
-          <td class="py-2.5 px-3 text-slate-400 font-mono">1</td>
-          <td class="py-2.5 px-3 font-medium text-slate-800">Standard Technical Inspection & Doorstep Diagnostics</td>
+          <td class="py-2.5 px-3 text-slate-400 font-mono">2</td>
+          <td class="py-2.5 px-3 font-medium text-slate-800">
+            ${escapeHtml(jc?.work_summary || 'Appliance Repair & Overhaul Labor')}
+            <span class="text-[10px] text-slate-400 block font-normal font-mono">SAC 9987 · GST 18%</span>
+          </td>
           <td class="py-2.5 px-3 text-center text-slate-600 font-semibold">1</td>
           <td class="py-2.5 px-3 text-right text-slate-600">₹${laborCost.toFixed(2)}</td>
           <td class="py-2.5 px-3 text-right font-bold text-slate-800">₹${laborCost.toFixed(2)}</td>
         </tr>
       `;
     }
+
+    // Line 3+: Spare parts
+    if (parts.length > 0) {
+      parts.forEach((p, idx) => {
+        const pQty = p.quantity || 1;
+        const pRate = Number(p.unit_price || 0);
+        const pTotal = Number(p.total_price || (pQty * pRate));
+        const hsn = p.hsn_code || "8418";
+        rowsHtml += `
+          <tr>
+            <td class="py-2.5 px-3 text-slate-400 font-mono">${(laborCost > 0 ? 3 : 2) + idx}</td>
+            <td class="py-2.5 px-3 font-medium text-slate-800">
+              ${escapeHtml(p.part_name)} ${p.part_code ? `<span class="text-blue-600 font-mono text-[10px]">[${escapeHtml(p.part_code)}]</span>` : ''}
+              <span class="text-[10px] text-slate-400 block font-normal font-mono">HSN ${escapeHtml(hsn)} · Genuine OEM Component</span>
+            </td>
+            <td class="py-2.5 px-3 text-center text-slate-600 font-semibold">${pQty}</td>
+            <td class="py-2.5 px-3 text-right text-slate-600">₹${pRate.toFixed(2)}</td>
+            <td class="py-2.5 px-3 text-right font-bold text-slate-800">₹${pTotal.toFixed(2)}</td>
+          </tr>
+        `;
+      });
+    }
     $("receiptItemsBody").innerHTML = rowsHtml;
   }
 
-  if ($("receiptPartsSubtotal")) $("receiptPartsSubtotal").textContent = `₹${partsCost.toFixed(2)}`;
+  if ($("receiptInspectionFee")) $("receiptInspectionFee").textContent = `₹${inspectFee.toFixed(2)}`;
   if ($("receiptLaborCost")) $("receiptLaborCost").textContent = `₹${laborCost.toFixed(2)}`;
-  if ($("receiptGstTax")) $("receiptGstTax").textContent = `₹${taxAmount.toFixed(2)}`;
-  if ($("receiptGrandTotal")) $("receiptGrandTotal").textContent = `₹${totalAmount.toFixed(2)}`;
+  if ($("receiptPartsSubtotal")) $("receiptPartsSubtotal").textContent = `₹${partsCost.toFixed(2)}`;
+  if ($("receiptDiscountRow")) {
+    $("receiptDiscountRow").classList.toggle("hidden", discountAmount <= 0);
+    if ($("receiptDiscountAmount")) $("receiptDiscountAmount").textContent = `-₹${discountAmount.toFixed(2)}`;
+  }
+  if ($("receiptCgstTax")) $("receiptCgstTax").textContent = `₹${cgst.toFixed(2)}`;
+  if ($("receiptSgstTax")) $("receiptSgstTax").textContent = `₹${sgst.toFixed(2)}`;
+  if ($("receiptGrandTotal")) $("receiptGrandTotal").textContent = isWarranty ? "₹0.00 (Warranty)" : `₹${totalAmount.toFixed(2)}`;
 
   // Signatures
   if ($("receiptTechSigImg") && jc && jc.technician_signature) {
@@ -2035,6 +2112,165 @@ window.openReceiptModal = async function(requestId, showPrevious = false) {
   } else {
     if ($("receiptCustSigImg")) $("receiptCustSigImg").classList.add("hidden");
     if ($("receiptCustSigText")) $("receiptCustSigText").textContent = "Settled & verified via Completion OTP";
+  }
+};
+
+let currentPayingRequestId = null;
+let currentPayingAmount = 0;
+
+window.openPaymentModal = async function(requestId) {
+  const reqId = requestId || selectedRequestId;
+  if (!reqId) return;
+  currentPayingRequestId = reqId;
+
+  const targetReq = userRequests.find(r => r.id === reqId) || {};
+  let jc = null;
+  try {
+    jc = await readApiJson(`/api/requests/${encodeURIComponent(reqId)}/job-card`);
+  } catch (e) {
+    jc = targetReq.job_card;
+  }
+
+  const isWarranty = Boolean(targetReq.is_under_warranty || (jc && jc.is_warranty_covered));
+  const inspectFee = jc ? Number(jc.inspection_fee || 299) : 299;
+  const laborCost = jc ? Number(jc.labor_cost || 0) : 0;
+  const partsCost = jc ? Number(jc.parts_cost || 0) : 0;
+  const discount = jc ? Number(jc.discount_amount || 0) : 0;
+  const subtotal = inspectFee + laborCost + partsCost - discount;
+  const gstAmount = jc ? Number(jc.tax_amount || 0) : Number((subtotal * 0.18).toFixed(2));
+  const totalAmount = isWarranty ? 0.0 : (jc ? Number(jc.total_amount || 0) : Number((subtotal + gstAmount).toFixed(2)));
+
+  currentPayingAmount = totalAmount;
+
+  if ($("payModalReqId")) $("payModalReqId").textContent = reqId;
+  if ($("payModalAppliance")) $("payModalAppliance").textContent = `${targetReq.brand || ''} ${targetReq.appliance_name || 'Home Appliance'}`;
+  if ($("payModalAmount")) $("payModalAmount").textContent = `₹${totalAmount.toFixed(2)}`;
+  if ($("payModalInspectFee")) $("payModalInspectFee").textContent = `₹${inspectFee.toFixed(2)}`;
+  if ($("payModalLaborParts")) $("payModalLaborParts").textContent = `₹${(laborCost + partsCost).toFixed(2)}`;
+  if ($("payModalGst")) $("payModalGst").textContent = `₹${gstAmount.toFixed(2)}`;
+
+  if ($("payModalWarrantyNotice")) {
+    $("payModalWarrantyNotice").classList.toggle("hidden", !isWarranty);
+  }
+
+  if ($("confirmPayBtn")) {
+    $("confirmPayBtn").textContent = isWarranty ? "✓ Confirm ₹0.00 Warranty Settlement" : `🔒 Pay ₹${totalAmount.toFixed(2)} & Close Service`;
+  }
+  if ($("paymentFormMessage")) $("paymentFormMessage").textContent = "";
+
+  openDialog("paymentModal");
+};
+
+window.submitServicePayment = async function() {
+  if (!currentPayingRequestId) return;
+  const btn = $("confirmPayBtn");
+  const msg = $("paymentFormMessage");
+  if (btn) btn.disabled = true;
+  if (msg) msg.textContent = "";
+
+  const selectedMethod = document.querySelector('input[name="payMethod"]:checked')?.value || "upi";
+
+  try {
+    await writeApiJson(`/api/requests/${encodeURIComponent(currentPayingRequestId)}/payment`, {
+      payment_method: selectedMethod,
+      amount: currentPayingAmount,
+      notes: `Customer online settlement via ${selectedMethod.toUpperCase()}`
+    });
+
+    closeDialog("paymentModal");
+    showToast(`Payment of ₹${currentPayingAmount.toFixed(2)} successful! Official GST invoice generated.`, "success");
+
+    // Refresh data and open receipt
+    await loadDashboardData();
+    window.openReceiptModal(currentPayingRequestId, false);
+  } catch (err) {
+    if (msg) msg.textContent = err.message || "Payment processing failed. Please try another method.";
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+};
+
+let currentAmcApplianceId = null;
+let selectedAmcPlanId = null;
+
+window.openAmcModal = async function(applianceId) {
+  currentAmcApplianceId = applianceId;
+  const app = userAppliances.find(a => a.id === applianceId);
+  if ($("amcModalApplianceTitle")) {
+    $("amcModalApplianceTitle").textContent = app ? `AMC Care: ${app.brand} ${app.category}` : "Annual Maintenance Contract";
+  }
+  if ($("amcModalApplianceSubtitle")) {
+    $("amcModalApplianceSubtitle").textContent = app ? `Model: ${app.model_no || 'N/A'} · Standard Warranty Expiry: ${app.warranty_end_date || 'Standard'}` : "Select plan to extend your protection";
+  }
+
+  const container = $("amcPlansContainer");
+  if (container) {
+    container.innerHTML = '<div class="text-center py-6 text-xs text-slate-400">Loading authorized AMC packages...</div>';
+  }
+  if ($("amcFormMessage")) $("amcFormMessage").textContent = "";
+
+  openDialog("amcModal");
+
+  try {
+    const plans = await readApiJson("/api/warranty-amc/amc/plans");
+    if (!container) return;
+    if (!plans.length) {
+      container.innerHTML = '<div class="p-4 text-xs text-slate-500 text-center">No AMC plans active for this category right now.</div>';
+      return;
+    }
+
+    selectedAmcPlanId = plans[0].id;
+    container.innerHTML = plans.map((p, idx) => `
+      <label class="p-3.5 rounded-2xl border ${idx === 0 ? 'border-blue-500 bg-blue-50/40 ring-1 ring-blue-500/20' : 'border-slate-200 hover:border-slate-300'} flex items-start gap-3 cursor-pointer amc-plan-card transition">
+        <input type="radio" name="amcPlanRadio" value="${escapeHtml(p.id)}" ${idx === 0 ? 'checked' : ''} class="mt-1 text-blue-600 focus:ring-0">
+        <div class="flex-1">
+          <div class="flex items-center justify-between">
+            <strong class="text-sm font-bold text-slate-900">${escapeHtml(p.name)}</strong>
+            <span class="text-sm font-extrabold text-blue-600">₹${Number(p.price).toFixed(2)}<small class="text-slate-400 font-normal"> / ${p.duration_months} mo</small></span>
+          </div>
+          <p class="text-xs text-slate-500 mt-1">${escapeHtml(p.description || '')}</p>
+          <div class="mt-2 flex items-center gap-2 text-[10px] text-slate-600 font-medium">
+            <span class="px-2 py-0.5 rounded-md bg-white border border-slate-200">✓ ${p.free_services_count} Free Tune-ups</span>
+            <span class="px-2 py-0.5 rounded-md bg-white border border-slate-200">✓ ${p.parts_discount_percent}% Spares Discount</span>
+            <span class="px-2 py-0.5 rounded-md bg-white border border-slate-200">✓ 0 Labor Charges</span>
+          </div>
+        </div>
+      </label>
+    `).join("");
+
+    container.querySelectorAll('input[name="amcPlanRadio"]').forEach(radio => {
+      radio.addEventListener('change', () => {
+        selectedAmcPlanId = radio.value;
+        container.querySelectorAll('.amc-plan-card').forEach(card => card.classList.remove('border-blue-500', 'bg-blue-50/40', 'ring-1', 'ring-blue-500/20'));
+        radio.closest('.amc-plan-card')?.classList.add('border-blue-500', 'bg-blue-50/40', 'ring-1', 'ring-blue-500/20');
+      });
+    });
+  } catch (err) {
+    if (container) container.innerHTML = `<div class="p-4 text-xs text-rose-600">${escapeHtml(err.message || 'Could not load AMC plans.')}</div>`;
+  }
+};
+
+window.confirmAmcSubscription = async function() {
+  if (!currentAmcApplianceId || !selectedAmcPlanId) return;
+  const btn = $("subscribeAmcBtn");
+  const msg = $("amcFormMessage");
+  if (btn) btn.disabled = true;
+  if (msg) msg.textContent = "";
+
+  try {
+    const sub = await writeApiJson("/api/warranty-amc/amc/subscribe", {
+      appliance_id: currentAmcApplianceId,
+      plan_id: selectedAmcPlanId,
+      payment_method: "upi"
+    });
+
+    closeDialog("amcModal");
+    showToast(`Successfully subscribed to ${sub.plan_name}! AMC active until ${sub.end_date}.`, "success");
+    await loadDashboardData();
+  } catch (err) {
+    if (msg) msg.textContent = err.message || "Failed to process AMC subscription.";
+  } finally {
+    if (btn) btn.disabled = false;
   }
 };
 

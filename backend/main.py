@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.db.session import SessionLocal
 from app.seeds import seed_database
-from app.routes import auth, appliances, requests as requests_route, admin, company, franchise, uploads
+from app.routes import auth, appliances, requests as requests_route, admin, company, franchise, uploads, inventory, warranty_amc
 from fastapi.staticfiles import StaticFiles
 
 logger = logging.getLogger("keepalive")
@@ -142,6 +142,8 @@ app.include_router(company.onboarding_router)
 app.include_router(franchise.router)
 app.include_router(franchise.onboarding_router)
 app.include_router(uploads.router)
+app.include_router(inventory.router)
+app.include_router(warranty_amc.router)
 
 uploads_static_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "app", "static", "uploads")
 os.makedirs(uploads_static_dir, exist_ok=True)

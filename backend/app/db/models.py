@@ -101,6 +101,11 @@ class ApplianceModel(Base):
     model_no = Column(String(64), nullable=False)
     registered_on = Column(String(64), nullable=False)
     warranty_status = Column(String(64), default="Active")
+    warranty_start_date = Column(String(32), nullable=True)
+    warranty_end_date = Column(String(32), nullable=True)
+    amc_active = Column(Boolean, default=False)
+    amc_plan_name = Column(String(64), nullable=True)
+    amc_end_date = Column(String(32), nullable=True)
     serial_no = Column(String(64), nullable=True)
     icon = Column(String(64), default="box")
 
@@ -137,7 +142,11 @@ class ServiceRequestModel(Base):
     previous_technician_name = Column(String(128), nullable=True)
     previous_job_card_json = Column(Text, nullable=True)
     is_reopened = Column(Boolean, nullable=True, default=False)
+    is_under_warranty = Column(Boolean, nullable=True, default=False)
     payment_status = Column(String(32), nullable=True, default="Pending")
+    payment_method = Column(String(32), nullable=True) # upi, card, netbanking, cash
+    payment_transaction_id = Column(String(64), nullable=True)
+    paid_at = Column(String(64), nullable=True)
     timeline_json = Column(Text, nullable=False) # JSON string serialized timeline steps
     defect_photo = Column(Text, nullable=True)
     reopened_reason = Column(Text, nullable=True)
@@ -151,11 +160,16 @@ class JobCardModel(Base):
     technician_id = Column(String(64), ForeignKey("technicians.id"), nullable=False, index=True)
     customer_id = Column(String(64), ForeignKey("users.id"), nullable=False, index=True)
     work_summary = Column(Text, nullable=False)
-    parts_used_json = Column(Text, nullable=False, default="[]") # JSON list of {part_name, quantity, unit_price, total_price}
+    parts_used_json = Column(Text, nullable=False, default="[]") # JSON list of {part_code, part_name, quantity, unit_price, total_price, hsn_code}
+    inspection_fee = Column(Float, nullable=False, default=299.0)
     labor_cost = Column(Float, nullable=False, default=0.0)
     parts_cost = Column(Float, nullable=False, default=0.0)
+    discount_amount = Column(Float, nullable=False, default=0.0)
+    cgst_amount = Column(Float, nullable=False, default=0.0)
+    sgst_amount = Column(Float, nullable=False, default=0.0)
     tax_amount = Column(Float, nullable=False, default=0.0)
     total_amount = Column(Float, nullable=False, default=0.0)
+    is_warranty_covered = Column(Boolean, nullable=False, default=False)
     technician_signature = Column(Text, nullable=True)
     customer_signature = Column(Text, nullable=True)
     customer_status = Column(String(32), nullable=False, default="pending_acceptance") # pending_acceptance, accepted, disputed
@@ -175,3 +189,85 @@ class ServiceFeedbackModel(Base):
     rating_pricing = Column(Integer, nullable=False, default=5)
     comment = Column(Text, nullable=True)
     created_at = Column(String(64), nullable=False)
+
+class SparePartModel(Base):
+    __tablename__ = "spare_parts"
+
+    id = Column(String(64), primary_key=True, index=True) # e.g. PART-LG-COMP01
+    part_code = Column(String(64), unique=True, index=True, nullable=False)
+    name = Column(String(128), nullable=False)
+    category = Column(String(64), nullable=False) # Refrigerator, Washing Machine, AC, Microwave
+    brand = Column(String(64), nullable=False) # LG, Samsung, Whirlpool, Universal
+    unit_price = Column(Float, nullable=False, default=0.0)
+    hsn_code = Column(String(32), nullable=False, default="8418")
+    description = Column(Text, nullable=True)
+    is_active = Column(Boolean, default=True)
+
+class FranchiseInventoryModel(Base):
+    __tablename__ = "franchise_inventories"
+    __table_args__ = (UniqueConstraint("branch_id", "part_id", name="uq_branch_part_inventory"),)
+
+    id = Column(String(64), primary_key=True, index=True)
+    branch_id = Column(String(64), ForeignKey("company_branches.id", ondelete="CASCADE"), nullable=False, index=True)
+    part_id = Column(String(64), ForeignKey("spare_parts.id", ondelete="CASCADE"), nullable=False, index=True)
+    quantity_available = Column(Integer, nullable=False, default=0)
+    reorder_level = Column(Integer, nullable=False, default=5)
+    last_restocked_at = Column(DateTime, nullable=True)
+
+class InventoryTransactionModel(Base):
+    __tablename__ = "inventory_transactions"
+
+    id = Column(String(64), primary_key=True, index=True) # e.g. TXN-INV-001
+    branch_id = Column(String(64), ForeignKey("company_branches.id", ondelete="CASCADE"), nullable=False, index=True)
+    part_id = Column(String(64), ForeignKey("spare_parts.id", ondelete="CASCADE"), nullable=False, index=True)
+    transaction_type = Column(String(32), nullable=False) # stock_in, stock_out, job_consumption, transfer
+    quantity = Column(Integer, nullable=False)
+    reference_id = Column(String(64), nullable=True) # e.g. JC-7845, PO-1092
+    performed_by = Column(String(128), nullable=True)
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+
+class WarrantyClaimModel(Base):
+    __tablename__ = "warranty_claims"
+
+    id = Column(String(64), primary_key=True, index=True) # e.g. CLM-2026-001
+    request_id = Column(String(64), ForeignKey("service_requests.id", ondelete="CASCADE"), nullable=False, index=True)
+    company_id = Column(String(64), ForeignKey("users.id"), nullable=False, index=True)
+    branch_id = Column(String(64), ForeignKey("company_branches.id"), nullable=False, index=True)
+    appliance_id = Column(String(64), nullable=False)
+    claim_amount = Column(Float, nullable=False, default=0.0)
+    parts_claimed_json = Column(Text, nullable=False, default="[]")
+    status = Column(String(32), nullable=False, default="Pending Review") # Pending Review, Approved, Settled, Rejected
+    claim_notes = Column(Text, nullable=True)
+    submitted_at = Column(String(64), nullable=False)
+    settled_at = Column(String(64), nullable=True)
+
+class AMCPlanModel(Base):
+    __tablename__ = "amc_plans"
+
+    id = Column(String(64), primary_key=True, index=True) # e.g. AMC-SILVER, AMC-GOLD, AMC-PLATINUM
+    name = Column(String(64), nullable=False)
+    category = Column(String(64), nullable=False) # Refrigerator, AC, Washing Machine, Microwave, All
+    duration_months = Column(Integer, default=12)
+    price = Column(Float, nullable=False)
+    free_services = Column(Integer, default=2)
+    discount_parts_pct = Column(Float, default=15.0)
+    zero_labor = Column(Boolean, default=True)
+    description = Column(Text, nullable=True)
+
+class AMCSubscriptionModel(Base):
+    __tablename__ = "amc_subscriptions"
+
+    id = Column(String(64), primary_key=True, index=True) # e.g. SUB-AMC-001
+    customer_id = Column(String(64), ForeignKey("users.id"), nullable=False, index=True)
+    appliance_id = Column(String(64), ForeignKey("appliances.id"), nullable=False, index=True)
+    plan_id = Column(String(64), ForeignKey("amc_plans.id"), nullable=False, index=True)
+    plan_name = Column(String(64), nullable=False)
+    start_date = Column(String(32), nullable=False)
+    end_date = Column(String(32), nullable=False)
+    status = Column(String(32), default="Active") # Active, Renewal Due, Expired
+    services_included = Column(Integer, default=2)
+    services_used = Column(Integer, default=0)
+    amount_paid = Column(Float, nullable=False, default=0.0)
+    created_at = Column(String(64), nullable=False)
+
