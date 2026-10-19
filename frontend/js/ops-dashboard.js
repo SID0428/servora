@@ -1174,23 +1174,23 @@ function renderCompanyCustomers() {
   if ($("tableTitle")) $("tableTitle").textContent = "Registered customers & products";
   if ($("tableSubtitle")) $("tableSubtitle").textContent = "Customers who have registered your company's appliances for service.";
   if ($("sidePanelTitle")) $("sidePanelTitle").textContent = "Customer reach";
-  if ($("healthContent")) $("healthContent").innerHTML = `<div class="section-empty"><strong>${companyCustomers.length}</strong> registered products under your brand</div>`;
-  if ($("activityContent")) $("activityContent").innerHTML = `<div class="section-empty">When customers add appliances under your company, their contact details, address, and device model appear here.</div>`;
+  if ($("healthContent")) $("healthContent").innerHTML = `<div class="section-empty"><strong>${companyCustomers.length}</strong> registered customers under your brand</div>`;
+  if ($("activityContent")) $("activityContent").innerHTML = `<div class="section-empty">Click any customer to inspect their registered appliances, warranty periods, and service records.</div>`;
   if ($("bottomTitle")) $("bottomTitle").textContent = "Customer directory";
   if ($("bottomSubtitle")) $("bottomSubtitle").textContent = "Customers with products under your warranty and service coverage.";
 
   if ($("requestHead")) $("requestHead").innerHTML = [
     "Customer",
     "Contact info",
-    "Service address",
-    "Registered product",
-    "Model & serial",
+    "Location",
+    "Registered products",
     "Warranty",
-    "Registered date"
+    "Service activity",
+    "Action"
   ].map((label) => `<th>${safe(label)}</th>`).join("");
 
   const query = $("requestSearch") ? $("requestSearch").value.trim().toLowerCase() : "";
-  if ($("requestSearch")) $("requestSearch").placeholder = "Search customers or products";
+  if ($("requestSearch")) $("requestSearch").placeholder = "Search customers, products, or phone";
 
   const filtered = companyCustomers.filter((item) =>
     [
@@ -1198,6 +1198,7 @@ function renderCompanyCustomers() {
       item.customer_email,
       item.customer_phone,
       item.customer_address,
+      item.products_summary,
       item.category,
       item.brand,
       item.model_no,
@@ -1219,20 +1220,308 @@ function renderCompanyCustomers() {
               .join("")
               .toUpperCase()
           );
-          return `<tr><td><div class="customer-cell"><span class="customer-avatar">${initials}</span><span class="customer-name"><strong>${safe(item.customer_name)}</strong><small>ID: ${safe(item.customer_id)}</small></span></div></td><td><div>${safe(item.customer_email)}</div><small class="text-slate-400 font-mono">${safe(item.customer_phone)}</small></td><td class="max-w-[220px]"><span class="block text-xs leading-relaxed text-slate-700">${safe(item.customer_address || "Address not provided")}</span></td><td><strong>${safe(item.brand)} ${safe(item.category)}</strong></td><td><div>Model: <strong>${safe(item.model_no)}</strong></div><small class="text-slate-400">SN: ${safe(item.serial_no || "N/A")}</small></td><td><span class="status-pill completed">${safe(item.warranty_status || "Active")}</span></td><td>${safe(item.registered_on || "—")}</td></tr>`;
+          const prodCount = item.total_products_count || (item.products ? item.products.length : 1);
+          const activeWCount = item.active_warranties_count !== undefined ? item.active_warranties_count : (item.warranty_status === "Active" ? 1 : 0);
+          const warrantyPill = activeWCount > 0
+            ? `<span class="status-pill completed">Active (${activeWCount})</span>`
+            : `<span class="status-pill pending">Expired</span>`;
+          const servicePill = (item.ongoing_services_count || 0) > 0
+            ? `<span class="status-pill in-progress">${item.ongoing_services_count} Ongoing</span>`
+            : `<span class="text-xs text-slate-500 font-medium">${item.completed_services_count || 0} Resolved</span>`;
+
+          return `
+            <tr class="hover:bg-slate-50/80 cursor-pointer transition" data-customer-row="${safe(item.customer_id)}">
+              <td>
+                <div class="customer-cell flex items-center gap-3">
+                  <span class="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 text-white font-bold flex items-center justify-center text-xs shadow-xs flex-shrink-0">${initials}</span>
+                  <span class="customer-name">
+                    <button type="button" class="font-bold text-slate-900 hover:text-blue-600 text-left block text-sm" data-view-customer="${safe(item.customer_id)}">${safe(item.customer_name)}</button>
+                    <small class="block text-slate-400 font-mono text-[10px]">ID: ${safe(item.customer_id)}</small>
+                  </span>
+                </div>
+              </td>
+              <td>
+                <div class="text-xs font-semibold text-slate-800">📞 ${safe(item.customer_phone)}</div>
+                <small class="block text-slate-400 text-xs truncate max-w-[170px]" title="${safe(item.customer_email)}">✉️ ${safe(item.customer_email)}</small>
+              </td>
+              <td class="max-w-[180px]">
+                <span class="block text-xs font-medium text-slate-700 truncate" title="${safe(item.customer_address)}">📍 ${safe(item.short_location || item.customer_address || "Location not set")}</span>
+                <small class="block text-slate-400 text-[10px]">Coverage Area</small>
+              </td>
+              <td>
+                <div class="flex items-center gap-1.5">
+                  <span class="px-2 py-0.5 rounded-full text-xs font-bold bg-blue-50 text-blue-700 border border-blue-200/70 whitespace-nowrap">${prodCount} Product${prodCount === 1 ? "" : "s"}</span>
+                </div>
+                <small class="block text-slate-500 font-medium truncate max-w-[160px] mt-0.5" title="${safe(item.products_summary || item.category || "")}">${safe(item.products_summary || item.category || "Appliance")}</small>
+              </td>
+              <td class="whitespace-nowrap">${warrantyPill}</td>
+              <td class="whitespace-nowrap">${servicePill}</td>
+              <td class="whitespace-nowrap text-right">
+                <button type="button" class="table-action font-bold text-blue-600 hover:text-blue-800 flex items-center gap-1" data-view-customer="${safe(item.customer_id)}">View Details →</button>
+              </td>
+            </tr>
+          `;
         })
         .join("")
     : `<tr><td class="empty-row" colspan="7">${
         query
-          ? "No customers or products match your search."
+          ? "No customers match your search."
           : "No customer products registered yet. When customers add appliances under your brand, they will appear here automatically."
       }</td></tr>`;
 
-  $("requestCount").textContent = `${filtered.length} customer product${
+  $("requestCount").textContent = `${filtered.length} customer${
     filtered.length === 1 ? "" : "s"
   } shown`;
   $("resourceGrid").innerHTML = "";
+
+  document.querySelectorAll("[data-view-customer]").forEach((button) =>
+    button.addEventListener("click", (e) => {
+      e.stopPropagation();
+      openCompanyCustomerDetail(button.dataset.viewCustomer);
+    })
+  );
+  document.querySelectorAll("[data-customer-row]").forEach((row) =>
+    row.addEventListener("click", (e) => {
+      if (e.target.closest("button") || e.target.closest("a")) return;
+      openCompanyCustomerDetail(row.dataset.customerRow);
+    })
+  );
 }
+
+async function openCompanyCustomerDetail(customerId) {
+  const dialog = $("customerDetailModal");
+  if (!dialog) return;
+
+  switchCustomerDetailTab("products");
+
+  if (typeof dialog.showModal === "function") {
+    dialog.showModal();
+  } else {
+    dialog.hidden = false;
+  }
+
+  const existing = companyCustomers.find((c) => c.customer_id === customerId);
+  if (existing) {
+    if ($("custModalAvatar")) $("custModalAvatar").textContent = safe(existing.avatar || (existing.customer_name || "CU").slice(0, 2).toUpperCase());
+    if ($("custModalName")) $("custModalName").textContent = existing.customer_name || "Customer";
+    if ($("custModalId")) $("custModalId").textContent = `ID: ${existing.customer_id}`;
+    if ($("custModalPhone")) $("custModalPhone").textContent = `📞 ${existing.customer_phone || "—"}`;
+    if ($("custModalEmail")) $("custModalEmail").textContent = `✉️ ${existing.customer_email || "—"}`;
+    if ($("custModalAddress")) $("custModalAddress").textContent = `📍 ${existing.customer_address || "—"}`;
+  }
+
+  if ($("custProductsList")) $("custProductsList").innerHTML = `<div class="p-8 text-center text-slate-400">Loading registered products & warranty details...</div>`;
+  if ($("custOngoingRows")) $("custOngoingRows").innerHTML = `<tr><td colspan="6" class="p-8 text-center text-slate-400">Loading ongoing services...</td></tr>`;
+  if ($("custHistoryRows")) $("custHistoryRows").innerHTML = `<tr><td colspan="6" class="p-8 text-center text-slate-400">Loading service history...</td></tr>`;
+
+  try {
+    const data = await companyApi(`/customers/${encodeURIComponent(customerId)}`);
+    if (!data || !data.customer) throw new Error("Customer details not found");
+
+    const c = data.customer;
+    const s = data.stats || {};
+
+    if ($("custModalAvatar")) $("custModalAvatar").textContent = safe(c.avatar || (c.name || "CU").slice(0, 2).toUpperCase());
+    if ($("custModalName")) $("custModalName").textContent = c.name;
+    if ($("custModalId")) $("custModalId").textContent = `ID: ${c.id}`;
+    if ($("custModalPhone")) $("custModalPhone").textContent = `📞 ${c.phone || "—"}`;
+    if ($("custModalEmail")) $("custModalEmail").textContent = `✉️ ${c.email || "—"}`;
+    if ($("custModalAddress")) $("custModalAddress").textContent = `📍 ${c.address || "—"}`;
+
+    if ($("custStatProducts")) $("custStatProducts").textContent = s.total_products || 0;
+    if ($("custStatWarranties")) $("custStatWarranties").textContent = s.active_warranties || 0;
+    if ($("custStatOngoing")) $("custStatOngoing").textContent = s.ongoing_services || 0;
+    if ($("custStatHistory")) $("custStatHistory").textContent = s.completed_services || 0;
+
+    if ($("tabCountCustProducts")) $("tabCountCustProducts").textContent = (data.products || []).length;
+    if ($("tabCountCustOngoing")) $("tabCountCustOngoing").textContent = (data.ongoing_services || []).length;
+    if ($("tabCountCustHistory")) $("tabCountCustHistory").textContent = (data.completed_services || []).length;
+
+    renderCustomerProducts(data.products || []);
+    renderCustomerOngoing(data.ongoing_services || []);
+    renderCustomerHistory(data.completed_services || []);
+  } catch (err) {
+    showToast(extractErrorMessage(err.message, "Failed to load customer details"), "error");
+  }
+}
+window.openCompanyCustomerDetail = openCompanyCustomerDetail;
+
+function renderCustomerProducts(products) {
+  const container = $("custProductsList");
+  if (!container) return;
+  if (!products || products.length === 0) {
+    container.innerHTML = `<div class="p-8 text-center text-slate-400 bg-slate-50 rounded-2xl">No appliances registered by this customer under your brand.</div>`;
+    return;
+  }
+
+  container.innerHTML = products.map((p) => {
+    const isUnderW = p.is_under_warranty;
+    const warrantyBadge = isUnderW
+      ? `<span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">✓ Active Warranty</span>`
+      : `<span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-100 text-rose-800 border border-rose-200">⚠️ Warranty Expired</span>`;
+
+    const amcBadge = p.amc_active
+      ? `<span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-purple-100 text-purple-800 border border-purple-200">🛡️ AMC Active: ${safe(p.amc_plan_name)} (Exp: ${safe(p.amc_end_date)})</span>`
+      : `<span class="text-xs text-slate-400 font-medium">Standard OEM Coverage</span>`;
+
+    return `
+      <div class="p-4 rounded-2xl bg-white border border-slate-200 hover:border-blue-200 transition shadow-xs space-y-3">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-2.5">
+          <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-xl bg-blue-50 border border-blue-100 text-blue-700 font-bold flex items-center justify-center text-lg flex-shrink-0">
+              ⚡
+            </div>
+            <div>
+              <h5 class="text-sm font-bold text-slate-900">${safe(p.brand)} ${safe(p.category)}</h5>
+              <p class="text-xs text-slate-500">Registered on <span class="font-medium text-slate-700">${safe(p.registered_on)}</span></p>
+            </div>
+          </div>
+          <div class="flex items-center gap-2">
+            ${warrantyBadge}
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+          <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-100">
+            <span class="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Model Number</span>
+            <strong class="font-mono text-slate-800 font-semibold block mt-0.5 truncate" title="${safe(p.model_no)}">${safe(p.model_no)}</strong>
+          </div>
+          <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-100">
+            <span class="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Serial Number</span>
+            <strong class="font-mono text-slate-800 font-semibold block mt-0.5 truncate" title="${safe(p.serial_no)}">${safe(p.serial_no)}</strong>
+          </div>
+          <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-100">
+            <span class="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Warranty Period</span>
+            <span class="text-slate-700 font-medium block mt-0.5 text-[11px]">${safe(p.warranty_start_date)} → ${safe(p.warranty_end_date || "Ongoing")}</span>
+          </div>
+          <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-100">
+            <span class="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">AMC Subscription</span>
+            <div class="mt-0.5">${amcBadge}</div>
+          </div>
+        </div>
+      </div>
+    `;
+  }).join("");
+}
+
+function renderCustomerOngoing(requests) {
+  const tbody = $("custOngoingRows");
+  if (!tbody) return;
+  if (!requests || requests.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="6" class="p-8 text-center text-slate-400">No active service requests in progress for this customer.</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = requests.map((r) => {
+    const warrantyPill = r.is_under_warranty
+      ? `<span class="ml-1.5 px-1.5 py-0.2 rounded text-[9px] font-bold bg-blue-100 text-blue-800">Warranty</span>`
+      : "";
+
+    return `
+      <tr class="hover:bg-slate-50/80 transition">
+        <td class="p-3 font-mono font-bold text-blue-600 whitespace-nowrap">${safe(r.id)}</td>
+        <td class="p-3">
+          <strong class="text-slate-900 font-semibold flex items-center">${safe(r.appliance_name)}${warrantyPill}</strong>
+          <small class="text-slate-500 block truncate max-w-xs">${safe(r.issue)}</small>
+        </td>
+        <td class="p-3">
+          <span class="text-slate-800 font-medium block">${safe(r.branch_name)}</span>
+          <small class="text-slate-400 block">Tech: ${safe(r.technician_name)}</small>
+        </td>
+        <td class="p-3 text-slate-600 whitespace-nowrap">${safe(r.appointment_date)} · ${safe(r.appointment_slot)}</td>
+        <td class="p-3 whitespace-nowrap"><span class="status-pill in-progress">${safe(r.status)}</span></td>
+        <td class="p-3 text-right whitespace-nowrap">
+          <button type="button" class="table-action font-bold text-blue-600 hover:text-blue-800" onclick="viewRequestDetails('${safe(r.id)}')">View Ticket →</button>
+        </td>
+      </tr>
+    `;
+  }).join("");
+}
+
+function renderCustomerHistory(requests) {
+  const tbody = $("custHistoryRows");
+  if (!tbody) return;
+  if (!requests || requests.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="6" class="p-8 text-center text-slate-400">No completed service records found for this customer.</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = requests.map((r) => {
+    const payBadge = r.payment_status === "Paid"
+      ? `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">Paid (₹${Number(r.total_amount || 0).toFixed(2)})</span>`
+      : `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700">${safe(r.payment_status || "Pending")}</span>`;
+
+    return `
+      <tr class="hover:bg-slate-50/80 transition">
+        <td class="p-3 font-mono font-bold text-blue-600 whitespace-nowrap">${safe(r.id)}</td>
+        <td class="p-3">
+          <strong class="text-slate-900 font-semibold block">${safe(r.appliance_name)}</strong>
+          <small class="text-slate-500 block truncate max-w-xs">${safe(r.issue)}</small>
+        </td>
+        <td class="p-3">
+          <span class="text-slate-800 font-medium block">${safe(r.technician_name)}</span>
+          <small class="text-slate-400 block">${safe(r.branch_name)}</small>
+        </td>
+        <td class="p-3 whitespace-nowrap">${payBadge}</td>
+        <td class="p-3 text-slate-600 whitespace-nowrap">${safe(r.appointment_date || r.created_at)}</td>
+        <td class="p-3 text-right whitespace-nowrap">
+          <button type="button" class="table-action font-bold text-blue-600 hover:text-blue-800" onclick="viewRequestDetails('${safe(r.id)}')">View Ticket →</button>
+        </td>
+      </tr>
+    `;
+  }).join("");
+}
+
+function switchCustomerDetailTab(targetTab) {
+  const buttons = document.querySelectorAll(".cust-tab-btn");
+  const panels = document.querySelectorAll(".cust-tab-panel");
+
+  buttons.forEach((btn) => {
+    if (btn.dataset.custTab === targetTab) {
+      btn.classList.add("border-blue-600", "text-blue-600");
+      btn.classList.remove("border-transparent", "text-slate-500");
+    } else {
+      btn.classList.remove("border-blue-600", "text-blue-600");
+      btn.classList.add("border-transparent", "text-slate-500");
+    }
+  });
+
+  panels.forEach((p) => {
+    p.classList.add("hidden");
+  });
+
+  const activePanelId = {
+    products: "custTabProducts",
+    ongoing: "custTabOngoing",
+    history: "custTabHistory"
+  }[targetTab] || "custTabProducts";
+
+  const activePanel = $(activePanelId);
+  if (activePanel) activePanel.classList.remove("hidden");
+}
+
+function initCustomerDetailModalEvents() {
+  const modal = $("customerDetailModal");
+  if (!modal) return;
+
+  $("closeCustDetailModalBtn")?.addEventListener("click", () => {
+    if (typeof modal.close === "function") modal.close();
+    else modal.hidden = true;
+  });
+
+  $("closeCustDetailModalFooterBtn")?.addEventListener("click", () => {
+    if (typeof modal.close === "function") modal.close();
+    else modal.hidden = true;
+  });
+
+  document.querySelectorAll(".cust-tab-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const target = btn.dataset.custTab;
+      if (target) switchCustomerDetailTab(target);
+    });
+  });
+}
+
 // ==========================================
 // Phase 2: Franchise Warehouse & Spares Inventory
 // ==========================================
@@ -3723,10 +4012,11 @@ function initEvents() {
   $("opsJcLaborCost")?.addEventListener("input", recalculateOpsJobCardTotals);
   $("opsJobCardForm")?.addEventListener("submit", submitOpsJobCard);
 
-  // Phase 2 Modals (Warehouse Restock, Warranty Claim Review & Branch Deep-Dive)
+  // Phase 2 Modals (Warehouse Restock, Warranty Claim Review, Branch Deep-Dive & Customer Deep-Dive)
   initRestockModalEvents();
   initClaimReviewModalEvents();
   initBranchDetailModalEvents();
+  initCustomerDetailModalEvents();
 }
 
 // Profile Modal & Edit Details for Ops Portals (Technician, Franchise, Company, Admin)

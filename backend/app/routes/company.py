@@ -14,7 +14,8 @@ from sqlalchemy.orm import Session
 from app.db.models import (
     ApplianceModel, BranchOnboardingModel, CompanyBranchModel, UserModel,
     BranchTechnicianModel, TechnicianModel, FranchiseInventoryModel,
-    SparePartModel, InventoryTransactionModel, ServiceRequestModel, WarrantyClaimModel
+    SparePartModel, InventoryTransactionModel, ServiceRequestModel, WarrantyClaimModel,
+    JobCardModel
 )
 from app.db.session import get_db
 from app.email_service import send_brevo_email
@@ -340,23 +341,186 @@ def list_company_customers(request: Request, db: Session = Depends(get_db)):
         .order_by(ApplianceModel.registered_on.desc())
         .all()
     )
-    customers_data = []
+
+    customers_map = {}
     for appliance, customer in rows:
-        customers_data.append({
+        if customer.id not in customers_map:
+            addr = customer.address or "Address not provided"
+            addr_parts = [p.strip() for p in addr.split(",") if p.strip()]
+            short_loc = addr_parts[-2] if len(addr_parts) >= 2 else (addr_parts[0] if addr_parts else "Location")
+
+            customers_map[customer.id] = {
+                "customer_id": customer.id,
+                "customer_name": customer.name,
+                "customer_email": customer.email,
+                "customer_phone": customer.phone,
+                "customer_address": addr,
+                "short_location": short_loc,
+                "avatar": customer.name[:2].upper(),
+                "products": [],
+                "active_warranties_count": 0,
+                "ongoing_services_count": 0,
+                "completed_services_count": 0,
+                "total_services_count": 0,
+            }
+
+        is_w_active = (appliance.warranty_status or "").lower() == "active"
+        if is_w_active:
+            customers_map[customer.id]["active_warranties_count"] += 1
+
+        customers_map[customer.id]["products"].append({
             "appliance_id": appliance.id,
             "category": appliance.category,
             "brand": appliance.brand,
             "model_no": appliance.model_no,
             "serial_no": appliance.serial_no or "Not provided",
-            "warranty_status": appliance.warranty_status or "Standard Active",
+            "warranty_status": appliance.warranty_status or "Active",
+            "warranty_start_date": appliance.warranty_start_date or appliance.registered_on,
+            "warranty_end_date": appliance.warranty_end_date or "",
+            "is_under_warranty": is_w_active,
+            "amc_active": bool(appliance.amc_active),
+            "amc_plan_name": appliance.amc_plan_name or "",
+            "amc_end_date": appliance.amc_end_date or "",
             "registered_on": appliance.registered_on,
-            "customer_id": customer.id,
-            "customer_name": customer.name,
-            "customer_email": customer.email,
-            "customer_phone": customer.phone,
-            "customer_address": customer.address or "Address not provided",
         })
-    return customers_data
+
+    customers_list = []
+    for cust_id, cust_data in customers_map.items():
+        reqs = db.query(ServiceRequestModel).filter(
+            ServiceRequestModel.customer_id == cust_id,
+            or_(
+                ServiceRequestModel.company_id == company.id,
+                ServiceRequestModel.brand.ilike(company.name.strip())
+            )
+        ).all()
+        ongoing_cnt = sum(1 for r in reqs if r.status != "Completed" and r.status_badge != "Completed")
+        completed_cnt = sum(1 for r in reqs if r.status == "Completed" or r.status_badge == "Completed")
+        cust_data["ongoing_services_count"] = ongoing_cnt
+        cust_data["completed_services_count"] = completed_cnt
+        cust_data["total_services_count"] = len(reqs)
+        cust_data["total_products_count"] = len(cust_data["products"])
+
+        p_names = [f"{p['brand']} {p['category']}" for p in cust_data["products"]]
+        cust_data["products_summary"] = ", ".join(p_names[:2]) + ("..." if len(p_names) > 2 else "")
+        cust_data["warranty_summary"] = f"Active ({cust_data['active_warranties_count']})" if cust_data["active_warranties_count"] > 0 else "Expired"
+        cust_data["registered_on"] = cust_data["products"][0]["registered_on"] if cust_data["products"] else "—"
+
+        cust_data["brand"] = cust_data["products"][0]["brand"] if cust_data["products"] else company.name
+        cust_data["category"] = cust_data["products"][0]["category"] if cust_data["products"] else "Appliances"
+        cust_data["model_no"] = cust_data["products"][0]["model_no"] if cust_data["products"] else "—"
+        cust_data["serial_no"] = cust_data["products"][0]["serial_no"] if cust_data["products"] else "—"
+        cust_data["warranty_status"] = cust_data["warranty_summary"]
+
+        customers_list.append(cust_data)
+
+    return customers_list
+
+
+@router.get("/customers/{customer_id}")
+def get_company_customer_details(customer_id: str, request: Request, db: Session = Depends(get_db)):
+    company = require_company(request, db)
+    customer = db.query(UserModel).filter(UserModel.id == customer_id).first()
+    if not customer:
+        raise HTTPException(status_code=404, detail="Customer record not found")
+
+    appliances = db.query(ApplianceModel).filter(
+        ApplianceModel.user_id == customer.id,
+        or_(
+            ApplianceModel.company_id == company.id,
+            ApplianceModel.brand.ilike(company.name.strip())
+        )
+    ).order_by(ApplianceModel.registered_on.desc()).all()
+
+    products_list = []
+    active_warranties = 0
+    for a in appliances:
+        is_w_active = (a.warranty_status or "").lower() == "active"
+        if is_w_active:
+            active_warranties += 1
+        products_list.append({
+            "id": a.id,
+            "category": a.category,
+            "brand": a.brand,
+            "model_no": a.model_no,
+            "serial_no": a.serial_no or "Not provided",
+            "registered_on": a.registered_on,
+            "warranty_status": a.warranty_status or "Active",
+            "warranty_start_date": a.warranty_start_date or a.registered_on,
+            "warranty_end_date": a.warranty_end_date or "Standard 1-Year",
+            "is_under_warranty": is_w_active,
+            "amc_active": bool(a.amc_active),
+            "amc_plan_name": a.amc_plan_name or "None",
+            "amc_end_date": a.amc_end_date or "—"
+        })
+
+    reqs = db.query(ServiceRequestModel).filter(
+        ServiceRequestModel.customer_id == customer.id,
+        or_(
+            ServiceRequestModel.company_id == company.id,
+            ServiceRequestModel.brand.ilike(company.name.strip())
+        )
+    ).order_by(ServiceRequestModel.created_at.desc()).all()
+
+    ongoing = []
+    completed = []
+    for r in reqs:
+        tech_name = "Unassigned"
+        if r.technician_id:
+            t = db.query(TechnicianModel).filter(TechnicianModel.id == r.technician_id).first()
+            if t:
+                tech_name = t.name
+        branch_name = "Authorized Service Hub"
+        if r.branch_id:
+            b = db.query(CompanyBranchModel).filter(CompanyBranchModel.id == r.branch_id).first()
+            if b:
+                branch_name = b.branch_name
+
+        jc = db.query(JobCardModel).filter(JobCardModel.request_id == r.id).first()
+        total_amt = jc.total_amount if jc else 0.0
+        item = {
+            "id": r.id,
+            "appliance_id": r.appliance_id,
+            "appliance_name": r.appliance_name,
+            "brand": r.brand,
+            "model_no": r.model_no,
+            "issue": r.issue,
+            "description": r.description or "",
+            "status": r.status or "In Progress",
+            "status_badge": r.status_badge or "In Progress",
+            "created_at": r.created_at,
+            "appointment_date": r.appointment_date,
+            "appointment_slot": r.appointment_slot,
+            "technician_name": tech_name,
+            "branch_name": branch_name,
+            "total_amount": total_amt,
+            "payment_status": r.payment_status or "Pending",
+            "is_under_warranty": bool(r.is_under_warranty)
+        }
+        if r.status == "Completed" or r.status_badge == "Completed":
+            completed.append(item)
+        else:
+            ongoing.append(item)
+
+    return {
+        "customer": {
+            "id": customer.id,
+            "name": customer.name,
+            "email": customer.email,
+            "phone": customer.phone,
+            "address": customer.address or "Address not provided",
+            "avatar": customer.name[:2].upper()
+        },
+        "stats": {
+            "total_products": len(products_list),
+            "active_warranties": active_warranties,
+            "ongoing_services": len(ongoing),
+            "completed_services": len(completed),
+            "total_services": len(reqs)
+        },
+        "products": products_list,
+        "ongoing_services": ongoing,
+        "completed_services": completed
+    }
 
 
 @router.post("/branches", status_code=201)
