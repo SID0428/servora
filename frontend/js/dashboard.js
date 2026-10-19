@@ -18,9 +18,18 @@ const roleDestinations = {
 
 function readStoredUser() {
   try {
-    return JSON.parse(localStorage.getItem("servora_user") || "null");
+    const specific = localStorage.getItem("servora_user_customer");
+    if (specific) {
+      const parsed = JSON.parse(specific);
+      if (parsed && parsed.role === "customer") return parsed;
+    }
+    const generic = localStorage.getItem("servora_user");
+    if (generic) {
+      const parsed = JSON.parse(generic);
+      if (parsed && parsed.role === "customer") return parsed;
+    }
+    return null;
   } catch {
-    localStorage.removeItem("servora_user");
     return null;
   }
 }
@@ -136,6 +145,7 @@ async function loadCurrentCustomer() {
         return false;
       }
       localStorage.setItem("servora_user", JSON.stringify(currentUser));
+      localStorage.setItem("servora_user_customer", JSON.stringify(currentUser));
       return true;
     } else if (response.status === 401) {
       if (cachedUser && cachedUser.id) {
@@ -1350,6 +1360,7 @@ async function submitProfileEdit(event) {
       currentUser.phone = updated.phone;
       if (updated.email) currentUser.email = updated.email;
       localStorage.setItem("servora_user", JSON.stringify(currentUser));
+      localStorage.setItem("servora_user_customer", JSON.stringify(currentUser));
       setProfile(currentUser);
     }
     showToast("Profile details updated successfully!", "success");
@@ -1540,6 +1551,7 @@ async function submitAddress(event) {
     if (currentUser) {
       currentUser.address = data.address;
       localStorage.setItem("servora_user", JSON.stringify(currentUser));
+      localStorage.setItem("servora_user_customer", JSON.stringify(currentUser));
       setProfile(currentUser);
     }
     if ($("bookAddress")) $("bookAddress").value = data.address;
@@ -1637,6 +1649,7 @@ window.closeDrawer = closeDrawer;
 function logout() {
   const token = currentUser?.session_token;
   localStorage.removeItem("servora_user");
+  localStorage.removeItem("servora_user_customer");
   const headers = token ? { Authorization: `Bearer ${token}` } : {};
   fetch(`${API_BASE_URL}/api/auth/logout`, {
     method: "POST",

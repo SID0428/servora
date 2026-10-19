@@ -6,7 +6,20 @@
   <script>
     (function() {
       try {
-        var u = JSON.parse(localStorage.getItem("servora_user") || "null");
+        var u = null;
+        var opsRoles = ["franchise", "company", "technician", "admin", "branch"];
+        for (var i = 0; i < opsRoles.length; i++) {
+          try {
+            var val = localStorage.getItem("servora_user_" + opsRoles[i]);
+            if (val) {
+              var parsed = JSON.parse(val);
+              if (parsed && parsed.role) { u = parsed; break; }
+            }
+          } catch(e) {}
+        }
+        if (!u) {
+          try { u = JSON.parse(localStorage.getItem("servora_user") || "null"); } catch(e) {}
+        }
         var roleRoutes = {
           technician: "./technician-dashboard.html",
           franchise: "./franchise-dashboard.html",

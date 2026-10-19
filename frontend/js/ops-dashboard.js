@@ -33,8 +33,26 @@ function roleMatches(userRole, routeRole) {
 const targetRole = dashboardRouteRole || (typeof document !== "undefined" ? document.body?.dataset?.role : null) || "company";
 const loginPath = portalLoginPaths[targetRole] || "./index.html";
 
-let initialUser = null;
-try { initialUser = JSON.parse(localStorage.getItem("servora_user") || "null"); } catch { initialUser = null; }
+function getStoredOpsUser(desiredRole) {
+  try {
+    const roleKey = (desiredRole === "branch" || desiredRole === "franchise") ? "franchise" : desiredRole;
+    if (roleKey) {
+      const specific = localStorage.getItem(`servora_user_${roleKey}`);
+      if (specific) {
+        const parsed = JSON.parse(specific);
+        if (parsed && roleMatches(parsed.role, desiredRole)) return parsed;
+      }
+    }
+    const generic = localStorage.getItem("servora_user");
+    if (generic) {
+      const parsed = JSON.parse(generic);
+      if (parsed && roleMatches(parsed.role, desiredRole)) return parsed;
+    }
+  } catch (e) {}
+  return null;
+}
+
+let initialUser = getStoredOpsUser(targetRole);
 
 function checkInitialAuth() {
   if (!initialUser || !initialUser.role) {
@@ -42,9 +60,8 @@ function checkInitialAuth() {
     return false;
   }
   if (targetRole && !roleMatches(initialUser.role, targetRole)) {
-    console.warn(`User role '${initialUser.role}' does not match target role '${targetRole}'. Redirecting to appropriate workspace.`);
-    const dest = roleDashboardPaths[initialUser.role] || loginPath;
-    window.location.replace(dest);
+    console.warn(`User role '${initialUser.role}' does not match target role '${targetRole}'. Redirecting to ${loginPath}.`);
+    window.location.replace(loginPath);
     return false;
   }
   return true;
@@ -3911,34 +3928,37 @@ function renderResources() {
 }
 
 async function loadDashboard() {
-  const stored = localStorage.getItem("servora_user");
-  if (stored) { try { user = JSON.parse(stored); } catch { user = null; } }
+  const currentRole = dashboardRouteRole || targetRole;
+  const storedUser = getStoredOpsUser(currentRole);
+  if (storedUser) user = storedUser;
+  else {
+    const rawStored = localStorage.getItem("servora_user");
+    if (rawStored) { try { user = JSON.parse(rawStored); } catch { user = null; } }
+  }
   try {
     const userResponse = await fetch(`${API_BASE_URL}/api/auth/me`, { credentials: "include", headers: authHeaders() });
     if (userResponse.ok) {
       const resData = await userResponse.json();
       const authenticated = resData.user;
       if (dashboardRouteRole && !roleMatches(authenticated.role, dashboardRouteRole)) {
-        const dest = roleDashboardPaths[authenticated.role] || loginPath;
-        window.location.replace(dest);
+        window.location.replace(loginPath);
         return;
       }
       const token = resData.session_token || user?.session_token || initialUser?.session_token;
       user = { ...user, ...authenticated, session_token: token };
       localStorage.setItem("servora_user", JSON.stringify(user));
+      const roleKey = (user.role === "branch" || user.role === "franchise") ? "franchise" : user.role;
+      localStorage.setItem(`servora_user_${roleKey}`, JSON.stringify(user));
     } else if (userResponse.status === 401) {
-      if (stored && user?.id) {
+      if (user?.id) {
         console.warn("Transient 401 on /api/auth/me; retaining stored ops session.");
       } else {
         window.location.replace(loginPath);
         return;
       }
-    } else if (stored) {
-      user = JSON.parse(stored);
     }
     if (dashboardRouteRole && user?.role && !roleMatches(user.role, dashboardRouteRole)) {
-      const dest = roleDashboardPaths[user.role] || loginPath;
-      window.location.replace(dest);
+      window.location.replace(loginPath);
       return;
     }
     if (dashboardRouteRole) role = dashboardRouteRole;
@@ -4095,6 +4115,8 @@ function initEvents() {
     const logoutRole = dashboardRouteRole || role;
     const headers = authHeaders();
     localStorage.removeItem("servora_user");
+    const rKey = (logoutRole === "branch" || logoutRole === "franchise") ? "franchise" : logoutRole;
+    localStorage.removeItem(`servora_user_${rKey}`);
     const loginPath = {
       admin: "/admin-login.html",
       company: "/company-login.html",

@@ -6,19 +6,20 @@
   <script>
     (function() {
       try {
-        var u = JSON.parse(localStorage.getItem("servora_user") || "null");
-        var roleRoutes = {
-          customer: "./customer-dashboard.html",
-          company: "./company-dashboard.html",
-          franchise: "./franchise-dashboard.html",
-          branch: "./franchise-dashboard.html",
-          technician: "./technician-dashboard.html",
-          admin: "./admin-dashboard.html"
-        };
-        if (!u || !u.role) {
+        var u = null;
+        try {
+          var uRole = localStorage.getItem("servora_user_franchise");
+          if (uRole) u = JSON.parse(uRole);
+        } catch(e) {}
+        if (!u || !u.role || (u.role !== "franchise" && u.role !== "branch")) {
+          try {
+            var uGen = JSON.parse(localStorage.getItem("servora_user") || "null");
+            if (uGen && (uGen.role === "franchise" || uGen.role === "branch")) u = uGen;
+          } catch(e) {}
+        }
+        if (!u || !u.role || (u.role !== "franchise" && u.role !== "branch")) {
           window.location.replace("./franchise-login.html");
-        } else if (u.role !== "franchise" && u.role !== "branch") {
-          window.location.replace(roleRoutes[u.role] || "./franchise-login.html");
+          return;
         }
       } catch (e) {
         window.location.replace("./franchise-login.html");
