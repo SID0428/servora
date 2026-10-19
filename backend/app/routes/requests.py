@@ -37,6 +37,7 @@ from app.schemas import (
     TimelineStep,
     FranchiseAssignPayload,
     TechnicianActionPayload,
+    TechnicianLocationPayload,
     JobCardPartItem,
     JobCardCreatePayload,
     JobCardResponse,
@@ -192,6 +193,9 @@ def format_request_detail(req: ServiceRequestModel, db: Session) -> ServiceReque
         pincode=req.pincode,
         latitude=req.latitude,
         longitude=req.longitude,
+        tech_latitude=getattr(req, "tech_latitude", None),
+        tech_longitude=getattr(req, "tech_longitude", None),
+        tech_location_updated_at=getattr(req, "tech_location_updated_at", None),
         defect_photo=req.defect_photo,
         reopened_reason=req.reopened_reason,
         reopened_at=req.reopened_at,
@@ -545,6 +549,10 @@ def technician_action(request_id: str, payload: TechnicianActionPayload, request
     elif action in ("start_visit", "on_the_way"):
         req.status = "Technician on the Way"
         req.status_badge = "In Progress"
+        if payload.latitude is not None and payload.longitude is not None:
+            req.tech_latitude = payload.latitude
+            req.tech_longitude = payload.longitude
+            req.tech_location_updated_at = now_str
         for step in timeline:
             if step.get("id") in ("step_1", "step_2"):
                 step["state"] = "completed"
@@ -604,6 +612,18 @@ def technician_action(request_id: str, payload: TechnicianActionPayload, request
         raise HTTPException(status_code=400, detail=f"Unknown action: {payload.action}")
 
     req.timeline_json = json.dumps(timeline)
+    db.commit()
+    db.refresh(req)
+    return format_request_detail(req, db)
+
+@router.post("/{request_id}/location", response_model=ServiceRequestDetail)
+def update_technician_location(request_id: str, payload: TechnicianLocationPayload, db: Session = Depends(get_db)):
+    req = db.query(ServiceRequestModel).filter(ServiceRequestModel.id == request_id).first()
+    if not req:
+        raise HTTPException(status_code=404, detail="Service request not found")
+    req.tech_latitude = payload.latitude
+    req.tech_longitude = payload.longitude
+    req.tech_location_updated_at = datetime.now().strftime("%d %b %Y, %I:%M %p")
     db.commit()
     db.refresh(req)
     return format_request_detail(req, db)

@@ -1052,8 +1052,11 @@ function populateTracking(request) {
           otpTitle.className = "text-[10px] font-bold text-amber-800 uppercase tracking-wider block";
         }
         if (otpDesc) {
-          otpDesc.textContent = "Share with technician upon arrival to begin inspection.";
-          otpDesc.className = "text-xs text-amber-900 mt-0.5";
+          const isEnRoute = request.status === "Technician on the Way";
+          otpDesc.innerHTML = isEnRoute
+            ? `<span>Share with technician upon arrival.</span> <button type="button" class="ml-2 inline-flex items-center gap-1 font-bold text-blue-600 hover:underline text-xs" onclick="window.openLiveTrackingModal('${request.id}')">📍 Track Live Location →</button>`
+            : "Share with technician upon arrival to begin inspection.";
+          otpDesc.className = "text-xs text-amber-900 mt-0.5 flex flex-wrap items-center";
         }
         otpDisplay.textContent = startOtpVal;
         otpDisplay.className = "font-mono text-2xl text-amber-950 bg-white px-3.5 py-1.5 rounded-xl border border-amber-200 shadow-sm tracking-widest shrink-0";
@@ -1208,11 +1211,24 @@ function populateTracking(request) {
 
 let trackingAnimationTimer = null;
 
+let liveTrackingPollTimer = null;
 function stopTrackingAnimation() {
-  if (trackingAnimationTimer) {
-    clearInterval(trackingAnimationTimer);
-    trackingAnimationTimer = null;
+  if (liveTrackingPollTimer) {
+    clearInterval(liveTrackingPollTimer);
+    liveTrackingPollTimer = null;
   }
+}
+
+function calculateCustomerDistanceKm(lat1, lon1, lat2, lon2) {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
 }
 
 window.openLiveTrackingModal = function (requestId) {
@@ -1224,28 +1240,14 @@ window.openLiveTrackingModal = function (requestId) {
 
   const customerLat = req.latitude || 28.5355;
   const customerLng = req.longitude || 77.3910;
-  // Starting origin point for technician (~2.5km distance)
-  const techStartLat = customerLat + 0.016;
-  const techStartLng = customerLng - 0.014;
+  const hasLiveGps = (req.tech_latitude != null && req.tech_longitude != null);
+  let techLat = hasLiveGps ? req.tech_latitude : (customerLat + 0.016);
+  let techLng = hasLiveGps ? req.tech_longitude : (customerLng - 0.014);
 
   if ($("liveMapTechEta")) {
-    $("liveMapTechEta").textContent = `${techName} is on the way · Calculating real-time route…`;
-  }
-
-  // Generate smooth street route waypoints
-  const steps = 36;
-  const waypoints = [];
-  for (let i = 0; i <= steps; i++) {
-    const t = i / steps;
-    // Cubic bezier curve for natural road trajectory
-    const p0 = [techStartLat, techStartLng];
-    const p1 = [techStartLat - 0.005, techStartLng + 0.008];
-    const p2 = [customerLat + 0.007, techStartLng + 0.004];
-    const p3 = [customerLat, customerLng];
-
-    const lat = Math.pow(1 - t, 3) * p0[0] + 3 * Math.pow(1 - t, 2) * t * p1[0] + 3 * (1 - t) * Math.pow(t, 2) * p2[0] + Math.pow(t, 3) * p3[0];
-    const lng = Math.pow(1 - t, 3) * p0[1] + 3 * Math.pow(1 - t, 2) * t * p1[1] + 3 * (1 - t) * Math.pow(t, 2) * p2[1] + Math.pow(t, 3) * p3[1];
-    waypoints.push([lat, lng]);
+    $("liveMapTechEta").textContent = hasLiveGps
+      ? `${techName} is on the way · Connecting to live GPS…`
+      : `${techName} is on the way · Waiting for technician GPS signal…`;
   }
 
   setTimeout(() => {
@@ -1270,7 +1272,7 @@ window.openLiveTrackingModal = function (requestId) {
       const customerMarker = window.L.marker([customerLat, customerLng], { icon: homeIcon }).addTo(liveMapInstance);
       customerMarker.bindPopup(`<b>Customer Doorstep</b><br>${escapeHtml(req.customer_address || "Service Location")}`);
 
-      // Technician Vehicle Marker (Blue Bike with Pulsing Radar Ring - Swiggy/Zomato style)
+      // Technician Vehicle Marker (Blue Bike with Pulsing Radar Ring)
       const techIcon = window.L.divIcon({
         className: "custom-tech-pin",
         html: `<div style="position:relative;display:flex;align-items:center;justify-content:center;">
@@ -1281,48 +1283,56 @@ window.openLiveTrackingModal = function (requestId) {
         iconAnchor: [17, 17]
       });
 
-      let currentStep = 0;
-      const techMarker = window.L.marker(waypoints[0], { icon: techIcon }).addTo(liveMapInstance);
-      techMarker.bindPopup(`<b>${escapeHtml(techName)}</b><br><span id="livePopupEta">On the way · Moving</span>`).openPopup();
+      const techMarker = window.L.marker([techLat, techLng], { icon: techIcon }).addTo(liveMapInstance);
 
-      // Background planned route (dashed light gray)
-      window.L.polyline(waypoints, { color: "#cbd5e1", weight: 5, dashArray: "6, 8" }).addTo(liveMapInstance);
+      // Route line between technician and customer doorstep
+      const activeRouteLine = window.L.polyline([[techLat, techLng], [customerLat, customerLng]], {
+        color: "#0066ff",
+        weight: 5,
+        dashArray: hasLiveGps ? null : "6, 8"
+      }).addTo(liveMapInstance);
 
-      // Remaining live active route (solid vibrant blue)
-      const activeRouteLine = window.L.polyline(waypoints, { color: "#0066ff", weight: 5 }).addTo(liveMapInstance);
+      function updateCustomerRouteDisplay(lat, lng, isLive, lastUpdated) {
+        const distKm = calculateCustomerDistanceKm(lat, lng, customerLat, customerLng);
+        const etaMins = Math.max(1, Math.round((distKm / 25) * 60));
 
-      liveMapInstance.fitBounds(window.L.latLngBounds([waypoints[0], [customerLat, customerLng]]), { padding: [50, 50] });
+        if (distKm < 0.05) {
+          const statusText = `✓ ${techName} has arrived at your doorstep! Share your Service Start OTP with the technician.`;
+          if ($("liveMapTechEta")) $("liveMapTechEta").textContent = statusText;
+          techMarker.getPopup()?.setContent(`<b>${escapeHtml(techName)}</b><br><span style="color:#10b981;font-weight:bold;">✓ Arrived at your doorstep</span>`);
+        } else if (isLive) {
+          const statusText = `${techName} is on the way · ~${distKm.toFixed(1)} km away (ETA ~${etaMins} mins)`;
+          if ($("liveMapTechEta")) $("liveMapTechEta").textContent = statusText;
+          techMarker.getPopup()?.setContent(`<b>${escapeHtml(techName)}</b><br><span>Live GPS: ~${distKm.toFixed(1)} km away (${etaMins} mins)</span>`);
+        } else {
+          const statusText = `${techName} has started visit · Waiting for live GPS location…`;
+          if ($("liveMapTechEta")) $("liveMapTechEta").textContent = statusText;
+          techMarker.getPopup()?.setContent(`<b>${escapeHtml(techName)}</b><br><span>En route · Waiting for GPS</span>`);
+        }
+      }
 
-      // Animate technician movement incrementally
-      trackingAnimationTimer = setInterval(() => {
+      techMarker.bindPopup(`<b>${escapeHtml(techName)}</b><br><span id="livePopupEta">Technician Location</span>`).openPopup();
+      updateCustomerRouteDisplay(techLat, techLng, hasLiveGps, req.tech_location_updated_at);
+      liveMapInstance.fitBounds(window.L.latLngBounds([[techLat, techLng], [customerLat, customerLng]]), { padding: [50, 50] });
+
+      // Poll every 8 seconds for live technician coordinates from backend
+      liveTrackingPollTimer = setInterval(async () => {
         if (!liveMapInstance) {
           stopTrackingAnimation();
           return;
         }
-        if (currentStep < waypoints.length - 1) {
-          currentStep++;
-          const nextPos = waypoints[currentStep];
-          techMarker.setLatLng(nextPos);
-
-          const remainingWaypoints = waypoints.slice(currentStep);
-          activeRouteLine.setLatLngs(remainingWaypoints);
-
-          const remainingSteps = waypoints.length - 1 - currentStep;
-          const etaMins = Math.max(1, Math.ceil((remainingSteps / waypoints.length) * 11));
-          const distKm = ((remainingSteps / waypoints.length) * 2.5).toFixed(1);
-
-          const statusText = remainingSteps === 0
-            ? `✓ ${techName} has arrived at your doorstep!`
-            : `${techName} is on the way · Arriving in ~${etaMins} mins (${distKm} km · 28 km/h)`;
-
-          if ($("liveMapTechEta")) $("liveMapTechEta").textContent = statusText;
-          const popupSpan = document.getElementById("livePopupEta");
-          if (popupSpan) popupSpan.textContent = `ETA ~${etaMins} mins (${distKm} km)`;
-        } else {
-          stopTrackingAnimation();
-          if ($("liveMapTechEta")) $("liveMapTechEta").textContent = `✓ ${techName} has arrived at your doorstep! Share your safety OTP with the technician.`;
-        }
-      }, 1000);
+        try {
+          const updated = await readApiJson(`/api/requests/${encodeURIComponent(req.id)}`);
+          if (updated && updated.tech_latitude != null && updated.tech_longitude != null) {
+            const newLat = updated.tech_latitude;
+            const newLng = updated.tech_longitude;
+            techMarker.setLatLng([newLat, newLng]);
+            activeRouteLine.setLatLngs([[newLat, newLng], [customerLat, customerLng]]);
+            activeRouteLine.setStyle({ dashArray: null });
+            updateCustomerRouteDisplay(newLat, newLng, true, updated.tech_location_updated_at);
+          }
+        } catch (e) {}
+      }, 8000);
     }
   }, 200);
 };

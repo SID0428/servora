@@ -57,6 +57,15 @@ def seed_database(db: Session):
     if "longitude" not in req_columns:
         with engine.begin() as connection:
             connection.execute(text("ALTER TABLE service_requests ADD COLUMN longitude FLOAT NULL"))
+    if "tech_latitude" not in req_columns:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE service_requests ADD COLUMN tech_latitude FLOAT NULL"))
+    if "tech_longitude" not in req_columns:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE service_requests ADD COLUMN tech_longitude FLOAT NULL"))
+    if "tech_location_updated_at" not in req_columns:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE service_requests ADD COLUMN tech_location_updated_at VARCHAR(64) NULL"))
     if "defect_photo" not in req_columns:
         with engine.begin() as connection:
             connection.execute(text("ALTER TABLE service_requests ADD COLUMN defect_photo TEXT NULL"))

@@ -169,38 +169,70 @@ Servora Operations
 def notify_technician_arrival(req: ServiceRequestModel, db: Session):
     customer = db.query(UserModel).filter(UserModel.id == req.customer_id).first()
     to_email = customer.email if customer else "customer@servora.com"
-    to_name = req.customer_name or "Valued Customer"
+    to_name = req.customer_name or (customer.name if customer else "Valued Customer")
+    tech = db.query(TechnicianModel).filter(TechnicianModel.id == req.technician_id).first() if req.technician_id else None
+    tech_name = tech.name if tech else "Your Field Service Technician"
     start_otp = getattr(req, "start_otp", None) or req.verification_otp
     comp_otp = getattr(req, "completion_otp", None) or "----"
-    subject = f"Technician is On the Way / Arriving for Servora Ticket #{req.id}"
+    appliance_desc = f"{req.brand or ''} {req.appliance_name or 'Appliance'}".strip()
+    subject = f"Your Technician is on the Way! · Servora Ticket #{req.id}"
 
     text = f"""Hello {to_name},
 
-Your assigned technician is en route / arriving at your doorstep for ticket #{req.id}.
+Good news! Your assigned technician, {tech_name}, has started the visit and is now on the way to your doorstep for service ticket #{req.id} ({appliance_desc}).
 
-Verification Details:
-- Start OTP: {start_otp} (share upon arrival)
-- Completion OTP: {comp_otp} (share ONLY when repair is fully finished and tested)
+Service Verification Details:
+- Service Start OTP: {start_otp} (Share this 4-digit OTP with {tech_name} upon arrival to verify doorstep visit)
+- Service Completion OTP: {comp_otp} (Share ONLY when the repair is fully finished, tested, and you are satisfied)
+
+Live Location Tracking:
+You can track {tech_name}'s real-time live location directly on your Servora Customer Dashboard:
+https://servora.vercel.app/customer-dashboard.html
+
+Service Address:
+{req.customer_address}
 
 Best regards,
-Servora Support
+Servora Customer Care & Field Operations
 """
     html = f"""
-    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 12px; background: #ffffff;">
-        <h2 style="color: #1e293b; margin: 0 0 16px 0;">Technician Doorstep Arrival Notice</h2>
-        <p style="font-size: 14px; color: #334155;">Hello <strong>{to_name}</strong>,</p>
-        <p style="font-size: 14px; color: #475569;">Your technician is arriving for ticket <strong>#{req.id}</strong> ({req.appliance_name}).</p>
-        <div style="display: flex; gap: 12px; margin: 20px 0;">
-            <div style="flex: 1; background-color: #fefce8; border: 1px solid #fde047; border-radius: 8px; padding: 16px; text-align: center;">
-                <span style="font-size: 11px; font-weight: bold; color: #854d0e; display: block;">START OTP (Arrival)</span>
-                <span style="font-size: 24px; font-weight: 800; color: #713f12; font-family: monospace; letter-spacing: 4px; display: block; margin-top: 4px;">{start_otp}</span>
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 14px; background: #ffffff;">
+        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 20px;">
+            <span style="font-size: 22px; font-weight: 800; color: #0066ff;">servora<span style="color: #0066ff;">.</span></span>
+            <span style="font-size: 11px; font-weight: 700; color: #10b981; background: #ecfdf5; padding: 3px 8px; border-radius: 9999px; border: 1px solid #a7f3d0; margin-left: auto;">📍 TECHNICIAN EN ROUTE</span>
+        </div>
+
+        <h2 style="color: #0f172a; margin: 0 0 10px 0; font-size: 20px;">Your Technician is On the Way</h2>
+        <p style="font-size: 14px; color: #334155; line-height: 1.5; margin: 0 0 16px 0;">Hello <strong>{to_name}</strong>,</p>
+        <p style="font-size: 14px; color: #475569; line-height: 1.5; margin: 0 0 18px 0;">
+            Your technician <strong>{tech_name}</strong> has started the service visit and is currently traveling to your doorstep for ticket <strong>#{req.id}</strong> (<em>{appliance_desc}</em>).
+        </p>
+
+        <!-- Live Location Banner -->
+        <div style="background: linear-gradient(135deg, #eff6ff 0%, #e0e7ff 100%); border: 1px solid #bfdbfe; border-radius: 10px; padding: 14px 16px; margin: 0 0 20px 0; text-align: center;">
+            <p style="font-size: 13px; font-weight: 700; color: #1d4ed8; margin: 0 0 8px 0;">🗺️ Live Location Sharing Active</p>
+            <p style="font-size: 12px; color: #475569; margin: 0 0 12px 0;">You can view {tech_name}'s live GPS location on the map in real time on your dashboard.</p>
+            <a href="https://servora.vercel.app/customer-dashboard.html" style="display: inline-block; background: #0066ff; color: #ffffff; text-decoration: none; font-size: 12px; font-weight: 700; padding: 8px 18px; border-radius: 8px;">Track Technician Live →</a>
+        </div>
+
+        <!-- Verification OTPs -->
+        <div style="display: flex; gap: 12px; margin: 0 0 20px 0;">
+            <div style="flex: 1; background-color: #fefce8; border: 1.5px solid #fde047; border-radius: 10px; padding: 14px; text-align: center;">
+                <span style="font-size: 10px; font-weight: 800; color: #854d0e; display: block; letter-spacing: 0.5px;">1. START OTP (Arrival)</span>
+                <span style="font-size: 26px; font-weight: 800; color: #713f12; font-family: monospace; letter-spacing: 4px; display: block; margin-top: 4px;">{start_otp}</span>
+                <span style="font-size: 10px; color: #a16207; display: block; margin-top: 4px;">Share with technician at doorstep</span>
             </div>
-            <div style="flex: 1; background-color: #e0e7ff; border: 1px solid #c7d2fe; border-radius: 8px; padding: 16px; text-align: center;">
-                <span style="font-size: 11px; font-weight: bold; color: #3730a3; display: block;">COMPLETION OTP (End)</span>
-                <span style="font-size: 24px; font-weight: 800; color: #312e81; font-family: monospace; letter-spacing: 4px; display: block; margin-top: 4px;">{comp_otp}</span>
+            <div style="flex: 1; background-color: #e0e7ff; border: 1.5px solid #c7d2fe; border-radius: 10px; padding: 14px; text-align: center;">
+                <span style="font-size: 10px; font-weight: 800; color: #3730a3; display: block; letter-spacing: 0.5px;">2. COMPLETION OTP</span>
+                <span style="font-size: 26px; font-weight: 800; color: #312e81; font-family: monospace; letter-spacing: 4px; display: block; margin-top: 4px;">{comp_otp}</span>
+                <span style="font-size: 10px; color: #4338ca; display: block; margin-top: 4px;">Share ONLY after job is finished</span>
             </div>
         </div>
-        <p style="font-size: 12px; color: #64748b;">Do not share your Completion OTP until repair work is finished and verified to your satisfaction.</p>
+
+        <div style="background-color: #f8fafc; border-radius: 8px; padding: 12px; font-size: 12px; color: #64748b; line-height: 1.4;">
+            <strong style="color: #334155;">Service Location:</strong> {req.customer_address}<br>
+            <strong style="color: #334155;">Safety Protection:</strong> Do not share your Completion OTP until repair work is completely finished, demonstrated, and verified to your satisfaction.
+        </div>
     </div>
     """
     send_notification_email(to_email, to_name, subject, text, html, "technician_arrival", req.id, req.customer_id, db)

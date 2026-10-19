@@ -182,6 +182,9 @@ class ServiceRequestDetail(BaseModel):
     pincode: Optional[str] = None
     latitude: Optional[float] = None
     longitude: Optional[float] = None
+    tech_latitude: Optional[float] = None
+    tech_longitude: Optional[float] = None
+    tech_location_updated_at: Optional[str] = None
     defect_photo: Optional[str] = None
     reopened_reason: Optional[str] = None
     reopened_at: Optional[str] = None
@@ -256,6 +259,12 @@ class FranchiseAssignPayload(BaseModel):
 class TechnicianActionPayload(BaseModel):
     action: str # "accept", "start_visit", "start_service", "complete"
     verification_otp: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+
+class TechnicianLocationPayload(BaseModel):
+    latitude: float
+    longitude: float
 
 class CustomerAddressUpdate(BaseModel):
     house_flat: str = Field(min_length=1, max_length=128)
