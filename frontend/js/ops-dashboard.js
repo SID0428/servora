@@ -484,17 +484,27 @@ function renderCompanyBranches() {
   if ($("activityContent")) $("activityContent").innerHTML = `<div class="section-empty">Branch records are visible only to your company account.</div>`;
   if ($("bottomTitle")) $("bottomTitle").textContent = "Company branches";
   if ($("bottomSubtitle")) $("bottomSubtitle").textContent = "Branch contacts registered by your company.";
-  if ($("requestHead")) $("requestHead").innerHTML = ["Branch", "Franchise owner or manager", "Email", "Mobile number", "Address", "Pincode", "Portal access"].map((name) => `<th>${safe(name)}</th>`).join("");
+  if ($("requestHead")) $("requestHead").innerHTML = ["Branch", "Franchise owner or manager", "Email", "Mobile number", "Address", "Pincode", "Portal access", "Action"].map((name) => `<th>${safe(name)}</th>`).join("");
   const query = $("requestSearch") ? $("requestSearch").value.trim().toLowerCase() : "";
   const filtered = branches.filter((branch) => [branch.branch_name, branch.manager_name, branch.email, branch.mobile, branch.address, branch.pincode].join(" ").toLowerCase().includes(query));
   if ($("requestRows")) $("requestRows").innerHTML = filtered.length ? filtered.map((branch) => {
     const status = branch.password_set ? `Password set · ${new Intl.DateTimeFormat("en-IN", { dateStyle: "medium", timeStyle: "short" }).format(new Date(branch.password_set_at))}` : "Password not set";
-    const access = branch.password_set ? `<span class="status-pill completed">Active</span>` : `<button class="table-action" data-resend-franchise="${safe(branch.id)}">Resend setup link →</button>`;
-    return `<tr><td><strong>${safe(branch.branch_name)}</strong></td><td>${safe(branch.manager_name)}<small class="company-password-state ${branch.password_set ? "is-set" : "is-pending"}">${safe(status)}</small></td><td>${safe(branch.email)}</td><td>${safe(branch.mobile)}</td><td>${safe(branch.address)}</td><td>${safe(branch.pincode)}</td><td>${access}</td></tr>`;
-  }).join("") : `<tr><td class="empty-row" colspan="7">${query ? "No branches match your search." : "No branches yet. Add your first branch to get started."}</td></tr>`;
+    const access = branch.password_set ? `<span class="status-pill completed">Active</span>` : `<button class="table-action font-semibold text-amber-600" data-resend-franchise="${safe(branch.id)}">Resend setup link →</button>`;
+    const action = `<button type="button" class="table-action font-bold text-blue-600 hover:text-blue-800 flex items-center gap-1" data-view-branch="${safe(branch.id)}">View Details →</button>`;
+    return `<tr class="hover:bg-slate-50/80 cursor-pointer" data-branch-row="${safe(branch.id)}">
+      <td><button type="button" class="font-bold text-slate-900 hover:text-blue-600 text-left" data-view-branch="${safe(branch.id)}">${safe(branch.branch_name)}</button></td>
+      <td>${safe(branch.manager_name)}<small class="company-password-state ${branch.password_set ? "is-set" : "is-pending"}">${safe(status)}</small></td>
+      <td>${safe(branch.email)}</td>
+      <td>${safe(branch.mobile)}</td>
+      <td>${safe(branch.address)}<small class="block text-slate-400 font-mono">PIN: ${safe(branch.pincode)}</small></td>
+      <td>${access}</td>
+      <td>${action}</td>
+    </tr>`;
+  }).join("") : `<tr><td class="empty-row" colspan="8">${query ? "No branches match your search." : "No branches yet. Add your first branch to get started."}</td></tr>`;
   if ($("requestCount")) $("requestCount").textContent = `${filtered.length} branch${filtered.length === 1 ? "" : "es"} shown`;
   if ($("resourceGrid")) $("resourceGrid").innerHTML = "";
-  document.querySelectorAll("[data-resend-franchise]").forEach((button) => button.addEventListener("click", async () => {
+  document.querySelectorAll("[data-resend-franchise]").forEach((button) => button.addEventListener("click", async (e) => {
+    e.stopPropagation();
     const branch = branches.find((item) => item.id === button.dataset.resendFranchise);
     if (!branch) return;
     button.disabled = true; button.textContent = "Sending…";
@@ -502,7 +512,338 @@ function renderCompanyBranches() {
     catch (error) { showToast(error.message, "error"); }
     finally { button.disabled = false; button.textContent = "Resend setup link →"; }
   }));
+  document.querySelectorAll("[data-view-branch]").forEach((button) => button.addEventListener("click", (e) => {
+    e.stopPropagation();
+    openCompanyBranchDetail(button.dataset.viewBranch);
+  }));
+  document.querySelectorAll("[data-branch-row]").forEach((row) => row.addEventListener("click", (e) => {
+    if (e.target.closest("button") || e.target.closest("a")) return;
+    openCompanyBranchDetail(row.dataset.branchRow);
+  }));
 }
+
+async function openCompanyBranchDetail(branchId) {
+  const dialog = $("branchDetailModal");
+  if (!dialog) return;
+
+  switchBranchDetailTab("people");
+
+  if (typeof dialog.showModal === "function") {
+    dialog.showModal();
+  } else {
+    dialog.hidden = false;
+  }
+
+  const existingBranch = branches.find((b) => b.id === branchId);
+  if (existingBranch) {
+    if ($("branchModalAvatar")) $("branchModalAvatar").textContent = (existingBranch.branch_name || "BR").slice(0, 2).toUpperCase();
+    if ($("branchModalTitle")) $("branchModalTitle").textContent = existingBranch.branch_name || "Branch Details";
+    if ($("branchModalManager")) $("branchModalManager").textContent = `👤 Manager: ${existingBranch.manager_name || "—"}`;
+    if ($("branchModalEmail")) $("branchModalEmail").textContent = `✉️ ${existingBranch.email || "—"}`;
+    if ($("branchModalMobile")) $("branchModalMobile").textContent = `📞 ${existingBranch.mobile || "—"}`;
+    if ($("branchModalAddress")) $("branchModalAddress").textContent = `📍 ${existingBranch.address || "—"} (PIN: ${existingBranch.pincode || "—"})`;
+    if ($("branchModalStatusBadge")) {
+      $("branchModalStatusBadge").textContent = existingBranch.password_set ? "Active" : "Pending Setup";
+      $("branchModalStatusBadge").className = `status-pill ${existingBranch.password_set ? "completed" : "pending"}`;
+    }
+  }
+
+  if ($("branchPeopleList")) $("branchPeopleList").innerHTML = `<div class="p-8 text-center text-slate-400">Loading branch personnel...</div>`;
+  if ($("branchStockRows")) $("branchStockRows").innerHTML = `<tr><td colspan="7" class="p-8 text-center text-slate-400">Loading stock inventory...</td></tr>`;
+  if ($("branchLogisticsRows")) $("branchLogisticsRows").innerHTML = `<tr><td colspan="7" class="p-8 text-center text-slate-400">Loading logistics trail...</td></tr>`;
+  if ($("branchOngoingRows")) $("branchOngoingRows").innerHTML = `<tr><td colspan="7" class="p-8 text-center text-slate-400">Loading ongoing requests...</td></tr>`;
+  if ($("branchHistoryRows")) $("branchHistoryRows").innerHTML = `<tr><td colspan="7" class="p-8 text-center text-slate-400">Loading service history...</td></tr>`;
+
+  try {
+    const data = await companyApi(`/branches/${encodeURIComponent(branchId)}`);
+    if (!data || !data.branch) throw new Error("Branch data not found");
+
+    const b = data.branch;
+    const s = data.stats || {};
+
+    if ($("branchModalAvatar")) $("branchModalAvatar").textContent = b.avatar || (b.name || "BR").slice(0, 2).toUpperCase();
+    if ($("branchModalTitle")) $("branchModalTitle").textContent = b.name;
+    if ($("branchModalStatusBadge")) {
+      $("branchModalStatusBadge").textContent = b.status || "Active";
+      $("branchModalStatusBadge").className = `status-pill ${b.status === "Active" ? "completed" : "pending"}`;
+    }
+    if ($("branchModalManager")) $("branchModalManager").textContent = `👤 Manager: ${b.manager_name || "—"}`;
+    if ($("branchModalEmail")) $("branchModalEmail").textContent = `✉️ ${b.email || "—"}`;
+    if ($("branchModalMobile")) $("branchModalMobile").textContent = `📞 ${b.mobile || "—"}`;
+    if ($("branchModalAddress")) $("branchModalAddress").textContent = `📍 ${b.address || "—"} (PIN: ${b.pincode || "—"})`;
+
+    if ($("branchStatStaff")) $("branchStatStaff").textContent = s.total_people || 0;
+    if ($("branchStatTechs")) $("branchStatTechs").textContent = s.total_technicians || 0;
+    if ($("branchStatStockItems")) $("branchStatStockItems").textContent = s.total_stock_items || 0;
+    if ($("branchStatLowStock")) $("branchStatLowStock").textContent = `${s.low_stock_count || 0} low stock`;
+    if ($("branchStatStockQty")) $("branchStatStockQty").textContent = `${s.total_stock_quantity || 0} units`;
+    if ($("branchStatStockVal")) $("branchStatStockVal").textContent = `₹${Number(s.total_stock_value || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}`;
+    if ($("branchStatOngoing")) $("branchStatOngoing").textContent = s.ongoing_services || 0;
+    if ($("branchStatCompleted")) $("branchStatCompleted").textContent = s.completed_services || 0;
+
+    if ($("tabCountPeople")) $("tabCountPeople").textContent = (data.people || []).length;
+    if ($("tabCountStock")) $("tabCountStock").textContent = (data.inventory || []).length;
+    if ($("tabCountLogistics")) $("tabCountLogistics").textContent = (data.stock_movements || []).length;
+    if ($("tabCountOngoing")) $("tabCountOngoing").textContent = (data.ongoing_services || []).length;
+    if ($("tabCountHistory")) $("tabCountHistory").textContent = (data.completed_services || []).length;
+
+    renderBranchPeople(data.people || []);
+    renderBranchStock(data.inventory || []);
+    renderBranchLogistics(data.stock_movements || []);
+    renderBranchOngoing(data.ongoing_services || []);
+    renderBranchHistory(data.completed_services || []);
+  } catch (err) {
+    showToast(extractErrorMessage(err.message, "Failed to load branch details"), "error");
+  }
+}
+window.openCompanyBranchDetail = openCompanyBranchDetail;
+
+function renderBranchPeople(people) {
+  const container = $("branchPeopleList");
+  if (!container) return;
+  if (!people || people.length === 0) {
+    container.innerHTML = `<div class="p-8 text-center text-slate-400 bg-slate-50 rounded-2xl">No personnel registered for this branch yet.</div>`;
+    return;
+  }
+
+  container.innerHTML = people.map((p) => {
+    const isManager = p.role === "manager" || p.role === "branch";
+    const roleBadge = isManager
+      ? `<span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-800 uppercase tracking-wider">Franchise Lead</span>`
+      : `<span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-800 uppercase tracking-wider">Field Engineer</span>`;
+
+    const perfStats = isManager ? `
+      <div class="flex items-center gap-3 text-xs text-slate-500">
+        <span>🏢 <strong>${safe(p.department)}</strong></span>
+        <span>📍 PIN: <strong>${safe(p.pincode)}</strong></span>
+      </div>
+    ` : `
+      <div class="flex items-center gap-4 text-xs text-slate-600">
+        <span class="flex items-center gap-1 font-bold text-amber-600">⭐ ${p.rating || "4.9"} rating</span>
+        <span class="text-slate-500">💼 <strong>${p.total_jobs || 0}</strong> jobs done</span>
+        <span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200/60">${safe(p.status || "Active")}</span>
+      </div>
+    `;
+
+    return `
+      <div class="p-4 rounded-2xl bg-white border border-slate-200 hover:border-blue-200 transition shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-3">
+        <div class="flex items-start gap-3.5">
+          <div class="w-11 h-11 rounded-2xl ${isManager ? "bg-purple-600" : "bg-blue-600"} text-white font-bold flex items-center justify-center text-sm shadow-xs flex-shrink-0">
+            ${safe(p.avatar || p.name.slice(0, 2).toUpperCase())}
+          </div>
+          <div>
+            <div class="flex items-center gap-2">
+              <strong class="text-sm font-bold text-slate-900">${safe(p.name)}</strong>
+              ${roleBadge}
+            </div>
+            <p class="text-xs font-semibold text-slate-600 mt-0.5">${safe(p.designation)}</p>
+            <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-400 mt-1">
+              <span>✉️ ${safe(p.email)}</span>
+              <span>📞 ${safe(p.phone)}</span>
+              ${p.address ? `<span>📍 ${safe(p.address)}</span>` : ""}
+            </div>
+          </div>
+        </div>
+        <div class="flex-shrink-0 self-start md:self-center">
+          ${perfStats}
+        </div>
+      </div>
+    `;
+  }).join("");
+}
+
+function renderBranchStock(items) {
+  const tbody = $("branchStockRows");
+  if (!tbody) return;
+  if (!items || items.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="7" class="p-8 text-center text-slate-400">No warehouse stock items found for this branch.</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = items.map((item) => {
+    const statusBadge = item.is_low_stock
+      ? `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800">⚠️ Low Stock</span>`
+      : `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">In Stock</span>`;
+
+    return `
+      <tr class="hover:bg-slate-50/80 transition">
+        <td class="p-3">
+          <strong class="text-slate-900 font-semibold block">${safe(item.name)}</strong>
+          <small class="text-slate-400 font-mono block">${safe(item.part_code)} · ${safe(item.brand)}</small>
+        </td>
+        <td class="p-3 text-slate-600">${safe(item.category || "General")}</td>
+        <td class="p-3 font-mono text-slate-500">${safe(item.hsn_code || "841890")}</td>
+        <td class="p-3 text-right font-mono font-bold text-slate-800">₹${Number(item.unit_price).toFixed(2)}</td>
+        <td class="p-3 text-center">
+          <strong class="text-sm font-bold ${item.is_low_stock ? "text-rose-600" : "text-slate-900"}">${item.quantity_available}</strong>
+        </td>
+        <td class="p-3 text-center text-slate-500 font-mono">${item.reorder_level}</td>
+        <td class="p-3">${statusBadge}</td>
+      </tr>
+    `;
+  }).join("");
+}
+
+function renderBranchLogistics(movements) {
+  const tbody = $("branchLogisticsRows");
+  if (!tbody) return;
+  if (!movements || movements.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="7" class="p-8 text-center text-slate-400">No logistics transactions recorded for this branch yet.</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = movements.map((m) => {
+    const isStockIn = m.movement_type === "STOCK_IN" || (m.transaction_type || "").toLowerCase() === "stock_in" || (m.transaction_type || "").toLowerCase() === "restock";
+    let typeBadge = `<span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-800 whitespace-nowrap">📤 STOCK OUT (Dispatched)</span>`;
+    if (isStockIn) {
+      typeBadge = `<span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 whitespace-nowrap">📥 STOCK IN (Received)</span>`;
+    } else if ((m.transaction_type || "").toLowerCase() === "job_consumption") {
+      typeBadge = `<span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 whitespace-nowrap">🛠️ Job Card Usage (Out)</span>`;
+    }
+    const qtySign = isStockIn ? `+${m.quantity}` : `-${m.quantity}`;
+    const qtyClass = isStockIn ? "text-emerald-700" : "text-slate-800";
+
+    return `
+      <tr class="hover:bg-slate-50/80 transition">
+        <td class="p-3 text-slate-600 font-medium whitespace-nowrap">${safe(m.timestamp)}</td>
+        <td class="p-3 whitespace-nowrap">${typeBadge}</td>
+        <td class="p-3">
+          <strong class="text-slate-900 font-semibold block">${safe(m.part_name)}</strong>
+          <small class="text-slate-400 font-mono block">${safe(m.part_code)}</small>
+        </td>
+        <td class="p-3 text-center">
+          <strong class="font-mono text-sm font-bold ${qtyClass}">${qtySign}</strong>
+        </td>
+        <td class="p-3 font-mono font-semibold text-slate-700 whitespace-nowrap">${safe(m.reference_id)}</td>
+        <td class="p-3 text-slate-600 font-medium whitespace-nowrap">${safe(m.performed_by)}</td>
+        <td class="p-3 text-slate-500 max-w-xs truncate" title="${safe(m.notes)}">${safe(m.notes || "—")}</td>
+      </tr>
+    `;
+  }).join("");
+}
+
+function renderBranchOngoing(requests) {
+  const tbody = $("branchOngoingRows");
+  if (!tbody) return;
+  if (!requests || requests.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="7" class="p-8 text-center text-slate-400">No ongoing service requests in progress for this branch.</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = requests.map((r) => {
+    const warrantyPill = r.is_under_warranty
+      ? `<span class="ml-1.5 px-1.5 py-0.2 rounded text-[9px] font-bold bg-blue-100 text-blue-800">Warranty</span>`
+      : "";
+
+    return `
+      <tr class="hover:bg-slate-50/80 transition">
+        <td class="p-3 font-mono font-bold text-blue-600 whitespace-nowrap">${safe(r.id)}</td>
+        <td class="p-3">
+          <strong class="text-slate-900 font-semibold block">${safe(r.customer_name)}</strong>
+          <small class="text-slate-400 block">${safe(r.customer_phone)} · PIN: ${safe(r.pincode)}</small>
+        </td>
+        <td class="p-3">
+          <strong class="text-slate-900 font-semibold flex items-center">${safe(r.appliance_name)}${warrantyPill}</strong>
+          <small class="text-slate-500 block">${safe(r.issue)}</small>
+        </td>
+        <td class="p-3 text-slate-700 font-medium whitespace-nowrap">${safe(r.technician_name)}</td>
+        <td class="p-3 text-slate-600 whitespace-nowrap">${safe(r.appointment_date)} · ${safe(r.appointment_slot)}</td>
+        <td class="p-3 whitespace-nowrap"><span class="status-pill in-progress">${safe(r.status)}</span></td>
+        <td class="p-3 text-right whitespace-nowrap">
+          <button type="button" class="table-action font-bold text-blue-600 hover:text-blue-800" onclick="viewRequestDetails('${safe(r.id)}')">View Ticket →</button>
+        </td>
+      </tr>
+    `;
+  }).join("");
+}
+
+function renderBranchHistory(requests) {
+  const tbody = $("branchHistoryRows");
+  if (!tbody) return;
+  if (!requests || requests.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="7" class="p-8 text-center text-slate-400">No completed service requests found for this branch.</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = requests.map((r) => {
+    const payBadge = r.payment_status === "Paid"
+      ? `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">Paid</span>`
+      : `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700">${safe(r.payment_status || "Pending")}</span>`;
+
+    return `
+      <tr class="hover:bg-slate-50/80 transition">
+        <td class="p-3 font-mono font-bold text-blue-600 whitespace-nowrap">${safe(r.id)}</td>
+        <td class="p-3">
+          <strong class="text-slate-900 font-semibold block">${safe(r.customer_name)}</strong>
+          <small class="text-slate-400 block truncate max-w-xs">${safe(r.customer_address)}</small>
+        </td>
+        <td class="p-3">
+          <strong class="text-slate-900 font-semibold block">${safe(r.appliance_name)}</strong>
+          <small class="text-slate-500 block">${safe(r.issue)}</small>
+        </td>
+        <td class="p-3 text-slate-700 font-medium whitespace-nowrap">${safe(r.technician_name)}</td>
+        <td class="p-3 whitespace-nowrap">${payBadge}</td>
+        <td class="p-3 text-slate-600 whitespace-nowrap">${safe(r.appointment_date || r.created_at)}</td>
+        <td class="p-3 text-right whitespace-nowrap">
+          <button type="button" class="table-action font-bold text-blue-600 hover:text-blue-800" onclick="viewRequestDetails('${safe(r.id)}')">View Ticket →</button>
+        </td>
+      </tr>
+    `;
+  }).join("");
+}
+
+function switchBranchDetailTab(targetTab) {
+  const buttons = document.querySelectorAll(".branch-tab-btn");
+  const panels = document.querySelectorAll(".branch-tab-panel");
+
+  buttons.forEach((btn) => {
+    if (btn.dataset.branchTab === targetTab) {
+      btn.classList.add("border-blue-600", "text-blue-600");
+      btn.classList.remove("border-transparent", "text-slate-500");
+    } else {
+      btn.classList.remove("border-blue-600", "text-blue-600");
+      btn.classList.add("border-transparent", "text-slate-500");
+    }
+  });
+
+  panels.forEach((p) => {
+    p.classList.add("hidden");
+  });
+
+  const activePanelId = {
+    people: "branchTabPeople",
+    stock: "branchTabStock",
+    logistics: "branchTabLogistics",
+    ongoing: "branchTabOngoing",
+    history: "branchTabHistory"
+  }[targetTab] || "branchTabPeople";
+
+  const activePanel = $(activePanelId);
+  if (activePanel) activePanel.classList.remove("hidden");
+}
+
+function initBranchDetailModalEvents() {
+  const modal = $("branchDetailModal");
+  if (!modal) return;
+
+  $("closeBranchDetailModalBtn")?.addEventListener("click", () => {
+    if (typeof modal.close === "function") modal.close();
+    else modal.hidden = true;
+  });
+
+  $("closeBranchDetailModalFooterBtn")?.addEventListener("click", () => {
+    if (typeof modal.close === "function") modal.close();
+    else modal.hidden = true;
+  });
+
+  document.querySelectorAll(".branch-tab-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const target = btn.dataset.branchTab;
+      if (target) switchBranchDetailTab(target);
+    });
+  });
+}
+
 function renderFranchiseTechnicians() {
   if ($("crumbTitle")) $("crumbTitle").textContent = "Technicians";
   setHidden("addCompanyButton", true);
@@ -3382,9 +3723,10 @@ function initEvents() {
   $("opsJcLaborCost")?.addEventListener("input", recalculateOpsJobCardTotals);
   $("opsJobCardForm")?.addEventListener("submit", submitOpsJobCard);
 
-  // Phase 2 Modals (Warehouse Restock & Warranty Claim Review)
+  // Phase 2 Modals (Warehouse Restock, Warranty Claim Review & Branch Deep-Dive)
   initRestockModalEvents();
   initClaimReviewModalEvents();
+  initBranchDetailModalEvents();
 }
 
 // Profile Modal & Edit Details for Ops Portals (Technician, Franchise, Company, Admin)

@@ -463,6 +463,58 @@ def seed_database(db: Session):
         db.add_all(stocks)
         db.commit()
 
+    # 6b. Seed Inventory Transactions for Franchise Branch (Stock sent & received logistics history)
+    if not db.query(InventoryTransactionModel).first():
+        from datetime import datetime as dt
+        txns = [
+            InventoryTransactionModel(
+                id="TXN-IN-8801",
+                branch_id="branch_1",
+                part_id="part_unv_thm01",
+                transaction_type="stock_in",
+                quantity=20,
+                reference_id="CH-8801",
+                performed_by="Central Warehouse Logistics",
+                notes="Initial warehouse stock allocation received from Central OEM Logistics (Challan #CH-8801)",
+                created_at=dt(2026, 10, 12, 11, 30)
+            ),
+            InventoryTransactionModel(
+                id="TXN-IN-8802",
+                branch_id="branch_1",
+                part_id="part_lg_pcb01",
+                transaction_type="stock_in",
+                quantity=15,
+                reference_id="SHP-9021",
+                performed_by="OEM Brand Regional Depot",
+                notes="Bulk OEM shipment dispatched and received from Regional Logistics Depot (Shipment #SHP-9021)",
+                created_at=dt(2026, 10, 14, 14, 15)
+            ),
+            InventoryTransactionModel(
+                id="TXN-IN-8803",
+                branch_id="branch_1",
+                part_id="part_crm_cap01",
+                transaction_type="stock_in",
+                quantity=10,
+                reference_id="CH-9140",
+                performed_by="Central Logistics Depot",
+                notes="Replenishment stock received from Havells/LG Central Hub (Challan #CH-9140)",
+                created_at=dt(2026, 10, 16, 16, 0)
+            ),
+            InventoryTransactionModel(
+                id="TXN-OUT-7845",
+                branch_id="branch_1",
+                part_id="part_unv_thm01",
+                transaction_type="job_consumption",
+                quantity=1,
+                reference_id="JC-7845",
+                performed_by="Rahul Sharma (technician)",
+                notes="Automatic deduction: 1x Thermostat Sensor consumed on customer ticket SR-7845",
+                created_at=dt(2026, 10, 18, 10, 45)
+            )
+        ]
+        db.add_all(txns)
+        db.commit()
+
     # 7. Seed AMC Packages (Phase 2 FR-WAR-005)
     if not db.query(AMCPlanModel).first():
         plans = [

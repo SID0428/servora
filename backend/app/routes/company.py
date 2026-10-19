@@ -11,7 +11,11 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
-from app.db.models import ApplianceModel, BranchOnboardingModel, CompanyBranchModel, UserModel
+from app.db.models import (
+    ApplianceModel, BranchOnboardingModel, CompanyBranchModel, UserModel,
+    BranchTechnicianModel, TechnicianModel, FranchiseInventoryModel,
+    SparePartModel, InventoryTransactionModel, ServiceRequestModel, WarrantyClaimModel
+)
 from app.db.session import get_db
 from app.email_service import send_brevo_email
 from app.schemas import BranchCredentialsEmail, CompanyBranchCreate, CompanyOtpVerify, CompanyPasswordSetup
@@ -95,6 +99,229 @@ def list_company_branches(request: Request, db: Session = Depends(get_db)):
     )
     onboarding = {item.branch_id: item for item in db.query(BranchOnboardingModel).all()}
     return [branch_payload(branch, onboarding.get(branch.id)) for branch in branches]
+
+
+@router.get("/branches/{branch_id}")
+def get_company_branch_details(
+    branch_id: str,
+    request: Request,
+    db: Session = Depends(get_db)
+):
+    user = get_authenticated_user(request, db)
+    if user.role not in ("company", "admin"):
+        raise HTTPException(status_code=403, detail="Company or admin access required")
+
+    branch = db.query(CompanyBranchModel).filter(CompanyBranchModel.id == branch_id).first()
+    if not branch:
+        raise HTTPException(status_code=404, detail="Branch not found")
+
+    if user.role == "company" and branch.company_id != user.id:
+        if branch.company_id not in (user.email, user.name):
+            comp_user = db.query(UserModel).filter(UserModel.id == branch.company_id).first()
+            if not comp_user or (comp_user.email != user.email and comp_user.name != user.name):
+                raise HTTPException(status_code=403, detail="Branch does not belong to your company network")
+
+    onboarding = db.query(BranchOnboardingModel).filter_by(branch_id=branch.id).first()
+    base_info = branch_payload(branch, onboarding)
+    base_info["name"] = branch.branch_name
+    base_info["status"] = "Active" if (onboarding and onboarding.password_set_at) else "Pending Setup"
+    base_info["avatar"] = branch.branch_name[:2].upper()
+
+    # 1. PEOPLE & STAFF (Manager + Technicians)
+    manager_info = {
+        "id": branch.id,
+        "name": branch.manager_name,
+        "designation": "Branch Manager & Operations Lead",
+        "department": "Franchise Leadership",
+        "email": branch.email,
+        "phone": branch.mobile,
+        "address": branch.address,
+        "pincode": branch.pincode,
+        "role": "manager",
+        "rating": 5.0,
+        "total_jobs": db.query(ServiceRequestModel).filter(ServiceRequestModel.branch_id == branch.id).count(),
+        "status": "Active" if (onboarding and onboarding.password_set_at) else "Pending Setup",
+        "avatar": branch.manager_name[:2].upper()
+    }
+    people = [manager_info]
+
+    tech_links = db.query(BranchTechnicianModel).filter(BranchTechnicianModel.branch_id == branch.id).all()
+    tech_ids = [l.technician_id for l in tech_links]
+
+    tech_query = db.query(TechnicianModel).filter(
+        or_(
+            TechnicianModel.id.in_(tech_ids),
+            TechnicianModel.company_branch.ilike(f"%{branch.branch_name}%"),
+            TechnicianModel.company_branch == branch.id
+        )
+    )
+    technicians = tech_query.all()
+
+    for t in technicians:
+        t_user = db.query(UserModel).filter(
+            or_(UserModel.id == t.id, UserModel.phone == t.phone)
+        ).first()
+        t_email = t_user.email if t_user else f"{t.name.lower().replace(' ', '.')}@servora.com"
+
+        completed_jobs = db.query(ServiceRequestModel).filter(
+            ServiceRequestModel.technician_id == t.id,
+            ServiceRequestModel.status == "Completed"
+        ).count()
+
+        people.append({
+            "id": t.id,
+            "name": t.name,
+            "designation": t.title or "Field Service Engineer",
+            "department": "Field Service Operations",
+            "email": t_email,
+            "phone": t.phone,
+            "address": getattr(t, "address", branch.address),
+            "pincode": getattr(t, "pincode", branch.pincode),
+            "role": "technician",
+            "rating": round(t.rating or 4.9, 1),
+            "total_jobs": completed_jobs if completed_jobs > 0 else (t.total_jobs or 0),
+            "status": "Active / Field Ready",
+            "avatar": t.avatar or t.name[:2].upper()
+        })
+
+    # 2. TOTAL STOCK ITEMS (Warehouse Inventory)
+    inv_items = db.query(FranchiseInventoryModel, SparePartModel).join(
+        SparePartModel, FranchiseInventoryModel.part_id == SparePartModel.id
+    ).filter(FranchiseInventoryModel.branch_id == branch.id).all()
+
+    # If empty warehouse, seed initial catalog parts
+    if not inv_items:
+        all_parts = db.query(SparePartModel).all()
+        for p in all_parts:
+            inv = FranchiseInventoryModel(
+                id=f"inv_{branch.id[:6]}_{p.id[:6]}",
+                branch_id=branch.id,
+                part_id=p.id,
+                quantity_available=12,
+                reorder_level=4
+            )
+            db.add(inv)
+        db.commit()
+        inv_items = db.query(FranchiseInventoryModel, SparePartModel).join(
+            SparePartModel, FranchiseInventoryModel.part_id == SparePartModel.id
+        ).filter(FranchiseInventoryModel.branch_id == branch.id).all()
+
+    stock_list = []
+    total_stock_qty = 0
+    total_stock_val = 0.0
+    low_stock_count = 0
+
+    for inv, part in inv_items:
+        is_low = inv.quantity_available <= inv.reorder_level
+        if is_low:
+            low_stock_count += 1
+        total_stock_qty += inv.quantity_available
+        total_stock_val += round(inv.quantity_available * (part.unit_price or 0.0), 2)
+
+        stock_list.append({
+            "part_id": part.id,
+            "part_code": part.part_code,
+            "name": part.name,
+            "brand": part.brand,
+            "category": part.category,
+            "hsn_code": part.hsn_code or "841890",
+            "unit_price": part.unit_price or 0.0,
+            "quantity_available": inv.quantity_available,
+            "reorder_level": inv.reorder_level,
+            "is_low_stock": is_low,
+            "last_restocked_at": inv.last_restocked_at.strftime("%d %b %Y, %I:%M %p") if inv.last_restocked_at else "Initial Setup"
+        })
+
+    # 3. STOCK MOVEMENTS (Sent & Received Logistics History)
+    txns = db.query(InventoryTransactionModel, SparePartModel).join(
+        SparePartModel, InventoryTransactionModel.part_id == SparePartModel.id
+    ).filter(InventoryTransactionModel.branch_id == branch.id).order_by(
+        InventoryTransactionModel.created_at.desc()
+    ).all()
+
+    stock_movements = []
+    for txn, part in txns:
+        is_in = txn.transaction_type.lower() in ("stock_in", "restock")
+        stock_movements.append({
+            "id": txn.id,
+            "timestamp": txn.created_at.strftime("%d %b %Y, %I:%M %p"),
+            "transaction_type": txn.transaction_type,
+            "movement_type": "STOCK_IN" if is_in else "STOCK_OUT",
+            "quantity": txn.quantity,
+            "part_id": part.id,
+            "part_name": part.name,
+            "part_code": part.part_code,
+            "unit_price": part.unit_price or 0.0,
+            "reference_id": txn.reference_id or "—",
+            "performed_by": txn.performed_by or "System",
+            "notes": txn.notes or ""
+        })
+
+    # 4. SERVICE REQUESTS & HISTORY (Ongoing & Completed)
+    reqs = db.query(ServiceRequestModel).filter(
+        ServiceRequestModel.branch_id == branch.id
+    ).order_by(ServiceRequestModel.created_at.desc()).all()
+
+    ongoing_services = []
+    completed_services = []
+    for r in reqs:
+        tech_name = r.previous_technician_name or "Unassigned"
+        if r.technician_id:
+            tech_obj = db.query(TechnicianModel).filter(TechnicianModel.id == r.technician_id).first()
+            if tech_obj:
+                tech_name = tech_obj.name
+
+        service_item = {
+            "id": r.id,
+            "customer_name": r.customer_name or "Customer",
+            "customer_phone": r.customer_phone or "",
+            "customer_address": r.customer_address or "",
+            "pincode": r.pincode or branch.pincode,
+            "appliance_name": r.appliance_name or "Appliance",
+            "brand": r.brand or "",
+            "model_no": r.model_no or "Standard",
+            "issue": r.issue or "Service Request",
+            "status": r.status or "In Progress",
+            "status_badge": r.status_badge or "In Progress",
+            "appointment_date": r.appointment_date or "Scheduled",
+            "appointment_slot": r.appointment_slot or "Standard",
+            "technician_id": r.technician_id,
+            "technician_name": tech_name,
+            "payment_status": r.payment_status or "Pending",
+            "is_under_warranty": bool(r.is_under_warranty),
+            "created_at": r.created_at or ""
+        }
+
+        if r.status == "Completed" or r.status_badge == "Completed":
+            completed_services.append(service_item)
+        else:
+            ongoing_services.append(service_item)
+
+    # 5. WARRANTY CLAIMS
+    claims = db.query(WarrantyClaimModel).filter(WarrantyClaimModel.branch_id == branch.id).all()
+    total_claim_amt = sum(c.claim_amount or 0.0 for c in claims)
+
+    return {
+        "branch": base_info,
+        "stats": {
+            "total_people": len(people),
+            "total_technicians": len(technicians),
+            "total_stock_items": len(stock_list),
+            "total_stock_quantity": total_stock_qty,
+            "total_stock_value": round(total_stock_val, 2),
+            "low_stock_count": low_stock_count,
+            "total_services": len(reqs),
+            "ongoing_services": len(ongoing_services),
+            "completed_services": len(completed_services),
+            "warranty_claims_count": len(claims),
+            "total_claim_amount": round(total_claim_amt, 2)
+        },
+        "people": people,
+        "inventory": stock_list,
+        "stock_movements": stock_movements,
+        "ongoing_services": ongoing_services,
+        "completed_services": completed_services
+    }
 
 
 @router.get("/customers")
