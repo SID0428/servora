@@ -6,7 +6,8 @@ from app.db.models import (
     UserModel, TechnicianModel, ApplianceModel, ServiceRequestModel,
     CompanyBranchModel, BranchTechnicianModel, JobCardModel, ServiceFeedbackModel,
     SparePartModel, FranchiseInventoryModel, InventoryTransactionModel,
-    WarrantyClaimModel, AMCPlanModel, AMCSubscriptionModel
+    WarrantyClaimModel, AMCPlanModel, AMCSubscriptionModel,
+    EstimateModel, EscalationModel, NotificationLogModel
 )
 
 def seed_database(db: Session):
@@ -98,6 +99,12 @@ def seed_database(db: Session):
     if "paid_at" not in req_columns:
         with engine.begin() as connection:
             connection.execute(text("ALTER TABLE service_requests ADD COLUMN paid_at VARCHAR(64) NULL"))
+    if "is_escalated" not in req_columns:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE service_requests ADD COLUMN is_escalated BOOLEAN DEFAULT 0"))
+    if "escalation_level" not in req_columns:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE service_requests ADD COLUMN escalation_level INTEGER DEFAULT 0"))
 
     jc_columns = {column["name"] for column in inspect(engine).get_columns("job_cards")}
     if "inspection_fee" not in jc_columns:

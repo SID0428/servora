@@ -57,9 +57,9 @@ if (!checkInitialAuth()) {
 let role = dashboardRouteRole || initialUser?.role || (typeof document !== "undefined" ? document.body?.dataset?.role : null) || "company";
 const roleConfig = {
   technician: { title: "Technician workspace", kicker: "FIELD SERVICE", nav: ["My jobs", "Job history", "Route & schedule", "Earnings", "Help center"], columns: ["Ticket", "Customer", "Appliance", "Appointment", "Status", "Action"], tableTitle: "My assigned jobs", tableSubtitle: "Your service calls and the next step for each job.", bottomTitle: "Today's schedule", sideTitle: "My performance", resources: [["Assigned today", "Jobs on your schedule", "▤"], ["Completed", "Jobs closed this week", "✓"], ["Customer rating", "From recent service visits", "☆"], ["Service area", "Your assigned territory", "⌖"]] },
-  franchise: { title: "Franchise workspace", kicker: "BRANCH OPERATIONS", nav: ["Dashboard", "Service requests", "Technicians", "Inventory & Spares", "Active jobs", "Customers", "Reports", "Settings"], columns: ["Request ID", "Customer", "Appliance", "Issue", "Technician", "Status", "Action"], tableTitle: "Incoming service requests", tableSubtitle: "Review requests and coordinate local service work.", bottomTitle: "Branch resources", sideTitle: "Branch performance", resources: [["Technicians", "Available in this branch", "♙"], ["Active jobs", "Assigned and in progress", "⚒"], ["Inventory items", "Parts in local warehouse", "📦"], ["Service area", "Local coverage", "⌖"]] },
-  company: { title: "Company workspace", kicker: "COMPANY OPERATIONS", nav: ["Dashboard", "Branches", "Technicians", "Warranty Claims", "Spares Catalog", "Customers", "Service requests", "Reports", "Settings"], columns: ["Request ID", "Customer", "Company", "Appliance", "Status", "Date", "Action"], tableTitle: "Recent service requests", tableSubtitle: "Monitor service activity across the company network.", bottomTitle: "Network resources", sideTitle: "Network health", resources: [["Branches", "Locations in your network", "▥"], ["Warranty claims", "OEM reimbursement requests", "🛡️"], ["Technicians", "Field service professionals", "♙"], ["Customers", "Customers served", "♧"]] },
-  admin: { title: "Platform overview", kicker: "SERVORA PLATFORM", nav: ["Overview", "Companies", "Branches", "Technicians", "Customers", "Service requests", "Reports", "System settings"], columns: ["Request ID", "Customer", "Company", "Appliance", "Status", "Date", "Action"], tableTitle: "Platform service activity", tableSubtitle: "A view of requests moving across Servora.", bottomTitle: "Platform directory", sideTitle: "Platform health", resources: [["Companies", "Service partners", "▥"], ["Branches", "Operational locations", "⌖"], ["Technicians", "Verified professionals", "♙"], ["Customers", "Registered accounts", "♧"]] },
+  franchise: { title: "Franchise workspace", kicker: "BRANCH OPERATIONS", nav: ["Dashboard", "Service requests", "Technicians", "Inventory & Spares", "Escalations", "Active jobs", "Customers", "Reports", "Settings"], columns: ["Request ID", "Customer", "Appliance", "Issue", "Technician", "Status", "Action"], tableTitle: "Incoming service requests", tableSubtitle: "Review requests and coordinate local service work.", bottomTitle: "Branch resources", sideTitle: "Branch performance", resources: [["Technicians", "Available in this branch", "♙"], ["Active jobs", "Assigned and in progress", "⚒"], ["Inventory items", "Parts in local warehouse", "📦"], ["Service area", "Local coverage", "⌖"]] },
+  company: { title: "Company workspace", kicker: "COMPANY OPERATIONS", nav: ["Dashboard", "Branches", "Technicians", "Warranty Claims", "Spares Catalog", "Escalations", "Customers", "Service requests", "Reports", "Settings"], columns: ["Request ID", "Customer", "Company", "Appliance", "Status", "Date", "Action"], tableTitle: "Recent service requests", tableSubtitle: "Monitor service activity across the company network.", bottomTitle: "Network resources", sideTitle: "Network health", resources: [["Branches", "Locations in your network", "▥"], ["Warranty claims", "OEM reimbursement requests", "🛡️"], ["Technicians", "Field service professionals", "♙"], ["Customers", "Customers served", "♧"]] },
+  admin: { title: "Platform overview", kicker: "SERVORA PLATFORM", nav: ["Overview", "Companies", "Branches", "Technicians", "Escalations", "Customers", "Service requests", "Reports", "System settings"], columns: ["Request ID", "Customer", "Company", "Appliance", "Status", "Date", "Action"], tableTitle: "Platform service activity", tableSubtitle: "A view of requests moving across Servora.", bottomTitle: "Platform directory", sideTitle: "Platform health", resources: [["Companies", "Service partners", "▥"], ["Branches", "Operational locations", "⌖"], ["Technicians", "Verified professionals", "♙"], ["Customers", "Registered accounts", "♧"]] },
 };
 let config = roleConfig[role] || roleConfig.company;
 const $ = (id) => document.getElementById(id);
@@ -86,7 +86,7 @@ try {
   companySparesCatalog = JSON.parse(localStorage.getItem("servora_cache_catalog") || "[]");
 } catch {}
 
-const icons = { Dashboard: "⌂", Overview: "⌂", "My jobs": "▤", "Job history": "◷", "Route & schedule": "⌖", Earnings: "$", "Help center": "?", "Service requests": "▣", "Incoming service requests": "▣", Technicians: "♙", "Inventory & Spares": "📦", "Warranty Claims": "🛡️", "Spares Catalog": "🔧", "Active jobs": "⚒", Customers: "♧", Reports: "▥", Settings: "⚙", Companies: "▦", Branches: "⌖", "System settings": "⚙" };
+const icons = { Dashboard: "⌂", Overview: "⌂", "My jobs": "▤", "Job history": "◷", "Route & schedule": "⌖", Earnings: "$", "Help center": "?", "Service requests": "▣", "Incoming service requests": "▣", Technicians: "♙", "Inventory & Spares": "📦", "Warranty Claims": "🛡️", "Spares Catalog": "🔧", Escalations: "🚨", "Active jobs": "⚒", Customers: "♧", Reports: "▥", Settings: "⚙", Companies: "▦", Branches: "⌖", "System settings": "⚙" };
 function safe(value) { const node = document.createElement("span"); node.textContent = value ?? ""; return node.innerHTML; }
 function authHeaders(extraHeaders = {}) {
   const token = user?.session_token || initialUser?.session_token;
@@ -231,6 +231,10 @@ function renderPage(page) {
   }
   if (page === "Settings" || page === "System settings") {
     renderSettings();
+    return;
+  }
+  if (page === "Escalations" || page === "SLA Escalations") {
+    renderEscalationsView();
     return;
   }
 
@@ -2016,6 +2020,7 @@ function renderCompanySparesCatalog() {
 }
 
 async function loadWorkspacePageData(page) {
+  if (page === "Escalations" || page === "SLA Escalations") { await loadEscalationsData(); return; }
   if (role === "admin") { await loadAdminPageData(page); return; }
   if (role === "company" && page === "Branches") { await loadCompanyBranches(); return; }
   if (role === "company" && page === "Customers") { await loadCompanyCustomers(); return; }
@@ -2028,6 +2033,7 @@ async function loadWorkspacePageData(page) {
 }
 async function loadAdminPageData(page) {
   if (role !== "admin") return;
+  if (page === "Escalations") { await loadEscalationsData(); return; }
   const roles = { Branches: "branch", Technicians: "technician", Customers: "customer" };
   try {
     if (roles[page]) directoryRows = await adminApi(`/directory/${roles[page]}`);
@@ -2180,40 +2186,38 @@ function statusClass(status) {
 function renderStatusBadge(item) {
   if (!item) return `<span class="status-pill">Pending</span>`;
 
-  // Completed jobs
+  let badgeHtml = "";
   if (item.status === "Completed" || item.status_badge === "Completed") {
     if (item.is_reopened) {
-      return `<div class="flex items-center gap-1.5"><span class="status-pill completed">✓ Completed</span><span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200" title="Completed under warranty revisit">Revisit</span></div>`;
+      badgeHtml = `<div class="flex items-center gap-1.5"><span class="status-pill completed">✓ Completed</span><span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200" title="Completed under warranty revisit">Revisit</span></div>`;
+    } else {
+      badgeHtml = `<span class="status-pill completed">✓ Completed</span>`;
     }
-    return `<span class="status-pill completed">✓ Completed</span>`;
+  } else if (item.status === "Estimate Pending Approval" || item.status_badge === "Estimate Pending") {
+    badgeHtml = `<span class="status-pill bg-amber-100 text-amber-800 border border-amber-300">⏳ Estimate Pending</span>`;
+  } else if (item.status === "Estimate Rejected" || item.status_badge === "Estimate Rejected") {
+    badgeHtml = `<span class="status-pill disputed">✕ Estimate Rejected</span>`;
+  } else if (item.status === "Repair in Progress") {
+    badgeHtml = `<span class="status-pill in-progress">Repair in Progress</span>`;
+  } else if (item.status === "Reopened / Under Review" || item.status_badge === "Reopened" || (Boolean(item.is_reopened) && item.status !== "Completed")) {
+    badgeHtml = `<span class="status-pill disputed" title="${safe(item.reopened_reason || 'Reopened by customer for repeat issue')}">⚠️ Reopened</span>`;
+  } else if (item.status === "Disputed" || item.status_badge === "Disputed") {
+    badgeHtml = `<span class="status-pill disputed" title="${safe(item.reopened_reason || 'Job card charges disputed by customer')}">⚠️ Disputed</span>`;
+  } else if (item.status === "Service In Progress" || item.status_badge === "In Progress") {
+    badgeHtml = `<span class="status-pill in-progress">In Progress</span>`;
+  } else if (item.status === "Technician on the Way") {
+    badgeHtml = `<span class="status-pill in-progress">On the Way 🛵</span>`;
+  } else if (item.status === "Technician Assigned" || item.status_badge === "Scheduled" || item.status_badge === "Assigned") {
+    badgeHtml = `<span class="status-pill assigned">Assigned</span>`;
+  } else {
+    badgeHtml = `<span class="status-pill ${statusClass(item.status_badge || item.status)}">${safe(item.status_badge || item.status || "Pending")}</span>`;
   }
 
-  // Active Reopened tickets (prior to revisit completion)
-  if (item.status === "Reopened / Under Review" || item.status_badge === "Reopened" || (Boolean(item.is_reopened) && item.status !== "Completed")) {
-    return `<span class="status-pill disputed" title="${safe(item.reopened_reason || 'Reopened by customer for repeat issue')}">⚠️ Reopened</span>`;
+  if (item.is_escalated) {
+    const escBadge = `<span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-purple-100 text-purple-800 border border-purple-200 ml-1 inline-flex items-center gap-0.5" title="Ticket Escalated to Level ${item.escalation_level || 1}">🚨 L${item.escalation_level || 1}</span>`;
+    return `<div class="inline-flex items-center">${badgeHtml}${escBadge}</div>`;
   }
-
-  // Explicit customer job card disputes
-  if (item.status === "Disputed" || item.status_badge === "Disputed") {
-    return `<span class="status-pill disputed" title="${safe(item.reopened_reason || 'Job card charges disputed by customer')}">⚠️ Disputed</span>`;
-  }
-
-  // Field visit in progress
-  if (item.status === "Service In Progress" || item.status_badge === "In Progress") {
-    return `<span class="status-pill in-progress">In Progress</span>`;
-  }
-
-  // En route / dispatched
-  if (item.status === "Technician on the Way") {
-    return `<span class="status-pill in-progress">On the Way 🛵</span>`;
-  }
-
-  // Assigned
-  if (item.status === "Technician Assigned" || item.status_badge === "Scheduled" || item.status_badge === "Assigned") {
-    return `<span class="status-pill assigned">Assigned</span>`;
-  }
-
-  return `<span class="status-pill ${statusClass(item.status_badge || item.status)}">${safe(item.status_badge || item.status || "Pending")}</span>`;
+  return badgeHtml;
 }
 
 function priorityClass(priority) {
@@ -2345,7 +2349,24 @@ function renderRequests() {
               <button type="button" class="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs shadow-sm transition flex items-center gap-1.5" onclick="techStartServiceWithOtp('${safe(item.id)}')">
                 ▶ Start Service (OTP)
               </button>
+            ` : item.status === 'Estimate Pending Approval' ? `
+              <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-100 text-amber-900 border border-amber-300 font-semibold text-xs animate-pulse">
+                ⏳ Customer Estimate Approval Pending
+              </span>
+              <button type="button" class="px-3.5 py-1.5 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold text-xs transition" onclick="openTechEstimateModal('${safe(item.id)}')">
+                📝 View Estimate
+              </button>
+            ` : item.status === 'Repair in Progress' ? `
+              <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200 text-xs font-semibold">
+                ✓ Customer Authorized Repair
+              </span>
+              <button type="button" class="px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs shadow-sm transition flex items-center gap-1.5" onclick="openOpsJobCardModal('${safe(item.id)}')">
+                📋 Job Card & Complete
+              </button>
             ` : item.status === 'Service In Progress' ? `
+              <button type="button" class="px-3.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-semibold text-xs shadow-sm transition flex items-center gap-1.5" onclick="openTechEstimateModal('${safe(item.id)}')">
+                📝 Pre-Repair Estimate
+              </button>
               <button type="button" class="px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs shadow-sm transition flex items-center gap-1.5" onclick="openOpsJobCardModal('${safe(item.id)}')">
                 📋 Job Card & Complete
               </button>
@@ -4060,6 +4081,407 @@ window.openOpsProfileModal = function() {
   if ($("opsProfileEditForm")) $("opsProfileEditForm").classList.add("hidden");
 
   dialog.showModal();
+};
+
+// ==========================================
+// Multi-Tier SLA Escalations (SRS 6.15)
+// ==========================================
+async function loadEscalationsData() {
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/escalations`, {
+      headers: jsonHeaders(),
+      credentials: "include"
+    });
+    if (res.ok) {
+      escalationsList = await res.json();
+    } else {
+      escalationsList = [];
+    }
+  } catch (err) {
+    escalationsList = [];
+  }
+  renderEscalationsView();
+}
+
+function renderEscalationsView() {
+  if ($("crumbTitle")) $("crumbTitle").textContent = "Escalations";
+  setHidden("addCompanyButton", true);
+  setHidden("addBranchButton", true);
+  setHidden("addTechnicianButton", true);
+  setHidden("companyInlineAdd", true);
+  setHidden("exportButton", false);
+  setHidden("pageContent", false);
+  setHidden("metricGrid", true);
+
+  if ($("tableTitle")) $("tableTitle").textContent = "Multi-Tier SLA Escalations (SRS 6.15)";
+  if ($("tableSubtitle")) $("tableSubtitle").textContent = "Real-time escalation queue for SLA breaches (Franchise L1 → Brand Manager L2 → Platform Admin L3).";
+
+  const tableEl = $("requestRows")?.closest("table");
+  const techContainer = $("techJobCardsContainer");
+  if (tableEl) tableEl.style.display = "";
+  if (techContainer) techContainer.style.display = "none";
+
+  $("healthContent").innerHTML = `
+    <div class="p-3 bg-purple-50 rounded-xl border border-purple-200 text-xs text-purple-900 space-y-2">
+      <div class="font-bold flex items-center justify-between">
+        <span>SLA Breach Rules</span>
+        <button type="button" onclick="window.runManualSlaScan()" class="px-2.5 py-1 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-lg text-[10px] transition shadow-xs">
+          🔄 Run SLA Scan
+        </button>
+      </div>
+      <p class="text-[11px] text-purple-800 leading-relaxed">
+        • Unassigned &gt; 4h: L1 (Franchise)<br>
+        • Unassigned &gt; 8h: L2 (Brand Manager)<br>
+        • Unresolved &gt; 48h: L1 (Franchise)<br>
+        • Unresolved &gt; 72h: L2 (Brand Manager)<br>
+        • Unresolved &gt; 96h: L3 (Platform Admin)
+      </p>
+    </div>
+  `;
+  $("activityContent").innerHTML = `<div class="section-empty text-xs">Mandatory resolution notes are required by the Servora governance engine to resolve any escalation.</div>`;
+
+  $("requestHead").innerHTML = [
+    "Escalation ID",
+    "Ticket ID",
+    "Customer / Appliance",
+    "SLA Tier & Target",
+    "Breach Reason",
+    "Due Date",
+    "Status",
+    "Action"
+  ].map((l) => `<th>${safe(l)}</th>`).join("");
+
+  const query = ($("requestSearch")?.value || "").trim().toLowerCase();
+  const filtered = escalationsList.filter((e) =>
+    [e.id, e.request_id, e.reason, e.status, e.target_role].join(" ").toLowerCase().includes(query)
+  );
+
+  const levelBadges = {
+    1: `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200">L1 · Franchise</span>`,
+    2: `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-100 text-indigo-800 border border-indigo-200">L2 · Brand Mgr</span>`,
+    3: `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-800 border border-purple-200">L3 · Platform Admin</span>`
+  };
+
+  $("requestRows").innerHTML = filtered.length
+    ? filtered.map((e) => {
+        const req = requests.find(r => r.id === e.request_id);
+        const isOpen = e.status === "Open" || e.status === "In Progress";
+        return `
+          <tr>
+            <td><strong class="font-mono text-purple-700 text-xs">${safe(e.id)}</strong></td>
+            <td><span class="font-mono font-bold text-slate-800 text-xs">${safe(e.request_id)}</span></td>
+            <td>
+              <div>
+                <strong class="text-xs text-slate-800 block">${safe(req?.customer_name || 'Customer')}</strong>
+                <span class="text-[11px] text-slate-500">${safe(req?.appliance_name || 'Home Appliance')}</span>
+              </div>
+            </td>
+            <td>
+              <div class="space-y-1">
+                ${levelBadges[e.level] || `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700">Tier ${e.level}</span>`}
+                <span class="text-[10px] text-slate-400 block">${safe(e.target_role ? e.target_role.toUpperCase() : 'OPS')}</span>
+              </div>
+            </td>
+            <td class="max-w-[280px]">
+              <p class="text-xs text-slate-700 font-medium">${safe(e.reason)}</p>
+              ${e.resolution_note ? `<p class="text-[11px] text-emerald-700 mt-1 font-semibold">✓ ${safe(e.resolution_note)}</p>` : ''}
+            </td>
+            <td class="text-xs text-slate-600 whitespace-nowrap">${safe(e.due_date || 'Immediate')}</td>
+            <td>
+              <span class="px-2.5 py-1 rounded-full text-[10px] font-bold ${isOpen ? 'bg-rose-100 text-rose-800 border border-rose-200' : 'bg-emerald-100 text-emerald-800 border border-emerald-200'}">
+                ${isOpen ? '● Open SLA' : '✓ Resolved'}
+              </span>
+            </td>
+            <td>
+              <div class="flex items-center gap-1.5 whitespace-nowrap">
+                ${isOpen ? `
+                  <button type="button" class="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-xs transition" onclick="window.openResolveEscalationModal('${safe(e.id)}')">
+                    Resolve
+                  </button>
+                  ${e.level < 3 ? `
+                    <button type="button" class="px-2 py-1 rounded-lg bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 font-bold text-xs transition" onclick="window.escalateToNextTier('${safe(e.id)}')">
+                      ⬆ Tier ${e.level + 1}
+                    </button>
+                  ` : ''}
+                ` : `
+                  <span class="text-[11px] text-slate-400 font-semibold">Closed</span>
+                `}
+              </div>
+            </td>
+          </tr>
+        `;
+      }).join("")
+    : `<tr><td class="empty-row" colspan="8">${query ? "No escalations match your filter." : "✓ Excellent! No active SLA escalations in your queue."}</td></tr>`;
+
+  if ($("requestCount")) $("requestCount").textContent = `${filtered.length} escalation${filtered.length === 1 ? '' : 's'}`;
+}
+
+let activeEscalationIdToResolve = null;
+window.openResolveEscalationModal = function(escId) {
+  activeEscalationIdToResolve = escId;
+  let dialog = $("resolveEscDialog");
+  if (!dialog) {
+    dialog = document.createElement("dialog");
+    dialog.id = "resolveEscDialog";
+    dialog.className = "w-[min(94vw,480px)] rounded-3xl border-0 p-0 shadow-2xl overflow-hidden bg-white";
+    document.body.appendChild(dialog);
+  }
+  dialog.innerHTML = `
+    <div class="p-6 space-y-4">
+      <div class="flex items-start justify-between border-b border-slate-200 pb-3">
+        <div>
+          <span class="text-[10px] font-bold uppercase tracking-wider text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">SRS 6.15 Resolution Gate</span>
+          <h3 class="text-lg font-bold text-slate-900 mt-1">Resolve Escalation #${safe(escId)}</h3>
+        </div>
+        <button type="button" onclick="document.getElementById('resolveEscDialog').close()" class="w-8 h-8 rounded-full bg-slate-100 text-slate-500 font-bold text-sm">✕</button>
+      </div>
+      <div>
+        <label class="block text-xs font-semibold text-slate-700 mb-1">Mandatory Resolution Note (FR-ESC-008):</label>
+        <textarea id="escResolutionNoteInput" rows="3" class="w-full rounded-xl border border-slate-200 p-2.5 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500" placeholder="Explain corrective action taken to settle this SLA breach..."></textarea>
+      </div>
+      <div class="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+        <button type="button" onclick="document.getElementById('resolveEscDialog').close()" class="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl">Cancel</button>
+        <button type="button" onclick="window.submitEscalationResolution()" class="px-5 py-2 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl shadow-xs transition">
+          ✓ Confirm Resolution
+        </button>
+      </div>
+    </div>
+  `;
+  dialog.showModal();
+};
+
+window.submitEscalationResolution = async function() {
+  if (!activeEscalationIdToResolve) return;
+  const note = $("escResolutionNoteInput")?.value.trim();
+  if (!note || note.length < 5) {
+    showToast("Mandatory resolution note required (min 5 chars).", "warning");
+    return;
+  }
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/escalations/${activeEscalationIdToResolve}/resolve`, {
+      method: "POST",
+      headers: jsonHeaders(),
+      body: JSON.stringify({ resolution_note: note }),
+      credentials: "include"
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.detail || "Failed to resolve escalation");
+    }
+    showToast("✓ Escalation resolved successfully!", "info");
+    $("resolveEscDialog")?.close();
+    await loadEscalationsData();
+    await loadDashboard();
+  } catch (err) {
+    showToast(err.message, "error");
+  }
+};
+
+window.escalateToNextTier = async function(escId) {
+  if (!confirm(`Push escalation #${escId} to next management tier?`)) return;
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/escalations/${escId}/escalate-next`, {
+      method: "POST",
+      headers: jsonHeaders(),
+      credentials: "include"
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.detail || "Failed to escalate tier");
+    }
+    showToast(`⬆ Escalation pushed to next tier. Management notified.`, "info");
+    await loadEscalationsData();
+  } catch (err) {
+    showToast(err.message, "error");
+  }
+};
+
+window.runManualSlaScan = async function() {
+  showToast("Running automated SLA scanner...", "info");
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/escalations/check-sla`, {
+      method: "POST",
+      headers: jsonHeaders(),
+      credentials: "include"
+    });
+    if (res.ok) {
+      const breaches = await res.json();
+      showToast(`SLA scan completed. ${breaches.length} breaches evaluated.`, "info");
+      await loadEscalationsData();
+    }
+  } catch (err) {
+    showToast("SLA scan failed: " + err.message, "error");
+  }
+};
+
+// ==========================================
+// Pre-Repair Technician Estimate Gate (SRS 6.10)
+// ==========================================
+let currentEstimateRequestId = null;
+
+window.openTechEstimateModal = async function(requestId) {
+  const req = requests.find(r => r.id === requestId);
+  if (!req) return;
+  currentEstimateRequestId = requestId;
+
+  let existingEst = null;
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/requests/${requestId}/estimate`, {
+      headers: jsonHeaders(),
+      credentials: "include"
+    });
+    if (res.ok) existingEst = await res.json();
+  } catch (e) {}
+
+  let modal = $("techEstimateModal");
+  if (!modal) {
+    modal = document.createElement("dialog");
+    modal.id = "techEstimateModal";
+    modal.className = "w-[min(94vw,620px)] rounded-3xl border-0 p-0 shadow-2xl overflow-hidden bg-white";
+    document.body.appendChild(modal);
+  }
+
+  modal.innerHTML = `
+    <div class="p-6 sm:p-7 space-y-4 max-h-[90vh] overflow-y-auto">
+      <div class="flex items-start justify-between border-b border-slate-200 pb-3">
+        <div>
+          <span class="text-[10px] font-bold uppercase tracking-wider text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">Pre-Repair Gate (SRS 6.10)</span>
+          <h3 class="text-lg font-bold text-slate-900 mt-1">Submit Customer Estimate</h3>
+          <p class="text-xs text-slate-500">Service Request #${safe(req.id)} · ${safe(req.customer_name)}</p>
+        </div>
+        <button type="button" onclick="document.getElementById('techEstimateModal').close()" class="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center font-bold text-sm">✕</button>
+      </div>
+
+      <p class="text-xs text-slate-600">
+        Before replacing parts or starting repairs, submit an itemized estimate. The customer must approve the cost on their phone before repair commences.
+      </p>
+
+      <div class="space-y-2">
+        <div class="flex items-center justify-between">
+          <span class="text-xs font-bold text-slate-700 uppercase">Estimated Replacement Parts</span>
+          <button type="button" onclick="window.addTechEstimatePartRow()" class="px-2.5 py-1 rounded-lg bg-blue-50 text-blue-700 border border-blue-200 text-xs font-bold hover:bg-blue-100">
+            + Add Spare Part
+          </button>
+        </div>
+        <div id="techEstPartsContainer" class="space-y-2"></div>
+      </div>
+
+      <div class="grid grid-cols-2 gap-3 pt-2">
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 mb-1">Diagnostic / Inspection Fee (₹)</label>
+          <input type="number" id="techEstInspectionFee" class="w-full rounded-xl border border-slate-200 p-2.5 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500" value="${existingEst?.inspection_fee ?? 299.0}" oninput="window.calcTechEstimateTotal()">
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 mb-1">Labor / Service Charges (₹)</label>
+          <input type="number" id="techEstLaborCost" class="w-full rounded-xl border border-slate-200 p-2.5 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500" value="${existingEst?.labor_estimate ?? 350.0}" oninput="window.calcTechEstimateTotal()">
+        </div>
+      </div>
+
+      <div class="bg-amber-50/80 p-3.5 rounded-xl border border-amber-200 flex items-center justify-between">
+        <span class="text-xs font-bold text-amber-950">Total Customer Estimate:</span>
+        <span id="techEstTotalDisplay" class="text-lg font-mono font-extrabold text-amber-900">₹0.00</span>
+      </div>
+
+      <div>
+        <label class="block text-xs font-semibold text-slate-700 mb-1">Diagnosis Notes</label>
+        <textarea id="techEstNotes" rows="2" class="w-full rounded-xl border border-slate-200 p-2.5 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Summary of diagnosed fault and required repairs...">${safe(existingEst?.customer_remarks || '')}</textarea>
+      </div>
+
+      <div class="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100">
+        <button type="button" onclick="document.getElementById('techEstimateModal').close()" class="px-4 py-2 rounded-xl text-slate-600 hover:bg-slate-100 text-xs font-semibold">Cancel</button>
+        <button type="button" onclick="window.submitTechEstimate()" class="px-5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shadow-sm flex items-center gap-1.5 transition">
+          🚀 Send Estimate to Customer
+        </button>
+      </div>
+    </div>
+  `;
+
+  modal.showModal();
+
+  if (existingEst?.parts && existingEst.parts.length > 0) {
+    existingEst.parts.forEach(p => window.addTechEstimatePartRow(p.part_name, p.part_code, p.quantity, p.unit_price));
+  } else {
+    window.addTechEstimatePartRow("Thermostat / Sensor", "PART-STD-01", 1, 450);
+  }
+  window.calcTechEstimateTotal();
+};
+
+window.addTechEstimatePartRow = function(name = "", code = "", qty = 1, price = 0) {
+  const container = $("techEstPartsContainer");
+  if (!container) return;
+  const row = document.createElement("div");
+  row.className = "flex items-center gap-2 bg-slate-50 p-2 rounded-xl border border-slate-200 text-xs part-row";
+  row.innerHTML = `
+    <input type="text" placeholder="Part name" class="flex-1 rounded-lg border border-slate-200 p-1.5 text-xs text-slate-800 est-part-name" value="${safe(name)}">
+    <input type="text" placeholder="Code" class="w-24 rounded-lg border border-slate-200 p-1.5 text-xs text-slate-800 est-part-code" value="${safe(code)}">
+    <input type="number" min="1" placeholder="Qty" class="w-14 rounded-lg border border-slate-200 p-1.5 text-xs text-center est-part-qty" value="${qty}" oninput="window.calcTechEstimateTotal()">
+    <input type="number" min="0" placeholder="Price" class="w-20 rounded-lg border border-slate-200 p-1.5 text-xs text-right est-part-price" value="${price}" oninput="window.calcTechEstimateTotal()">
+    <button type="button" onclick="this.closest('.part-row').remove(); window.calcTechEstimateTotal();" class="text-rose-500 hover:text-rose-700 font-bold px-2 py-1">✕</button>
+  `;
+  container.appendChild(row);
+  window.calcTechEstimateTotal();
+};
+
+window.calcTechEstimateTotal = function() {
+  let partsTotal = 0;
+  document.querySelectorAll("#techEstPartsContainer .part-row").forEach(row => {
+    const qty = parseFloat(row.querySelector(".est-part-qty")?.value || 0);
+    const price = parseFloat(row.querySelector(".est-part-price")?.value || 0);
+    partsTotal += (qty * price);
+  });
+  const insp = parseFloat($("techEstInspectionFee")?.value || 0);
+  const labor = parseFloat($("techEstLaborCost")?.value || 0);
+  const total = partsTotal + insp + labor;
+  if ($("techEstTotalDisplay")) {
+    $("techEstTotalDisplay").textContent = `₹${total.toFixed(2)}`;
+  }
+};
+
+window.submitTechEstimate = async function() {
+  if (!currentEstimateRequestId) return;
+  const parts = [];
+  document.querySelectorAll("#techEstPartsContainer .part-row").forEach(row => {
+    const name = row.querySelector(".est-part-name")?.value.trim();
+    const code = row.querySelector(".est-part-code")?.value.trim() || "STD";
+    const qty = parseInt(row.querySelector(".est-part-qty")?.value || 1, 10);
+    const price = parseFloat(row.querySelector(".est-part-price")?.value || 0);
+    if (name) {
+      parts.push({
+        part_name: name,
+        part_code: code,
+        quantity: qty,
+        unit_price: price,
+        total_price: qty * price
+      });
+    }
+  });
+
+  const inspectionFee = parseFloat($("techEstInspectionFee")?.value || 299.0);
+  const laborEstimate = parseFloat($("techEstLaborCost")?.value || 0.0);
+  const notes = $("techEstNotes")?.value.trim() || "";
+
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/requests/${currentEstimateRequestId}/estimate`, {
+      method: "POST",
+      headers: jsonHeaders(),
+      body: JSON.stringify({
+        parts: parts,
+        inspection_fee: inspectionFee,
+        labor_estimate: laborEstimate,
+        notes: notes
+      }),
+      credentials: "include"
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.detail || "Failed to submit estimate");
+    }
+    showToast("✓ Pre-repair estimate sent to customer! Awaiting phone approval.", "info");
+    $("techEstimateModal")?.close();
+    await loadDashboard();
+  } catch (err) {
+    showToast(err.message, "error");
+  }
 };
 
 // Mobile Sidebar Tap-outside Auto-Close

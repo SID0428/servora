@@ -151,6 +151,8 @@ class ServiceRequestModel(Base):
     defect_photo = Column(Text, nullable=True)
     reopened_reason = Column(Text, nullable=True)
     reopened_at = Column(String(64), nullable=True)
+    is_escalated = Column(Boolean, nullable=True, default=False)
+    escalation_level = Column(Integer, nullable=True, default=0)
 
 class JobCardModel(Base):
     __tablename__ = "job_cards"
@@ -269,5 +271,52 @@ class AMCSubscriptionModel(Base):
     services_included = Column(Integer, default=2)
     services_used = Column(Integer, default=0)
     amount_paid = Column(Float, nullable=False, default=0.0)
+    created_at = Column(String(64), nullable=False)
+
+class EstimateModel(Base):
+    __tablename__ = "estimates"
+
+    id = Column(String(64), primary_key=True, index=True) # e.g. EST-7845
+    request_id = Column(String(64), ForeignKey("service_requests.id", ondelete="CASCADE"), nullable=False, index=True)
+    technician_id = Column(String(64), nullable=False, index=True)
+    technician_name = Column(String(128), nullable=True)
+    parts_json = Column(Text, default="[]") # JSON list of {part_id, part_name, part_code, quantity, unit_price, total_price}
+    labor_estimate = Column(Float, default=0.0)
+    inspection_fee = Column(Float, default=299.0)
+    total_estimate = Column(Float, default=0.0)
+    status = Column(String(32), default="pending") # pending, approved, rejected
+    customer_remarks = Column(Text, nullable=True)
+    created_at = Column(String(64), nullable=False)
+    responded_at = Column(String(64), nullable=True)
+
+class EscalationModel(Base):
+    __tablename__ = "escalations"
+
+    id = Column(String(64), primary_key=True, index=True) # e.g. ESC-1001
+    request_id = Column(String(64), ForeignKey("service_requests.id", ondelete="CASCADE"), nullable=False, index=True)
+    level = Column(Integer, default=1) # 1: Franchise, 2: Brand/Company, 3: Platform Admin
+    target_role = Column(String(32), default="franchise") # franchise, company, admin
+    owner_id = Column(String(64), nullable=True)
+    owner_name = Column(String(128), nullable=True)
+    reason = Column(Text, nullable=False)
+    status = Column(String(32), default="Open") # Open, In Progress, Resolved, Closed
+    due_date = Column(String(64), nullable=True)
+    resolution_note = Column(Text, nullable=True)
+    created_at = Column(String(64), nullable=False)
+    resolved_at = Column(String(64), nullable=True)
+
+class NotificationLogModel(Base):
+    __tablename__ = "notification_logs"
+
+    id = Column(String(64), primary_key=True, index=True) # e.g. NOTIF-1001
+    user_id = Column(String(64), nullable=True, index=True)
+    recipient_email = Column(String(128), nullable=False)
+    recipient_name = Column(String(128), nullable=False)
+    title = Column(String(256), nullable=False)
+    body = Column(Text, nullable=False)
+    channel = Column(String(32), default="email")
+    event_type = Column(String(64), nullable=False)
+    reference_id = Column(String(64), nullable=True)
+    delivery_status = Column(String(32), default="sent") # sent, failed, simulated
     created_at = Column(String(64), nullable=False)
 

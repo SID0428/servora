@@ -185,6 +185,9 @@ class ServiceRequestDetail(BaseModel):
     defect_photo: Optional[str] = None
     reopened_reason: Optional[str] = None
     reopened_at: Optional[str] = None
+    is_escalated: Optional[bool] = False
+    escalation_level: Optional[int] = 0
+    has_estimate: Optional[bool] = False
 
 class ServiceBookingCreate(BaseModel):
     appliance_id: str
@@ -394,5 +397,77 @@ class AMCSubscriptionSchema(BaseModel):
     services_included: int
     services_used: int
     amount_paid: float
+    created_at: str
+
+# ==========================================
+# Phase 3: Estimate, Escalation & Notification Schemas
+# ==========================================
+class EstimatePartItem(BaseModel):
+    part_id: Optional[str] = None
+    part_name: str
+    part_code: Optional[str] = None
+    quantity: int = Field(default=1, ge=1)
+    unit_price: float = Field(default=0.0, ge=0.0)
+    total_price: Optional[float] = None
+
+class EstimateCreatePayload(BaseModel):
+    parts: List[EstimatePartItem] = Field(default_factory=list)
+    labor_estimate: float = Field(default=0.0, ge=0.0)
+    inspection_fee: Optional[float] = 299.0
+    notes: Optional[str] = None
+
+class EstimateResponse(BaseModel):
+    id: str
+    request_id: str
+    technician_id: str
+    technician_name: Optional[str] = None
+    parts: List[EstimatePartItem] = Field(default_factory=list)
+    labor_estimate: float
+    inspection_fee: float
+    total_estimate: float
+    status: str # pending, approved, rejected
+    customer_remarks: Optional[str] = None
+    created_at: str
+    responded_at: Optional[str] = None
+
+class EstimateRespondPayload(BaseModel):
+    action: str = Field(pattern=r"^(approve|reject)$")
+    remarks: Optional[str] = None
+
+class EscalationCreatePayload(BaseModel):
+    request_id: str
+    reason: str = Field(min_length=3)
+    level: Optional[int] = Field(default=1, ge=1, le=3)
+    target_role: Optional[str] = "franchise"
+    due_date: Optional[str] = None
+
+class EscalationResolvePayload(BaseModel):
+    resolution_note: str = Field(min_length=5)
+
+class EscalationResponse(BaseModel):
+    id: str
+    request_id: str
+    level: int
+    target_role: str
+    owner_id: Optional[str] = None
+    owner_name: Optional[str] = None
+    reason: str
+    status: str
+    due_date: Optional[str] = None
+    resolution_note: Optional[str] = None
+    created_at: str
+    resolved_at: Optional[str] = None
+
+class NotificationLogResponse(BaseModel):
+    id: str
+    user_id: Optional[str] = None
+    recipient_email: str
+    recipient_name: str
+    title: str
+    body: str
+    channel: str
+    event_type: str
+    reference_id: Optional[str] = None
+    delivery_status: str
     created_at: str
 

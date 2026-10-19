@@ -21,7 +21,14 @@ from app.db.models import (
     FranchiseInventoryModel,
     InventoryTransactionModel,
     WarrantyClaimModel,
-    AMCSubscriptionModel
+    AMCSubscriptionModel,
+    EstimateModel,
+    EscalationModel
+)
+from app.notification_service import (
+    notify_booking_created,
+    notify_technician_assigned,
+    notify_technician_arrival
 )
 from app.schemas import (
     ServiceRequestDetail,
@@ -187,7 +194,10 @@ def format_request_detail(req: ServiceRequestModel, db: Session) -> ServiceReque
         longitude=req.longitude,
         defect_photo=req.defect_photo,
         reopened_reason=req.reopened_reason,
-        reopened_at=req.reopened_at
+        reopened_at=req.reopened_at,
+        is_escalated=bool(getattr(req, "is_escalated", False)),
+        escalation_level=int(getattr(req, "escalation_level", 0) or 0),
+        has_estimate=bool(db.query(EstimateModel.id).filter(EstimateModel.request_id == req.id).first())
     )
 
 @router.get("", response_model=List[ServiceRequestDetail])
@@ -418,6 +428,10 @@ def create_request(payload: ServiceBookingCreate, request: Request, db: Session 
     db.add(new_req)
     db.commit()
     db.refresh(new_req)
+
+    # Dispatched email confirmation via Notification Gateway (SRS 6.16)
+    notify_booking_created(new_req, db)
+
     return format_request_detail(new_req, db)
 
 @router.post("/{request_id}/assign", response_model=ServiceRequestDetail)
@@ -488,6 +502,10 @@ def assign_technician(request_id: str, payload: FranchiseAssignPayload, request:
     req.status_badge = "Scheduled"
     db.commit()
     db.refresh(req)
+
+    # Dispatched technician assignment and start OTP via Notification Gateway (SRS 6.16)
+    notify_technician_assigned(req, tech, db)
+
     return format_request_detail(req, db)
 
 @router.post("/{request_id}/action", response_model=ServiceRequestDetail)
@@ -538,6 +556,7 @@ def technician_action(request_id: str, payload: TechnicianActionPayload, request
                 step["description"] = "Technician on the way to customer doorstep (Live GPS active)"
             elif step.get("id") == "step_4":
                 step["state"] = "pending"
+        notify_technician_arrival(req, db)
     elif action in ("start_service",):
         expected_start_otp = getattr(req, "start_otp", None) or req.verification_otp
         if not payload.verification_otp or payload.verification_otp.strip() != expected_start_otp.strip():

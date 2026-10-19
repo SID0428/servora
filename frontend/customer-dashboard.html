@@ -480,6 +480,41 @@
               </div>
             </div>
 
+            <!-- Pre-Repair Customer Estimate Approval Gate (SRS 6.10) -->
+            <div id="trackingEstimateBanner" class="hidden rounded-2xl border border-amber-300 bg-gradient-to-r from-amber-50 via-white to-amber-50 p-4 shadow-sm">
+              <div class="flex items-start gap-3">
+                <span class="text-2xl">📝</span>
+                <div class="text-xs flex-1">
+                  <div class="flex items-center gap-2">
+                    <strong class="text-amber-950 font-bold text-sm">Pre-Repair Cost Estimate Submitted</strong>
+                    <span id="estimatePendingPill" class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-200 text-amber-900 border border-amber-300">Approval Required</span>
+                  </div>
+                  <p id="trackingEstimateDesc" class="text-slate-600 mt-1">Technician has diagnosed your appliance and estimated parts & labor cost. Repair will commence only after your digital authorization.</p>
+                  <div class="mt-3 flex items-center gap-2">
+                    <button type="button" id="openEstimateModalBtn" onclick="window.openCustomerEstimateModal()" class="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs transition shadow-sm">
+                      <span>🔍 Review & Approve Estimate</span>
+                    </button>
+                    <span id="estimateTotalPreview" class="text-xs font-mono font-bold text-amber-900 bg-amber-100 px-2.5 py-1.5 rounded-lg border border-amber-200"></span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- SLA Escalation Alert Banner (SRS 6.15) -->
+            <div id="trackingEscalationBanner" class="hidden rounded-2xl border border-purple-200 bg-purple-50/90 p-4">
+              <div class="flex items-start gap-3">
+                <span class="text-xl">🚨</span>
+                <div class="text-xs flex-1">
+                  <div class="flex items-center gap-2">
+                    <strong class="text-purple-950 font-bold">Ticket Under SLA Escalation</strong>
+                    <span id="trackingEscalationLevelBadge" class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-200 text-purple-900">Tier 1 - Franchise</span>
+                  </div>
+                  <p id="trackingEscalationReason" class="text-purple-800 mt-1 font-medium"></p>
+                  <p class="text-[11px] text-purple-600 mt-1">Under Servora SLA Governance, management oversight has intervened to expedite service resolution.</p>
+                </div>
+              </div>
+            </div>
+
             <!-- Service Completion & Sign-off Hub (Phase 1 FR-JOB-001 & FR-FBK-001) -->
             <div id="trackingCompletionCard" class="hidden rounded-2xl border border-blue-200 bg-gradient-to-r from-blue-50/80 via-white to-indigo-50/70 p-4 space-y-3 shadow-xs">
               <div class="flex items-center justify-between">
@@ -505,6 +540,9 @@
                 </button>
                 <button type="button" id="openFeedbackBtn" class="py-2 px-3.5 bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 shadow-sm transition">
                   <span>⭐ Rate Service</span>
+                </button>
+                <button type="button" id="openEscalateBtn" onclick="window.openCustomerEscalateModal()" class="py-2 px-3.5 bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 font-bold text-xs rounded-xl flex items-center gap-1.5 transition">
+                  <span>🚨 Escalate Ticket</span>
                 </button>
                 <button type="button" id="openReopenBtn" class="py-2 px-3.5 bg-white hover:bg-rose-50 text-rose-600 hover:text-rose-700 border border-rose-200 font-bold text-xs rounded-xl flex items-center gap-1.5 transition sm:ml-auto">
                   <span>⚠️ Reopen Request</span>
@@ -1636,5 +1674,109 @@
     </div>
   </dialog>
 
+  <!-- ============================================================== -->
+  <!-- 17. PRE-REPAIR ESTIMATE APPROVAL GATE MODAL (SRS 6.10) -->
+  <!-- ============================================================== -->
+  <dialog id="customerEstimateModal" class="w-[min(94vw,620px)] rounded-3xl border-0 p-0 shadow-2xl overflow-hidden bg-white">
+    <div class="p-6 sm:p-7 space-y-4 max-h-[90vh] overflow-y-auto">
+      <div class="flex items-start justify-between border-b border-slate-200 pb-3">
+        <div>
+          <span class="text-[10px] font-bold uppercase tracking-wider text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">SRS 6.10 Customer Approval Gate</span>
+          <h3 class="text-lg font-bold text-slate-900 mt-1">Pre-Repair Cost Estimate</h3>
+          <p id="estModalSubtitle" class="text-xs text-slate-500">Service Request #SR-7845</p>
+        </div>
+        <button type="button" onclick="document.getElementById('customerEstimateModal').close()" class="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center font-bold text-sm">✕</button>
+      </div>
+
+      <div class="p-3 bg-amber-50/80 rounded-xl border border-amber-200 text-xs text-amber-900">
+        🛡️ <strong>Servora Customer Protection</strong>: Technicians are not permitted to replace parts or begin repair until you explicitly authorize this estimate.
+      </div>
+
+      <!-- Parts Breakdown -->
+      <div class="space-y-2">
+        <span class="text-xs font-bold text-slate-700 uppercase tracking-wider">Estimated Parts Required</span>
+        <div class="border border-slate-200 rounded-xl overflow-hidden">
+          <table class="w-full text-xs text-left">
+            <thead class="bg-slate-50 border-b border-slate-200 text-slate-500 font-semibold">
+              <tr>
+                <th class="p-2.5">Part Name & Code</th>
+                <th class="p-2.5 text-center">Qty</th>
+                <th class="p-2.5 text-right">Unit Price</th>
+                <th class="p-2.5 text-right">Total</th>
+              </tr>
+            </thead>
+            <tbody id="estModalPartsRows" class="divide-y divide-slate-100">
+              <!-- Rendered dynamically -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Cost Summary -->
+      <div class="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-2 text-xs text-slate-700">
+        <div class="flex justify-between">
+          <span class="text-slate-500">Doorstep Diagnostic Inspection:</span>
+          <span id="estModalInspectionFee" class="font-semibold text-slate-800">₹299.00</span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-slate-500">Labor / Repair Charges:</span>
+          <span id="estModalLaborCost" class="font-semibold text-slate-800">₹0.00</span>
+        </div>
+        <div class="flex justify-between border-t border-slate-200 pt-2 font-bold text-sm text-slate-900">
+          <span>Total Pre-Repair Estimate:</span>
+          <span id="estModalTotalAmount" class="text-base text-amber-700 font-mono font-extrabold">₹0.00</span>
+        </div>
+      </div>
+
+      <!-- Remarks / Reason input -->
+      <div>
+        <label for="estCustomerRemarks" class="block text-xs font-semibold text-slate-700 mb-1">Customer Remarks (Optional for approval, recommended for rejection):</label>
+        <textarea id="estCustomerRemarks" rows="2" class="w-full rounded-xl border border-slate-200 p-2.5 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500" placeholder="e.g. Please proceed with replacement / Parts cost seems too high..."></textarea>
+      </div>
+
+      <div class="flex items-center justify-end gap-2.5 pt-2 border-t border-slate-100">
+        <button type="button" onclick="window.respondToCustomerEstimate('reject')" class="px-4 py-2 rounded-xl border border-rose-200 bg-white hover:bg-rose-50 text-rose-700 font-bold text-xs transition">
+          ✕ Decline Estimate
+        </button>
+        <button type="button" onclick="window.respondToCustomerEstimate('approve')" class="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs transition shadow-sm flex items-center gap-1.5">
+          ✓ Approve Estimate & Authorize Repair
+        </button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- ============================================================== -->
+  <!-- 18. SLA ESCALATION MODAL (SRS 6.15) -->
+  <!-- ============================================================== -->
+  <dialog id="customerEscalationModal" class="w-[min(94vw,520px)] rounded-3xl border-0 p-0 shadow-2xl overflow-hidden bg-white">
+    <div class="p-6 sm:p-7 space-y-4">
+      <div class="flex items-start justify-between border-b border-slate-200 pb-3">
+        <div>
+          <span class="text-[10px] font-bold uppercase tracking-wider text-purple-700 bg-purple-50 px-2 py-0.5 rounded-full border border-purple-200">SRS 6.15 SLA Engine</span>
+          <h3 class="text-lg font-bold text-slate-900 mt-1">Escalate Service Ticket</h3>
+          <p id="escModalSubtitle" class="text-xs text-slate-500">Service Request #SR-7845</p>
+        </div>
+        <button type="button" onclick="document.getElementById('customerEscalationModal').close()" class="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center font-bold text-sm">✕</button>
+      </div>
+
+      <div class="p-3 bg-purple-50/80 rounded-xl border border-purple-200 text-xs text-purple-900">
+        📢 <strong>Multi-Tier Management Oversight</strong>: Raising an escalation alerts the franchise branch manager and platform administration. Tickets cannot be closed without an authorized resolution note.
+      </div>
+
+      <div>
+        <label for="escCustomerReason" class="block text-xs font-semibold text-slate-700 mb-1">Reason for Escalation <span class="text-rose-500">*</span></label>
+        <textarea id="escCustomerReason" rows="3" class="w-full rounded-xl border border-slate-200 p-2.5 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-purple-500" placeholder="Describe the delay, unresponsiveness, or issue experienced..."></textarea>
+      </div>
+
+      <div class="flex items-center justify-end gap-2.5 pt-2 border-t border-slate-100">
+        <button type="button" onclick="document.getElementById('customerEscalationModal').close()" class="px-4 py-2 rounded-xl text-slate-600 hover:bg-slate-100 font-semibold text-xs">Cancel</button>
+        <button type="button" onclick="window.submitCustomerEscalation()" class="px-5 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs transition shadow-sm flex items-center gap-1.5">
+          🚨 Submit Escalation
+        </button>
+      </div>
+    </div>
+  </dialog>
+
 </body>
 </html>
+

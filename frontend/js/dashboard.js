@@ -1138,6 +1138,50 @@ function populateTracking(request) {
     }
   }
 
+  // Pre-Repair Estimate Banner (SRS 6.10)
+  if ($("trackingEstimateBanner")) {
+    const hasEst = Boolean(request.has_estimate || request.status === "Estimate Pending Approval" || request.status === "Repair in Progress" || request.status === "Estimate Rejected");
+    if (hasEst) {
+      $("trackingEstimateBanner").classList.remove("hidden");
+      readApiJson(`/api/requests/${encodeURIComponent(request.id)}/estimate`)
+        .then(est => {
+          if ($("estimateTotalPreview")) $("estimateTotalPreview").textContent = `Total: ₹${Number(est.total_estimate).toFixed(2)}`;
+          if ($("estimatePendingPill")) {
+            if (est.status === "approved") {
+              $("estimatePendingPill").textContent = "✓ Approved by You";
+              $("estimatePendingPill").className = "text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200";
+            } else if (est.status === "rejected") {
+              $("estimatePendingPill").textContent = "✕ Declined by You";
+              $("estimatePendingPill").className = "text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-100 text-rose-800 border border-rose-200";
+            } else {
+              $("estimatePendingPill").textContent = "Approval Required";
+              $("estimatePendingPill").className = "text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-200 text-amber-900 border border-amber-300";
+            }
+          }
+        })
+        .catch(() => {});
+    } else {
+      $("trackingEstimateBanner").classList.add("hidden");
+    }
+  }
+
+  // SLA Escalation Banner (SRS 6.15)
+  if ($("trackingEscalationBanner")) {
+    if (request.is_escalated) {
+      $("trackingEscalationBanner").classList.remove("hidden");
+      const lvl = request.escalation_level || 1;
+      const lvlMap = { 1: "Tier 1 - Franchise", 2: "Tier 2 - Brand Manager", 3: "Tier 3 - Platform Admin" };
+      if ($("trackingEscalationLevelBadge")) {
+        $("trackingEscalationLevelBadge").textContent = lvlMap[lvl] || `Tier ${lvl}`;
+      }
+      if ($("trackingEscalationReason")) {
+        $("trackingEscalationReason").textContent = "Operational escalation active. Management has intervened to expedite service.";
+      }
+    } else {
+      $("trackingEscalationBanner").classList.add("hidden");
+    }
+  }
+
   renderTimeline(request.timeline, request);
 }
 
@@ -2445,3 +2489,100 @@ document.addEventListener("DOMContentLoaded", async () => {
     await loadDashboardData();
   }
 });
+
+// ==========================================
+// Pre-Repair Estimate & SLA Escalation Functions (SRS 6.10 & SRS 6.15)
+// ==========================================
+window.openCustomerEstimateModal = async function(requestId = selectedRequestId) {
+  if (!requestId) return;
+  const req = userRequests.find(r => r.id === requestId);
+  if ($("estModalSubtitle")) $("estModalSubtitle").textContent = `Service Request #${requestId} · ${req?.appliance_name || 'Appliance'}`;
+  
+  try {
+    const est = await readApiJson(`/api/requests/${encodeURIComponent(requestId)}/estimate`);
+    const rowsEl = $("estModalPartsRows");
+    if (rowsEl) {
+      if (est.parts && est.parts.length > 0) {
+        rowsEl.innerHTML = est.parts.map(p => `
+          <tr class="hover:bg-slate-50">
+            <td class="p-2.5">
+              <strong class="text-slate-800 block">${escapeHtml(p.part_name)}</strong>
+              <span class="text-[10px] text-slate-400 font-mono">${escapeHtml(p.part_code || 'STANDARD')}</span>
+            </td>
+            <td class="p-2.5 text-center font-bold">${p.quantity}</td>
+            <td class="p-2.5 text-right">₹${Number(p.unit_price).toFixed(2)}</td>
+            <td class="p-2.5 text-right font-semibold text-slate-900">₹${Number(p.total_price || (p.quantity * p.unit_price)).toFixed(2)}</td>
+          </tr>
+        `).join("");
+      } else {
+        rowsEl.innerHTML = `<tr><td colspan="4" class="p-3 text-center text-slate-400">No spare parts replacement estimated. Labor and inspection only.</td></tr>`;
+      }
+    }
+    if ($("estModalInspectionFee")) $("estModalInspectionFee").textContent = `₹${Number(est.inspection_fee || 0).toFixed(2)}`;
+    if ($("estModalLaborCost")) $("estModalLaborCost").textContent = `₹${Number(est.labor_estimate || 0).toFixed(2)}`;
+    if ($("estModalTotalAmount")) $("estModalTotalAmount").textContent = `₹${Number(est.total_estimate || 0).toFixed(2)}`;
+    if ($("estCustomerRemarks")) $("estCustomerRemarks").value = est.customer_remarks || "";
+
+    openDialog("customerEstimateModal");
+  } catch (err) {
+    showToast("Could not load estimate: " + (err.message || "Not available yet"), "warning");
+  }
+};
+
+window.respondToCustomerEstimate = async function(action) {
+  if (!selectedRequestId) return;
+  const remarks = $("estCustomerRemarks")?.value.trim() || "";
+  try {
+    const res = await apiFetch(`/api/requests/${encodeURIComponent(selectedRequestId)}/estimate/respond`, {
+      method: "POST",
+      body: JSON.stringify({ action, remarks })
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.detail || "Failed to submit estimate response");
+    }
+    showToast(action === "approve" ? "✓ Estimate approved! Technician authorized to begin repair." : "Estimate declined. Franchise notified.", "info");
+    closeDialog("customerEstimateModal");
+    await loadTrackingDetails(selectedRequestId);
+    await loadDashboardData();
+  } catch (err) {
+    showToast(err.message, "error");
+  }
+};
+
+window.openCustomerEscalateModal = function(requestId = selectedRequestId) {
+  if (!requestId) return;
+  if ($("escModalSubtitle")) $("escModalSubtitle").textContent = `Service Request #${requestId}`;
+  if ($("escCustomerReason")) $("escCustomerReason").value = "";
+  openDialog("customerEscalationModal");
+};
+
+window.submitCustomerEscalation = async function() {
+  if (!selectedRequestId) return;
+  const reason = $("escCustomerReason")?.value.trim();
+  if (!reason || reason.length < 5) {
+    showToast("Please provide a reason for escalation (min 5 characters).", "warning");
+    return;
+  }
+  try {
+    const res = await apiFetch("/api/escalations", {
+      method: "POST",
+      body: JSON.stringify({
+        request_id: selectedRequestId,
+        reason: reason,
+        level: 1
+      })
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.detail || "Failed to raise escalation");
+    }
+    showToast("🚨 SLA Escalation raised. Franchise management has been alerted.", "info");
+    closeDialog("customerEscalationModal");
+    await loadTrackingDetails(selectedRequestId);
+    await loadDashboardData();
+  } catch (err) {
+    showToast(err.message, "error");
+  }
+};
+

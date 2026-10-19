@@ -8,10 +8,15 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.db.session import SessionLocal
 from app.seeds import seed_database
-from app.routes import auth, appliances, requests as requests_route, admin, company, franchise, uploads, inventory, warranty_amc
+from app.routes import (
+    auth, appliances, requests as requests_route, admin, company, franchise,
+    uploads, inventory, warranty_amc, estimates, escalations
+)
+from app.sla_engine import evaluate_sla_breaches
 from fastapi.staticfiles import StaticFiles
 
 logger = logging.getLogger("keepalive")
+sla_logger = logging.getLogger("sla_monitor")
 
 async def keep_alive_ping_loop():
     """
@@ -53,6 +58,32 @@ async def keep_alive_ping_loop():
         except asyncio.CancelledError:
             break
 
+async def sla_monitor_loop():
+    """
+    Background worker that runs SLA evaluations every 5 minutes (SRS 6.15).
+    """
+    await asyncio.sleep(10) # Initial brief pause after startup
+    while True:
+        try:
+            def _check():
+                db = SessionLocal()
+                try:
+                    return evaluate_sla_breaches(db)
+                finally:
+                    db.close()
+            breaches = await asyncio.to_thread(_check)
+            if breaches:
+                sla_logger.info("SLA Scanner detected and processed %d breach escalations", len(breaches))
+        except asyncio.CancelledError:
+            break
+        except Exception as exc:
+            sla_logger.warning("SLA monitoring loop encounter error: %s", exc)
+
+        try:
+            await asyncio.sleep(300) # Check every 5 minutes
+        except asyncio.CancelledError:
+            break
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Initialize DB schema & seed default demo data on startup
@@ -79,6 +110,10 @@ async def lifespan(app: FastAPI):
         keepalive_task = asyncio.create_task(keep_alive_ping_loop())
         print("✓ Background keep-alive task started (triggers every 14 min)")
 
+    # Start SLA auto-escalation engine background worker
+    sla_task = asyncio.create_task(sla_monitor_loop())
+    print("✓ Background SLA monitoring task started (evaluates every 5 min)")
+
     try:
         yield
     finally:
@@ -86,6 +121,12 @@ async def lifespan(app: FastAPI):
             keepalive_task.cancel()
             try:
                 await keepalive_task
+            except asyncio.CancelledError:
+                pass
+        if sla_task:
+            sla_task.cancel()
+            try:
+                await sla_task
             except asyncio.CancelledError:
                 pass
 
@@ -144,6 +185,8 @@ app.include_router(franchise.onboarding_router)
 app.include_router(uploads.router)
 app.include_router(inventory.router)
 app.include_router(warranty_amc.router)
+app.include_router(estimates.router)
+app.include_router(escalations.router)
 
 uploads_static_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "app", "static", "uploads")
 os.makedirs(uploads_static_dir, exist_ok=True)
