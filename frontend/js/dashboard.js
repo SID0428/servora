@@ -130,7 +130,7 @@ async function loadCurrentCustomer() {
     if (response.ok) {
       const data = await response.json();
       const token = data.session_token || currentUser?.session_token || cachedUser?.session_token;
-      currentUser = { ...data.user, session_token: token };
+      currentUser = { ...currentUser, ...cachedUser, ...data.user, session_token: token };
       if (currentUser.role !== "customer") {
         redirectForRole(currentUser.role);
         return false;
@@ -143,7 +143,6 @@ async function loadCurrentCustomer() {
         currentUser = cachedUser;
         return true;
       }
-      localStorage.removeItem("servora_user");
       window.location.replace("./index.html");
       return false;
     }
@@ -157,7 +156,6 @@ async function loadCurrentCustomer() {
     return false;
   }
   if (!cachedUser) {
-    localStorage.removeItem("servora_user");
     window.location.replace("./index.html");
     return false;
   }

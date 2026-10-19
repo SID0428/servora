@@ -1,0 +1,1047 @@
+Software Requirements Specification (SRS)
+Unified Service Intelligence Platform (USIP)
+Version: 1.0Status: Development-Ready DraftImplementation Approach: Conventional rule-based platform
+1. Document Overview
+1.1 Purpose
+This Software Requirements Specification (SRS) defines the requirements for the design, development, testing, and deployment of the Unified Service Intelligence Platform (USIP).
+USIP is a centralized, multi-brand, multi-provider platform for managing home-appliance service requests, complaints, technician assignments, warranty and AMC records, spare-parts inventory, job cards, billing, training, feedback, escalations, and service analytics.
+The system will support appliances including, but not limited to:
+Air conditioners.
+Refrigerators.
+Microwaves.
+Chimneys.
+Dishwashers.
+Hobs.
+Cooktops.
+Cooking ranges.
+Ovens.
+Washing machines.
+Water purifiers.
+Coffee machines.
+Other consumer home appliances.
+1.2 Business Problem
+The home-appliance after-sales service industry is fragmented and inconsistent. Consumers typically:
+Search for brand toll-free numbers on search engines and third-party websites.
+Contact unauthorized or fraudulent service providers.
+Receive unverified technicians at their premises.
+Face overcharging, poor repairs, counterfeit parts, and safety risks.
+Struggle to track complaints and service requests.
+Experience silent closure of complaints without proper resolution.
+Appliance companies and service providers face:
+Poor visibility of field operations.
+Inefficient complaint management.
+Inconsistent technician performance.
+Weak control over spare parts and pricing.
+Limited ability to measure service quality and SLAs.
+1.3 Proposed Solution
+USIP will act as a unified service management ecosystem connecting:
+Consumers.
+Appliance manufacturers (brands).
+Authorized service centers.
+Third-party service providers.
+Field technicians.
+Spare-parts suppliers.
+Platform administrators.
+The platform will:
+Provide a single verified entry point for service requests and complaints.
+Route requests only to verified brands and authorized service partners.
+Enable end-to-end tracking and transparent status updates.
+Enforce structured escalation paths.
+Use configurable business rules, verification controls, and audit logs to reduce fraud and improve accountability.
+USIP will be implemented as a conventional software platform using:
+Configurable workflows.
+Role-based access control.
+APIs for brand integrations.
+Notifications and dashboards.
+Immutable audit trails.
+No autonomous AI agents or Agentic AI components will be used in the initial release.
+1.4 Objectives
+The system shall:
+Provide one centralized platform for appliance service requests and complaints.
+Improve transparency across the service lifecycle.
+Allow customers to track requests in real time.
+Verify organizations, service centers, and technicians.
+Reduce unauthorized technician visits and brand impersonation.
+Standardize job assignment, pricing, billing, and complaint closure.
+Manage warranty and AMC information.
+Improve technician scheduling and utilization.
+Track spare-parts availability and usage.
+Provide company-level and platform-level reporting.
+Support escalation when service-level deadlines are missed.
+Preserve immutable service and communication records.
+1.5 Target Audience
+User Type
+Primary Responsibilities
+Consumer
+Create service requests, approve visits, track work, pay charges, provide feedback
+Appliance Brand
+Manage products, warranty rules, service areas, service requests, SLAs, escalations
+Authorized Service Center
+Receive jobs, assign technicians, manage schedules, update job status
+Third-Party Service Provider
+Manage service operations, technicians, inventory, billing, subscriptions
+Technician
+View assigned jobs, verify identity, perform service, update job cards
+Platform Administrator
+Onboard organizations, approve users, monitor operations, manage policies
+Finance Administrator
+Manage subscriptions, invoices, payments, refunds, settlements
+Support Agent
+Assist customers, manage communications, resolve platform-related issues
+2. Scope
+2.1 In Scope (Initial Release)
+Consumer registration and login.
+Organization onboarding and verification.
+Brand and appliance catalog management.
+Service-request and complaint creation.
+Complaint and ticket management.
+Warranty and AMC management.
+Service-center and technician management.
+Technician assignment and scheduling.
+Customer notifications.
+Job cards and service reports.
+Spare-parts inventory.
+Billing and payment recording.
+Customer feedback and ratings.
+Complaint escalation.
+Fraud-risk controls based on verification and business rules.
+Training and certification records.
+Dashboards and reports.
+Subscription management for third-party providers.
+API integration with brand systems.
+Audit logging.
+Role-based access control.
+2.2 Out of Scope (Initial Release)
+Autonomous AI agents or Agentic AI modules.
+Automated diagnosis without human or rule-based validation.
+Direct control of appliances.
+Unverified open marketplace access for technicians.
+Automatic approval of expensive repairs without customer consent.
+Legal adjudication of consumer disputes.
+Insurance claims processing.
+Physical warehousing managed by USIP.
+Guaranteed prevention of every type of fraud.
+Replacement of a brand’s internal CRM or ERP.
+2.3 Product Boundaries
+USIP coordinates service operations but is not the legal manufacturer, warranty provider, or employer of technicians unless a separate contractual arrangement exists.
+Each appliance brand remains responsible for:
+Its warranty policies.
+Product safety instructions.
+Authorized service decisions.
+Spare-part authenticity.
+Technician authorization.
+Final commercial liability for brand-related services.
+3. Stakeholder Requirements
+3.1 Consumer Requirements
+Consumers shall be able to:
+Register through mobile number, email, or supported identity verification.
+Select or enter an appliance brand and model.
+Upload invoices, warranty documents, photos, videos, and error codes.
+Describe a service problem.
+Select repair, installation, maintenance, inspection, or complaint type.
+Select a preferred visit date and time.
+View applicable service charges before confirmation.
+Receive technician details before a visit.
+Verify technician identity at the doorstep.
+Track job status.
+Approve estimates and additional work.
+View job cards and invoices.
+Reopen a complaint within a defined period.
+Rate the service.
+Escalate unresolved issues.
+3.2 Brand Requirements
+Brands shall be able to:
+Register and verify their organization.
+Manage products, models, warranty rules, and service policies.
+Configure SLAs.
+Maintain official support channels.
+Manage service areas.
+Approve service providers and technicians.
+Receive service tickets through API or web dashboard.
+Monitor assigned and unresolved complaints.
+Approve or reject service estimates.
+Review customer feedback.
+Export reports.
+Manage escalation levels.
+3.3 Service Provider Requirements
+Service providers shall be able to:
+Register for a subscription plan.
+Submit legal and business verification documents.
+Add branches and service zones.
+Add technicians.
+Upload technician qualifications and certifications.
+Receive and assign jobs.
+Manage technician schedules.
+Maintain spare-parts inventory.
+Generate job cards.
+Submit estimates and invoices.
+Track performance indicators.
+Respond to customer complaints.
+3.4 Technician Requirements
+Technicians shall be able to:
+Log in using verified credentials.
+View assigned jobs.
+View permitted customer and appliance details.
+Navigate to the service location.
+Confirm arrival.
+Present a platform-generated verification code or QR code.
+Record diagnosis and work performed.
+Add parts used.
+Upload before-and-after photographs.
+Record customer approval.
+Collect payment where authorized.
+Submit the job for closure.
+4. System Architecture
+4.1 Architecture Principles
+The system shall use:
+Modular architecture.
+Secure REST or GraphQL APIs.
+Relational database for transactional data.
+Object storage for documents and media.
+Role-based access control.
+Centralized audit logging.
+Configurable workflows.
+Event-based notifications.
+API gateway for external integrations.
+Separate environments for development, testing, staging, and production.
+4.2 Logical Components
+Consumer web application.
+Consumer mobile application.
+Brand dashboard.
+Service-provider dashboard.
+Technician mobile application.
+Platform administration console.
+Authentication and identity service.
+Organization and user-management service.
+Appliance catalog service.
+Service-request management service.
+Scheduling and dispatch service.
+Warranty and AMC service.
+Technician verification service.
+Inventory service.
+Job-card and billing service.
+Notification service.
+Payment integration service.
+Reporting and analytics service.
+Escalation service.
+API gateway.
+Audit and compliance service.
+Document and media storage service.
+4.3 High-Level System Context Diagram
++------------------+       +------------------+|   Consumer Web/  |       |  Technician App  ||   Mobile App     |       |                  |+--------+---------+       +--------+---------+         |                          |         |                          |         v                          v+----------------------------------------------------------+|                   USIP Central Platform                  ||----------------------------------------------------------|| Auth | Org Mgmt | Catalog | Tickets | Scheduling | Verify || Warranty | Inventory | Billing | Notify | Reports | Audit |+----------------------------------------------------------+         |                          |         v                          v+------------------+       +------------------+|  Brand Dashboard |       | Service Provider ||                  |       |   Dashboard      |+------------------+       +------------------+External Integrations:- Brand CRM/ERP APIs- SMS/Email/WhatsApp Gateways- Payment Gateway- Maps & Location Service- Document & Media Storage4.4 Deployment Environment
+The platform shall support deployment on a major cloud provider or an approved private-cloud environment.
+Recommended environments:
+Development.
+Quality assurance.
+User acceptance testing.
+Staging.
+Production.
+Disaster recovery.
+5. User Roles and Access Control
+5.1 Role-Based Access Control
+The system shall enforce access using roles, permissions, organization boundaries, and location boundaries.
+Role
+Access Scope
+Consumer
+Own profile, appliances, service requests, payments, feedback
+Technician
+Assigned jobs and permitted job-related information
+Service Coordinator
+Jobs, schedules, technicians, service areas
+Service Manager
+Provider-level jobs, SLAs, reports, escalations
+Brand Manager
+Brand-related service requests and service partners
+Brand Administrator
+Brand configuration, warranty, products, reports
+Platform Support Agent
+Support functions based on assigned permissions
+Platform Administrator
+Full platform administration
+Finance Administrator
+Payments, invoices, subscriptions, settlements
+Auditor
+Read-only access to approved audit records
+5.2 Access-Control Requirements
+The system SHALL apply least-privilege access.
+The system SHALL prevent one organization from viewing another organization’s confidential records.
+The system SHALL record all privileged access.
+The system SHALL support role assignment and revocation.
+The system SHALL support multi-factor authentication for administrators and organization users.
+The system SHALL automatically deactivate suspended users.
+The system SHALL require re-authentication for sensitive actions.
+6. Functional Requirements
+6.1 User Registration and Authentication
+FR-AUTH-001: The system SHALL allow consumers to register using mobile number or email.
+FR-AUTH-002: The system SHALL verify mobile numbers using one-time passwords.
+FR-AUTH-003: The system SHALL support password reset through an approved verification process.
+FR-AUTH-004: The system SHALL support optional social login if approved by the product owner.
+FR-AUTH-005: The system SHALL support multi-factor authentication for administrators, brands, and service providers.
+FR-AUTH-006: The system SHALL lock or rate-limit repeated failed login attempts.
+FR-AUTH-007: The system SHALL record login, logout, failed-login, and account-lock events.
+FR-AUTH-008: The system SHALL allow users to view and update their profile information.
+FR-AUTH-009: The system SHALL require consent before collecting optional personal information.
+6.2 Organization Onboarding
+FR-ORG-001: The system SHALL allow appliance brands and service providers to submit onboarding applications.
+FR-ORG-002: The system SHALL collect legal name, business address, tax details where applicable, contact details, and authorized representative details.
+FR-ORG-003: The system SHALL support document upload for organization verification.
+FR-ORG-004: Platform administrators SHALL be able to approve, reject, suspend, or request additional information.
+FR-ORG-005: The system SHALL record the complete organization-verification history.
+FR-ORG-006: Suspended organizations SHALL not receive new service requests.
+FR-ORG-007: The system SHALL display verification status to authorized users.
+6.3 Appliance Catalog
+FR-CAT-001: Authorized brand users SHALL be able to create and manage appliance categories.
+FR-CAT-002: The system SHALL store brand, product family, model, serial-number format, warranty rules, and service instructions.
+FR-CAT-003: The system SHALL allow consumers to add appliances manually.
+FR-CAT-004: The system SHALL allow consumers to upload proof of purchase.
+FR-CAT-005: The system SHALL support appliance records without a serial number, subject to manual verification.
+FR-CAT-006: The system SHALL maintain an appliance history of service requests, repairs, parts, and warranty events.
+6.4 Service Request Creation
+FR-TKT-001: Consumers SHALL be able to create service requests through web and mobile interfaces.
+FR-TKT-002: The service-request form SHALL include appliance category, brand, model, serial number when available, issue type, description, location, and preferred appointment slot.
+FR-TKT-003: The system SHALL support service types including installation, repair, maintenance, inspection, warranty claim, AMC service, and complaint.
+FR-TKT-004: The system SHALL allow attachments including photographs, videos, invoices, and documents.
+FR-TKT-005: The system SHALL generate a unique service-request number.
+FR-TKT-006: The system SHALL display the selected brand and responsible service organization.
+FR-TKT-007: The system SHALL show whether the appliance is covered by warranty or AMC when relevant information is available.
+FR-TKT-008: The system SHALL allow users to save a request as a draft.
+FR-TKT-009: The system SHALL prevent duplicate submission caused by repeated button clicks.
+FR-TKT-010: The system SHALL provide a confirmation screen before submission.
+FR-TKT-011: The system SHALL notify the consumer after successful submission.
+Service Request Statuses
+Minimum supported statuses:
+Draft
+Submitted
+Under review
+Awaiting information
+Accepted
+Assigned
+Appointment scheduled
+Technician on route
+Technician arrived
+Diagnosis completed
+Estimate awaiting approval
+Repair in progress
+Awaiting spare part
+Service completed
+Customer confirmation pending
+Resolved
+Reopened
+Escalated
+Rejected
+Cancelled
+Closed
+Only authorized roles SHALL be allowed to change each status.
+6.5 Complaint Classification
+The platform shall use configurable rules rather than autonomous AI to classify service requests.
+Classification criteria may include:
+Appliance type.
+Brand.
+Product model.
+Service category.
+Warranty status.
+Location.
+Urgency.
+Safety risk.
+Customer-selected issue.
+Service-provider availability.
+The system SHALL allow authorized administrators to modify classification rules without changing source code.
+6.6 Routing and Assignment
+FR-ROUTE-001: The system SHALL route a service request to the selected brand when the brand is verified and active.
+FR-ROUTE-002: The system SHALL route a request to an approved service center based on service area.
+FR-ROUTE-003: The system SHALL consider technician skill, availability, distance, workload, and authorization.
+FR-ROUTE-004: The system SHALL prevent assignment to suspended or expired technicians.
+FR-ROUTE-005: The system SHALL allow manual reassignment by authorized coordinators.
+FR-ROUTE-006: The system SHALL record the reason for manual reassignment.
+FR-ROUTE-007: The system SHALL notify the assigned service provider and consumer.
+FR-ROUTE-008: The system SHALL create an exception when no eligible provider is available.
+FR-ROUTE-009: Exception cases SHALL be placed in an administrative queue for resolution.
+6.7 Scheduling
+FR-SCH-001: Service providers SHALL be able to define technician working hours.
+FR-SCH-002: The system SHALL display available appointment slots.
+FR-SCH-003: The system SHALL prevent double-booking.
+FR-SCH-004: Consumers SHALL be able to request rescheduling.
+FR-SCH-005: Authorized service staff SHALL be able to approve or reject rescheduling requests.
+FR-SCH-006: The system SHALL record appointment history.
+FR-SCH-007: The system SHALL send appointment reminders.
+FR-SCH-008: The system SHALL record technician arrival and departure times.
+6.8 Technician Verification and Doorstep Safety
+USIP shall provide a verification mechanism to reduce unauthorized technician visits.
+FR-TECH-001: Every active technician SHALL have a unique platform identity.
+FR-TECH-002: The system SHALL store technician name, photograph, organization, service areas, skills, certifications, and authorization status.
+FR-TECH-003: The system SHALL assign a technician only if the technician is active and approved.
+FR-TECH-004: The system SHALL generate a service-specific verification code before the appointment.
+FR-TECH-005: The code SHALL be valid only for the relevant service request and defined appointment period.
+FR-TECH-006: The consumer SHALL be able to verify the technician using the technician ID, OTP, QR code, or authenticated application.
+FR-TECH-007: The system SHALL show the technician’s name, photograph, organization, and service-request number to the consumer.
+FR-TECH-008: The technician SHALL not be allowed to start the job until the arrival verification is completed, except through an authorized exception process.
+FR-TECH-009: The consumer SHALL be able to report a mismatch or suspected fraud.
+FR-TECH-010: A verification failure SHALL notify the service provider and platform support team.
+FR-TECH-011: The system SHALL log all verification attempts.
+FR-TECH-012: The system SHALL allow the consumer to cancel or pause the visit when the technician identity does not match the displayed information.
+Doorstep Verification Workflow
+The system assigns an approved technician.
+The consumer receives technician details.
+The technician arrives and opens the assigned job.
+The system generates or validates a service-specific OTP or QR code.
+The consumer compares the technician’s identity with the platform record.
+The consumer confirms the visit.
+The system records arrival time and verification evidence.
+The technician performs only the approved service.
+The consumer confirms completion or raises a dispute.
+The verification process shall not be treated as a substitute for physical safety precautions. The platform shall advise consumers not to share unrelated passwords, banking credentials, or unnecessary personal documents.
+6.9 Warranty and AMC Management
+FR-WAR-001: Brands SHALL be able to configure warranty duration and coverage rules.
+FR-WAR-002: The system SHALL store warranty start date, end date, coverage type, exclusions, and supporting documents.
+FR-WAR-003: The system SHALL allow AMC contract creation and renewal.
+FR-WAR-004: The system SHALL notify consumers before AMC or warranty expiry.
+FR-WAR-005: The system SHALL identify requests requiring warranty verification.
+FR-WAR-006: Authorized staff SHALL be able to approve or reject warranty claims.
+FR-WAR-007: Warranty decisions SHALL include a reason and timestamp.
+FR-WAR-008: The system SHALL retain warranty history for each appliance.
+6.10 Diagnosis and Estimate
+FR-DIAG-001: Technicians SHALL be able to record observed symptoms.
+FR-DIAG-002: Technicians SHALL be able to record error codes, inspection results, and recommended actions.
+FR-DIAG-003: Technicians SHALL be able to upload photographs and videos.
+FR-DIAG-004: The system SHALL support configurable diagnosis templates by appliance category.
+FR-DIAG-005: The system SHALL generate an estimate based on approved labor, travel, and parts pricing.
+FR-DIAG-006: Consumers SHALL receive estimates before chargeable work begins.
+FR-DIAG-007: Consumers SHALL be able to approve or reject estimates.
+FR-DIAG-008: Additional work SHALL require separate approval.
+FR-DIAG-009: A technician SHALL not mark a paid repair as complete without recording the customer’s approval.
+6.11 Job Cards
+FR-JOB-001: The system SHALL create a digital job card for every service visit.
+FR-JOB-002: A job card SHALL include service-request number, appliance information, technician, visit date, diagnosis, work performed, parts, charges, photographs, and customer confirmation.
+FR-JOB-003: The technician SHALL submit the job card after completing the work.
+FR-JOB-004: The consumer SHALL be able to review the job card.
+FR-JOB-005: The consumer SHALL be able to accept the job card, reject it, or raise a dispute.
+FR-JOB-006: Approved job cards SHALL not be edited without a controlled correction process.
+FR-JOB-007: All corrections SHALL be audit logged.
+6.12 Inventory Management
+FR-INV-001: Service providers SHALL be able to create inventory locations.
+FR-INV-002: The system SHALL track part number, description, brand, compatibility, batch number, quantity, cost, and status.
+FR-INV-003: The system SHALL support stock-in, stock-out, transfer, return, damaged, and reserved statuses.
+FR-INV-004: Parts used on a job SHALL be linked to the job card.
+FR-INV-005: The system SHALL prevent use of unavailable or blocked parts.
+FR-INV-006: The system SHALL provide low-stock notifications.
+FR-INV-007: The system SHALL support serial-number tracking for controlled parts.
+FR-INV-008: Inventory adjustments SHALL require authorization and a reason.
+FR-INV-009: The system SHALL support counterfeit or authenticity warnings where brand data is available.
+6.13 Billing and Payments
+FR-BILL-001: The system SHALL calculate charges according to configured pricing rules.
+FR-BILL-002: Charges may include inspection, labor, travel, parts, taxes, discounts, and other approved fees.
+FR-BILL-003: Consumers SHALL see a cost breakdown before payment.
+FR-BILL-004: The system SHALL generate invoices for completed chargeable services.
+FR-BILL-005: The system SHALL support online payment integration where enabled.
+FR-BILL-006: The system SHALL record cash or offline payment references where permitted.
+FR-BILL-007: The system SHALL support payment status values such as pending, successful, failed, refunded, and disputed.
+FR-BILL-008: Refunds SHALL require authorization.
+FR-BILL-009: Technicians SHALL not be allowed to alter approved pricing without permission.
+FR-BILL-010: The system SHALL send payment and invoice notifications.
+6.14 Customer Feedback and Complaint Reopening
+FR-FBK-001: The system SHALL request feedback after service completion.
+FR-FBK-002: Consumers SHALL be able to rate service quality, technician behavior, pricing transparency, and resolution quality.
+FR-FBK-003: Consumers SHALL be able to submit written comments.
+FR-FBK-004: Negative feedback SHALL create a review task.
+FR-FBK-005: Consumers SHALL be able to reopen a request within a configurable period.
+FR-FBK-006: Reopened requests SHALL retain the original service history.
+FR-FBK-007: Organizations SHALL not be able to delete customer feedback.
+FR-FBK-008: Platform administrators SHALL be able to hide content that violates published usage rules while retaining the original record for audit.
+6.15 Escalation Management
+FR-ESC-001: The system SHALL support configurable escalation levels.
+FR-ESC-002: Escalation rules SHALL be based on time, status, severity, customer complaint, or SLA breach.
+FR-ESC-003: The system SHALL notify the responsible service manager when escalation conditions are met.
+FR-ESC-004: The system SHALL escalate unresolved cases to brand-level administrators.
+FR-ESC-005: Platform administrators SHALL be able to escalate cases to a dispute-resolution queue.
+FR-ESC-006: Each escalation SHALL have an owner and due date.
+FR-ESC-007: The system SHALL maintain escalation history.
+FR-ESC-008: Escalated cases SHALL not be closed without an authorized resolution note.
+FR-ESC-009: Consumers SHALL be notified when a case is escalated or resolved.
+6.16 Notifications
+The system shall support:
+SMS.
+Email.
+In-app notifications.
+Push notifications.
+WhatsApp or other approved messaging channels.
+Notifications shall be sent for:
+Registration.
+Service-request creation.
+Assignment.
+Appointment confirmation.
+Appointment reminder.
+Technician arrival.
+Estimate submission.
+Estimate approval or rejection.
+Payment confirmation.
+Service completion.
+Feedback request.
+Escalation.
+Cancellation.
+Reopening.
+Warranty or AMC expiry.
+The system SHALL store notification status, delivery attempt, delivery result, and failure reason.
+6.17 Training and Certification
+FR-TRN-001: Service providers SHALL be able to enroll technicians in training programs.
+FR-TRN-002: The system SHALL store course, assessment, completion date, score, and expiry date.
+FR-TRN-003: Only technicians with required certifications SHALL be eligible for restricted service categories.
+FR-TRN-004: The system SHALL notify organizations before certification expiry.
+FR-TRN-005: Brands SHALL be able to define mandatory training requirements.
+FR-TRN-006: Training records SHALL be visible only to authorized users.
+6.18 Subscription Management
+USIP may offer subscription plans to third-party service providers.
+Indicative plans (provisional):
+Plan
+Indicative Monthly Price
+Possible Features
+Basic
+₹2,000
+Limited users, job management, basic reports
+Standard
+₹5,000
+Additional users, inventory, billing, scheduling
+Premium
+₹10,000
+Advanced reports, integrations, expanded support
+These prices are provisional and SHALL be configurable by platform administrators.
+Subscription requirements:
+FR-SUB-001: The platform SHALL support monthly, quarterly, and annual plans.
+FR-SUB-002: Administrators SHALL be able to configure plan features and limits.
+FR-SUB-003: The system SHALL generate subscription invoices.
+FR-SUB-004: The system SHALL support payment status tracking.
+FR-SUB-005: The system SHALL notify organizations before renewal.
+FR-SUB-006: Expired subscriptions SHALL restrict plan-controlled features.
+FR-SUB-007: The system SHALL support grace periods.
+FR-SUB-008: Subscription changes SHALL be audit logged.
+7. Brand and External-System Integration
+7.1 Integration Requirements
+USIP shall provide APIs for approved brand systems such as:
+CRM systems.
+ERP systems.
+Warranty systems.
+Inventory systems.
+Service-center systems.
+Customer-support platforms.
+Payment systems.
+7.2 API Requirements
+INT-001: The platform SHALL provide authenticated APIs.
+INT-002: API access SHALL use organization-specific credentials.
+INT-003: The platform SHALL support access-token expiration and rotation.
+INT-004: The platform SHALL validate all incoming payloads.
+INT-005: The platform SHALL provide idempotency for ticket creation and updates.
+INT-006: The platform SHALL record API requests and responses subject to privacy controls.
+INT-007: The platform SHALL support retry handling for temporary failures.
+INT-008: Failed integrations SHALL generate alerts.
+INT-009: The platform SHALL support webhook notifications where available.
+INT-010: The platform SHALL provide integration-health monitoring.
+7.3 Integration Failure Handling
+If an external brand system is unavailable:
+USIP shall accept the service request.
+USIP shall place the request in an integration-pending queue.
+USIP shall retry according to a configurable policy.
+USIP shall notify authorized operations staff after repeated failure.
+USIP shall show the consumer a transparent status.
+USIP shall not silently discard the request.
+8. Fraud Prevention and Verification Controls
+USIP shall use rule-based controls and verified data sources. It shall not claim to guarantee fraud prevention.
+8.1 Official Channel Controls
+The platform SHALL display verified brand contact details.
+Only authorized brand administrators SHALL be allowed to change official contact details.
+Changes to official numbers, websites, or service channels SHALL require approval.
+The system SHALL show verification status and last verification date.
+The system SHALL maintain a history of changes.
+Users SHALL be warned against using unverified phone numbers or payment links.
+8.2 Organization and Technician Controls
+Organizations SHALL undergo verification before receiving consumer jobs.
+Technicians SHALL have unique identities.
+Technician profiles SHALL include photograph and organization affiliation.
+Technician access SHALL expire when authorization or certification expires.
+The system SHALL detect duplicate technician identity records for administrative review.
+Suspended technicians SHALL not be assignable.
+Doorstep verification SHALL be required for configured service types.
+8.3 Suspicious Activity Rules
+The system may flag activity when:
+A technician attempts repeated failed verifications.
+A provider generates abnormal cancellation patterns.
+A technician performs jobs outside approved areas.
+A service provider repeatedly changes invoice amounts.
+A user reports identity mismatch.
+A provider receives unusually high fraud complaints.
+A payment link is not generated by the platform.
+A technician attempts to access unrelated customer data.
+Flagged events SHALL be reviewed by authorized staff. Automatic suspension of an organization shall require configured policy and approval unless an emergency security rule applies.
+9. Non-Functional Requirements
+9.1 Performance
+NFR-PERF-001: Standard page requests SHOULD return within 2 seconds under normal load.
+NFR-PERF-002: Service-request submission SHOULD complete within 3 seconds excluding external gateway delays.
+NFR-PERF-003: The system SHALL provide asynchronous processing for document uploads, notifications, and external integrations.
+NFR-PERF-004: The system SHALL support configurable load targets based on the approved capacity plan.
+NFR-PERF-005: Reporting queries SHALL not materially affect transactional performance.
+NFR-PERF-006: API rate limits SHALL protect the platform from abuse.
+The 2-second target applies to normal user-interface and rule-processing operations. It shall not be treated as a requirement for every external API, payment gateway, file upload, or report.
+9.2 Availability and Reliability
+NFR-REL-001: The production platform SHALL target at least 99.5% monthly availability, excluding approved maintenance.
+NFR-REL-002: The platform SHALL use health checks and service monitoring.
+NFR-REL-003: Critical services SHALL support automatic restart or failover.
+NFR-REL-004: The system SHALL not lose a successfully committed service request.
+NFR-REL-005: Background jobs SHALL support retry and dead-letter processing.
+NFR-REL-006: The platform SHALL provide operational alerts for critical failures.
+9.3 Scalability
+The system shall support horizontal scaling for:
+API services.
+Notification processing.
+Document processing.
+Reporting workloads.
+Integration workers.
+Database read operations.
+The exact capacity targets shall be approved before performance testing.
+9.4 Security
+NFR-SEC-001: All network communication SHALL use encrypted transport.
+NFR-SEC-002: Sensitive data SHALL be encrypted at rest.
+NFR-SEC-003: Passwords SHALL be stored using a strong, approved one-way hashing method.
+NFR-SEC-004: Administrative accounts SHALL require multi-factor authentication.
+NFR-SEC-005: The system SHALL implement role-based access control.
+NFR-SEC-006: The system SHALL protect against common web vulnerabilities.
+NFR-SEC-007: The system SHALL validate and sanitize all user input.
+NFR-SEC-008: File uploads SHALL be scanned and restricted by type and size.
+NFR-SEC-009: Secrets SHALL not be stored in source code.
+NFR-SEC-010: Security events SHALL be logged and monitored.
+NFR-SEC-011: Sensitive information SHALL be masked in logs.
+NFR-SEC-012: Session tokens SHALL expire and support revocation.
+NFR-SEC-013: The system SHALL support security testing before production release.
+9.5 Privacy and Data Protection
+The platform shall comply with applicable privacy and data-protection requirements in its operating jurisdictions.
+The platform shall:
+Collect only necessary personal data.
+Provide privacy notices.
+Record consent where required.
+Provide a method to request correction of personal data.
+Define retention periods.
+Restrict access to personal information.
+Support deletion or anonymization where legally permissible.
+Process data according to contractual and legal responsibilities.
+Maintain records of data-access requests.
+Avoid exposing consumer contact details unnecessarily to technicians.
+The final implementation shall identify the applicable local laws before production deployment. GDPR compliance alone shall not be assumed to satisfy all local requirements.
+9.6 Auditability
+NFR-AUD-001: The system SHALL record creation, modification, assignment, status changes, approvals, payments, verification events, and escalations.
+NFR-AUD-002: Audit records SHALL include actor, timestamp, organization, action, previous value where applicable, new value, and source.
+NFR-AUD-003: Users SHALL not be able to delete audit records.
+NFR-AUD-004: Audit records SHALL be protected from unauthorized modification.
+NFR-AUD-005: Administrators SHALL be able to search audit records based on approved permissions.
+NFR-AUD-006: The system SHALL support export of audit evidence for investigations.
+9.7 Usability and Accessibility
+The platform SHALL use responsive design.
+The platform SHALL support mobile-first workflows.
+Forms SHALL provide clear validation messages.
+Important status information SHALL not rely only on color.
+The platform SHOULD support multiple languages.
+The platform SHOULD support accessibility standards appropriate to the deployment market.
+Consumers SHALL be able to access key functions with minimal steps.
+The platform SHALL clearly distinguish official communication from general information.
+9.8 Maintainability
+The system SHALL use documented coding standards.
+APIs SHALL be versioned.
+Configuration values SHALL be separated from application code.
+Business rules SHALL be configurable where feasible.
+The system SHALL provide technical and operational documentation.
+Automated testing SHALL be included in the development pipeline.
+Database migrations SHALL be version controlled.
+10. Data Requirements
+10.1 Core Entities
+The minimum data model shall include:
+User.
+Consumer profile.
+Organization.
+Brand.
+Service provider.
+Branch.
+Technician.
+Technician certification.
+Appliance category.
+Appliance brand.
+Appliance model.
+Consumer appliance.
+Warranty record.
+AMC contract.
+Service request.
+Complaint.
+Appointment.
+Assignment.
+Job card.
+Diagnosis.
+Estimate.
+Invoice.
+Payment.
+Spare part.
+Inventory location.
+Inventory transaction.
+Notification.
+Feedback.
+Escalation.
+Subscription.
+Training course.
+Audit event.
+Document attachment.
+10.2 Service Request Minimum Data
+Each service request shall contain:
+Unique request number.
+Consumer ID.
+Appliance ID or appliance details.
+Brand.
+Model, if available.
+Serial number, if available.
+Service category.
+Problem description.
+Location.
+Preferred appointment.
+Attachments.
+Warranty or AMC reference.
+Assigned organization.
+Assigned technician.
+Current status.
+Priority.
+Creation date.
+Last update date.
+SLA due date.
+Closure details.
+10.3 Data Retention
+The product owner shall approve retention periods for:
+Service requests.
+Invoices.
+Payment records.
+Customer communications.
+Technician verification logs.
+Audit records.
+Uploaded photographs and videos.
+Organization-verification documents.
+The system SHALL support archival and controlled deletion according to the approved retention schedule.
+11. Reporting and Analytics
+11.1 Consumer Reports
+Consumers shall be able to view:
+Open service requests.
+Request history.
+Appointment details.
+Technician details.
+Estimates.
+Invoices.
+Payments.
+Warranty and AMC records.
+Feedback history.
+11.2 Brand Reports
+Brands shall be able to view:
+Request volumes.
+Resolution times.
+SLA compliance.
+First-time-right percentage.
+Repeat visits.
+Warranty claims.
+Spare-parts usage.
+Technician performance.
+Customer ratings.
+Escalated cases.
+Reopened cases.
+Service-area performance.
+11.3 Service-Provider Reports
+Service providers shall be able to view:
+Assigned jobs.
+Technician workload.
+Pending jobs.
+Completed jobs.
+Revenue.
+Parts usage.
+Customer ratings.
+Cancellation rates.
+SLA performance.
+Training status.
+Inventory status.
+11.4 Platform Reports
+Platform administrators shall be able to view:
+Total organizations.
+Active users.
+Service requests by category and location.
+Fraud and verification flags.
+Suspended users and organizations.
+Escalation trends.
+Subscription status.
+Platform availability.
+Notification delivery performance.
+Integration failures.
+11.5 KPI Definitions
+KPI
+Definition
+Resolution SLA
+Percentage of eligible requests resolved within configured SLA
+First-Time-Right Rate
+Percentage of service requests resolved without a repeat visit for the same issue within the defined period
+Average Resolution Time
+Average time from accepted request to resolution
+Technician Verification Success
+Percentage of visits successfully verified
+Reopen Rate
+Percentage of closed requests reopened by consumers
+Customer Satisfaction
+Average approved rating after service
+Escalation Rate
+Percentage of requests requiring escalation
+Cancellation Rate
+Percentage of requests cancelled before completion
+Parts Fill Rate
+Percentage of required parts available when needed
+Fraud-Flag Review Rate
+Percentage of flagged events reviewed within target time
+The platform SHALL not report unsupported fraud-reduction percentages without an approved baseline and measurement methodology.
+12. Business Rules
+A request SHALL belong to one consumer and one appliance record.
+A technician SHALL not be assigned to a request outside the technician’s approved service scope unless authorized.
+A service request SHALL not be closed without a closure reason.
+A chargeable repair SHALL require estimate approval before work begins.
+A technician SHALL not edit an approved invoice without authorization.
+A suspended organization SHALL not receive new requests.
+A technician with expired credentials SHALL not be assignable.
+A customer complaint shall remain visible in the customer’s history even after closure.
+An escalated request SHALL have an assigned escalation owner.
+Every status change SHALL be recorded in the history.
+A brand may define brand-specific service and warranty rules.
+Platform administrators may configure general policies but shall not override contractual brand decisions without authorization.
+13. Key Workflows
+13.1 Consumer Service Request Workflow
+Consumer logs in.
+Consumer selects an existing appliance or adds a new appliance.
+Consumer selects service type.
+Consumer describes the issue and uploads supporting information.
+System validates mandatory fields.
+System checks available brand and service coverage.
+System creates a service-request number.
+System routes the request to an approved brand or service provider.
+Consumer receives confirmation.
+Service provider reviews and accepts the request.
+Appointment is scheduled.
+Technician is assigned.
+Consumer receives technician information.
+Technician completes doorstep verification.
+Technician performs inspection or repair.
+Technician submits diagnosis, parts, estimate, and job details.
+Consumer approves the estimate if required.
+Technician completes the service.
+Consumer reviews the job card.
+Consumer confirms completion or raises a dispute.
+Invoice and payment are recorded.
+Feedback is collected.
+Request is closed or escalated.
+13.2 Complaint Escalation Workflow
+System detects an SLA breach or consumer raises an escalation.
+System creates an escalation record.
+Escalation is assigned to the responsible service manager.
+Consumer receives escalation confirmation.
+Service manager records investigation and action.
+If unresolved, the case moves to the next escalation level.
+Final resolution is recorded.
+Consumer is notified.
+Consumer confirms resolution or reopens the case.
+Audit records are retained.
+13.3 Unauthorized Technician Report
+Consumer receives technician details.
+Technician arrives with mismatched identity or no valid assignment.
+Consumer does not authorize service.
+Consumer reports the incident in the application or support channel.
+System records technician, location, request, and time.
+System alerts the service provider and platform support.
+The technician account may be temporarily restricted according to policy.
+Authorized staff investigate.
+The outcome is recorded.
+Consumer receives an update.
+14. Error Handling and Exception Management
+The system SHALL provide clear error messages for:
+Invalid login.
+Expired OTP.
+Missing appliance information.
+Unavailable service area.
+Invalid technician assignment.
+Failed payment.
+Unavailable appointment slot.
+External API failure.
+Invalid document upload.
+Expired warranty.
+Duplicate service request.
+Unauthorized action.
+For every critical error, the system SHALL:
+Preserve the user’s valid input where possible.
+Provide a retry option.
+Provide a support reference number.
+Log the technical error securely.
+Avoid exposing internal system details.
+15. Testing and Quality Assurance
+15.1 Required Testing
+The development team SHALL perform:
+Unit testing.
+Integration testing.
+API testing.
+Database testing.
+Workflow testing.
+Role and permission testing.
+Mobile and browser testing.
+Performance testing.
+Security testing.
+Accessibility testing.
+Disaster-recovery testing.
+User acceptance testing.
+Regression testing.
+15.2 Minimum Acceptance Criteria
+The system shall not be accepted for production until:
+A consumer can successfully submit and track a request.
+A brand or service provider can receive and assign a request.
+A technician can complete identity verification.
+A job card can be created and approved.
+A customer can receive an invoice.
+An escalation can be created and tracked.
+Audit records are generated for critical events.
+Suspended technicians cannot receive new jobs.
+External integration failures do not silently discard requests.
+Role-based access tests pass.
+Security vulnerabilities classified as critical or high are resolved or formally accepted.
+16. Implementation Roadmap
+Phase 1: Discovery and Final Requirements
+Confirm business model.
+Confirm participating brands.
+Confirm legal and privacy requirements.
+Finalize user roles.
+Finalize service workflows.
+Define KPI baselines.
+Confirm integration requirements.
+Phase 2: Platform Foundation
+Authentication.
+User and organization management.
+Role-based permissions.
+Appliance catalog.
+Consumer profile.
+Basic administration.
+Phase 3: Core Service Operations
+Service-request management.
+Routing.
+Scheduling.
+Technician management.
+Technician verification.
+Notifications.
+Job cards.
+Phase 4: Commercial and Operational Modules
+Warranty and AMC.
+Inventory.
+Estimates.
+Billing.
+Payments.
+Feedback.
+Escalations.
+Subscription management.
+Phase 5: Integrations and Reporting
+Brand CRM/ERP integrations.
+Payment gateway.
+SMS and email.
+Maps.
+Dashboards.
+Reports.
+Audit exports.
+Phase 6: Pilot and Production Launch
+Pilot with selected brands and service providers.
+Conduct security and performance testing.
+Train platform users.
+Collect feedback.
+Correct defects.
+Approve production launch.
+Monitor operations after launch.
+The source proposal estimates an implementation period of approximately six months, but the final schedule shall depend on integrations, team size, scope, compliance approvals, and pilot requirements.[17]
+17. Risks and Mitigation
+Risk
+Impact
+Mitigation
+Appliance brands do not integrate
+High
+Provide dashboard-based operation and standard APIs
+Incorrect technician information
+High
+Verification, approval workflow, periodic revalidation
+Fraudulent service providers register
+High
+Business verification, deposits or contractual controls, monitoring
+Consumers continue using search-engine numbers
+Medium
+Promote verified platform channels and official brand pages
+External API downtime
+High
+Queues, retries, alerts, manual fallback
+Incorrect warranty information
+Medium
+Brand ownership of warranty rules and approval workflow
+Fake or counterfeit parts
+High
+Part traceability, brand approval, inventory audit
+Unauthorized price changes
+High
+Estimate approval, locked pricing, audit trail
+Low consumer adoption
+High
+Simple onboarding, multilingual support, trusted brand partnerships
+Privacy breach
+Very high
+Encryption, RBAC, monitoring, testing, incident response
+Poor data quality
+Medium
+Validation, mandatory fields, duplicate detection, admin review
+Technician resistance
+Medium
+Mobile-first workflow, training, simple job updates
+Excessive platform scope
+High
+Phased roadmap and controlled change management
+18. Open Decisions Before Development
+The following decisions require stakeholder approval:
+Initial launch country and applicable laws.
+Whether USIP will serve consumers directly or only operate as a B2B platform.
+List of brands included in the first release.
+Whether brands must approve every service provider.
+Exact technician verification method: OTP, QR code, ID card, or combination.
+Whether payments are processed by USIP or recorded as offline transactions.
+Subscription pricing and feature limits.
+Revenue-sharing model among USIP, brands, and service providers.
+SLA definitions for each appliance category.
+Data-retention periods.
+Customer-support operating hours.
+Refund and dispute policies.
+Whether WhatsApp integration is required.
+Whether location tracking is enabled and, if so, when it is collected.
+Whether third-party providers can service out-of-warranty products without brand approval.
+Required languages.
+Initial cloud provider and deployment region.
+Target volume for the first production year.
+19. Final Product Definition
+USIP shall be developed as a centralized, secure, rule-driven service management platform for the home-appliance industry. It shall connect consumers, brands, service centers, technicians, and administrators through common workflows and verified records.
+The first release shall focus on:
+Reliable service-request registration.
+Transparent tracking.
+Verified organization and technician access.
+Scheduling and dispatch.
+Warranty and AMC control.
+Job cards.
+Inventory and billing.
+Customer feedback.
+Escalation.
+Auditability.
+Service-provider reporting.
+references
+https://github.com/bemindlabs/BWOC-Framework 
+https://agentmods.dev/skills/aisee-lab/aisee-plugin/aisee-srs 
+https://nextolive.com/free-tools/ai-agent-requirements-template/ 
+https://www.helpindiabreathe.com/resources/guides/consumer-rights-what-to-do-when-a-company-wrongs-you 
+https://www.encryptionconsulting.com/agentic-ai-security-rfp/ 
+https://peoplevscorruption.com/fight-consumer-protection-ecommerce-fraud-india/ 
+https://www.accountable4all.org/resources.php 
+https://agentmods.dev/skills/huuanh20/awesome-ai-agent-skills/sr-generate 
+https://remotepuzzle.com/blogs/agentic-sdlc 
+https://agentmods.dev/skills/rijul1204/rashedul-agentic-engineering/srs-to-delivery-plan 
+https://aigovernance.com/playbook/governing-agentic-ai/kit 
+https://alignbase.ai/blogs/ai-agent-risk-register-template/ 
+https://techdash.in/how-to-file-consumer-complaint-e-jagriti-portal/ 
+https://agentmods.dev/skills/tercel/spec-forge/srs-generation 
+https://alignbase.ai/blogs/ai-agent-requirements-document-template/ 
+Centralized-Service-Solution.docx 
+Centralized-Service-Solution.docx 

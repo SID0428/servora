@@ -7,8 +7,18 @@
     (function() {
       try {
         var u = JSON.parse(localStorage.getItem("servora_user") || "null");
-        if (!u || !u.role || u.role !== "admin") {
+        var roleRoutes = {
+          customer: "./customer-dashboard.html",
+          company: "./company-dashboard.html",
+          franchise: "./franchise-dashboard.html",
+          branch: "./franchise-dashboard.html",
+          technician: "./technician-dashboard.html",
+          admin: "./admin-dashboard.html"
+        };
+        if (!u || !u.role) {
           window.location.replace("./admin-login.html");
+        } else if (u.role !== "admin") {
+          window.location.replace(roleRoutes[u.role] || "./admin-login.html");
         }
       } catch (e) {
         window.location.replace("./admin-login.html");
