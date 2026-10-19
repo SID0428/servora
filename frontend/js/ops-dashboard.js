@@ -70,6 +70,7 @@ let branches = [];
 let technicians = [];
 let directoryRows = [];
 let companyCustomers = [];
+let franchiseCustomers = [];
 let franchiseInventory = [];
 let companyWarrantyClaims = [];
 let companySparesCatalog = [];
@@ -81,6 +82,7 @@ try {
   branches = JSON.parse(localStorage.getItem("servora_cache_branches") || "[]");
   companies = JSON.parse(localStorage.getItem("servora_cache_companies") || "[]");
   companyCustomers = JSON.parse(localStorage.getItem("servora_cache_customers") || "[]");
+  franchiseCustomers = JSON.parse(localStorage.getItem("servora_cache_franchise_customers") || "[]");
   franchiseInventory = JSON.parse(localStorage.getItem("servora_cache_inventory") || "[]");
   companyWarrantyClaims = JSON.parse(localStorage.getItem("servora_cache_claims") || "[]");
   companySparesCatalog = JSON.parse(localStorage.getItem("servora_cache_catalog") || "[]");
@@ -304,6 +306,91 @@ function renderActiveJobsView() {
   renderResources();
 }
 
+function compileFranchiseCustomersFromRequests() {
+  const visibleReqs = requests.filter(requestForRole);
+  const customerMap = new Map();
+  visibleReqs.forEach((req) => {
+    const key = (req.customer_id || req.customer_phone || req.customer_name || req.id || "").trim();
+    if (!key) return;
+    if (!customerMap.has(key)) {
+      const addr = req.customer_address || "Address not provided";
+      const addrParts = addr.split(",").map((p) => p.trim()).filter(Boolean);
+      const shortLoc = addrParts.length >= 2 ? addrParts[addrParts.length - 2] : (addrParts[0] || "Location");
+      const isWarranty = Boolean(req.is_under_warranty);
+      const isOngoing = req.status !== "Completed" && req.status_badge !== "Completed";
+
+      customerMap.set(key, {
+        customer_id: req.customer_id || req.id,
+        customer_name: req.customer_name || "Customer",
+        customer_email: req.customer_email || "",
+        customer_phone: req.customer_phone || "—",
+        customer_address: addr,
+        short_location: shortLoc,
+        pincode: req.pincode || user?.pincode || "",
+        avatar: (req.customer_name || "CU").split(/\s+/).map((p) => p[0]).slice(0, 2).join("").toUpperCase(),
+        products: [
+          {
+            id: req.appliance_id || `app_${req.id}`,
+            brand: req.brand || "Appliance",
+            category: req.appliance_name || "Home Appliance",
+            model_no: req.model_no || "—",
+            serial_no: "Registered for service",
+            warranty_status: isWarranty ? "Active" : "Standard",
+            is_under_warranty: isWarranty,
+            registered_on: req.appointment_date || req.created_at || "Recent"
+          }
+        ],
+        active_warranties_count: isWarranty ? 1 : 0,
+        ongoing_services_count: isOngoing ? 1 : 0,
+        completed_services_count: isOngoing ? 0 : 1,
+        total_services_count: 1,
+        total_products_count: 1,
+        products_summary: `${req.brand || ""} ${req.appliance_name || "Appliance"}`.trim(),
+        warranty_status: isWarranty ? "Active (1)" : "Standard",
+        brand: req.brand || "Appliance",
+        category: req.appliance_name || "Appliance",
+        model_no: req.model_no || "—",
+        serial_no: "—"
+      });
+    } else {
+      const existing = customerMap.get(key);
+      existing.total_services_count += 1;
+      const isOngoing = req.status !== "Completed" && req.status_badge !== "Completed";
+      if (isOngoing) existing.ongoing_services_count += 1;
+      else existing.completed_services_count += 1;
+      if (req.is_under_warranty) existing.active_warranties_count += 1;
+
+      const appName = `${req.brand || ""} ${req.appliance_name || ""}`.trim();
+      if (appName && !existing.products_summary.includes(appName)) {
+        existing.products_summary += `, ${appName}`;
+        existing.total_products_count += 1;
+        existing.products.push({
+          id: req.appliance_id || `app_${req.id}`,
+          brand: req.brand || "Appliance",
+          category: req.appliance_name || "Home Appliance",
+          model_no: req.model_no || "—",
+          serial_no: "Registered for service",
+          warranty_status: req.is_under_warranty ? "Active" : "Standard",
+          is_under_warranty: Boolean(req.is_under_warranty),
+          registered_on: req.appointment_date || req.created_at || "Recent"
+        });
+      }
+    }
+  });
+  franchiseCustomers = Array.from(customerMap.values());
+}
+
+async function loadFranchiseCustomers() {
+  try {
+    franchiseCustomers = await franchiseApi("/customers");
+    try { localStorage.setItem("servora_cache_franchise_customers", JSON.stringify(franchiseCustomers)); } catch {}
+    renderFranchiseCustomers();
+  } catch (error) {
+    compileFranchiseCustomersFromRequests();
+    renderFranchiseCustomers();
+  }
+}
+
 function renderFranchiseCustomers() {
   if ($("crumbTitle")) $("crumbTitle").textContent = "Customers";
   setHidden("addCompanyButton", true);
@@ -313,77 +400,121 @@ function renderFranchiseCustomers() {
   setHidden("exportButton", false);
   setHidden("pageContent", false);
   setHidden("metricGrid", true);
-  if ($("tableTitle")) $("tableTitle").textContent = "Branch Customers";
-  if ($("tableSubtitle")) $("tableSubtitle").textContent = "Customer profiles and service history within your franchise service area.";
+  if ($("tableTitle")) $("tableTitle").textContent = "Registered customers & service history";
+  if ($("tableSubtitle")) $("tableSubtitle").textContent = "Customers, registered appliances, and service calls within your franchise service area.";
   if ($("sidePanelTitle")) $("sidePanelTitle").textContent = "Customer Directory";
 
-  const visibleReqs = requests.filter(requestForRole);
-  const customerMap = new Map();
-  visibleReqs.forEach((req) => {
-    const key = (req.customer_phone || req.customer_name || req.id).trim();
-    if (!customerMap.has(key)) {
-      customerMap.set(key, {
-        id: req.customer_id || req.id,
-        name: req.customer_name || "Customer",
-        phone: req.customer_phone || "—",
-        address: req.customer_address || "Customer doorstep address",
-        pincode: req.pincode || user?.pincode || "—",
-        appliance: req.appliance_name || req.brand || "Appliance",
-        count: 1,
-        last_date: req.appointment_date || "Recent"
-      });
-    } else {
-      customerMap.get(key).count += 1;
-    }
-  });
+  if (!franchiseCustomers || franchiseCustomers.length === 0) {
+    compileFranchiseCustomersFromRequests();
+  }
 
-  const custList = Array.from(customerMap.values());
-  $("healthContent").innerHTML = `<div class="section-empty"><strong>${custList.length}</strong> unique customers served by this branch.</div>`;
-  $("activityContent").innerHTML = `<div class="section-empty">Customers booking service in your PIN area appear here automatically with their contact and address.</div>`;
-  $("bottomTitle").textContent = "Branch customer reach";
-  $("bottomSubtitle").textContent = "Customers served in your authorized territory.";
+  if ($("healthContent")) $("healthContent").innerHTML = `<div class="section-empty"><strong>${franchiseCustomers.length}</strong> unique customer${franchiseCustomers.length === 1 ? "" : "s"} served by this branch.</div>`;
+  if ($("activityContent")) $("activityContent").innerHTML = `<div class="section-empty">Click any customer or "View Details →" to inspect their registered appliances, warranty periods, and service records.</div>`;
+  if ($("bottomTitle")) $("bottomTitle").textContent = "Branch customer directory";
+  if ($("bottomSubtitle")) $("bottomSubtitle").textContent = "Customer profiles, product warranties, and service records within your authorized PIN coverage.";
 
-  $("requestHead").innerHTML = [
+  if ($("requestHead")) $("requestHead").innerHTML = [
     "Customer",
-    "Contact number",
-    "Service address",
-    "PIN code",
-    "Primary appliance",
-    "Total requests",
-    "Last service"
-  ].map((l) => `<th>${safe(l)}</th>`).join("");
+    "Contact info",
+    "Location",
+    "Registered products",
+    "Warranty",
+    "Service activity",
+    "Action"
+  ].map((label) => `<th>${safe(label)}</th>`).join("");
 
-  const query = ($("requestSearch")?.value || "").trim().toLowerCase();
-  if ($("requestSearch")) $("requestSearch").placeholder = "Search customers by name, phone, or address";
+  const query = $("requestSearch") ? $("requestSearch").value.trim().toLowerCase() : "";
+  if ($("requestSearch")) $("requestSearch").placeholder = "Search customers, products, phone, or address";
 
-  const filtered = custList.filter((c) =>
-    [c.name, c.phone, c.address, c.pincode, c.appliance].join(" ").toLowerCase().includes(query)
+  const filtered = franchiseCustomers.filter((item) =>
+    [
+      item.customer_name,
+      item.customer_email,
+      item.customer_phone,
+      item.customer_address,
+      item.products_summary,
+      item.category,
+      item.brand,
+      item.model_no,
+      item.serial_no,
+      item.pincode
+    ]
+      .join(" ")
+      .toLowerCase()
+      .includes(query)
   );
 
   $("requestRows").innerHTML = filtered.length
-    ? filtered.map((c) => {
-        const initials = safe((c.name || "CU").split(/\s+/).map((p) => p[0]).slice(0, 2).join("").toUpperCase());
-        return `
-          <tr>
-            <td>
-              <div class="customer-cell">
-                <span class="customer-avatar">${initials}</span>
-                <span class="customer-name"><strong>${safe(c.name)}</strong><small>ID: ${safe(c.id)}</small></span>
-              </div>
-            </td>
-            <td><strong>${safe(c.phone)}</strong></td>
-            <td class="max-w-[240px] text-xs text-slate-700">${safe(c.address)}</td>
-            <td><span class="font-mono font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded">${safe(c.pincode)}</span></td>
-            <td>${safe(c.appliance)}</td>
-            <td><span class="px-2 py-0.5 rounded-full bg-slate-100 font-bold text-xs">${c.count} call${c.count === 1 ? '' : 's'}</span></td>
-            <td>${safe(c.last_date)}</td>
-          </tr>
-        `;
-      }).join("")
-    : `<tr><td class="empty-row" colspan="7">${query ? "No customers match your search." : "No customers recorded in this branch yet."}</td></tr>`;
+    ? filtered
+        .map((item) => {
+          const initials = safe(
+            (item.customer_name || "CU")
+              .split(/\s+/)
+              .map((p) => p[0])
+              .slice(0, 2)
+              .join("")
+              .toUpperCase()
+          );
+          const prodCount = item.total_products_count || (item.products ? item.products.length : 1);
+          const activeWCount = item.active_warranties_count !== undefined ? item.active_warranties_count : (item.warranty_status === "Active" ? 1 : 0);
+          const warrantyPill = activeWCount > 0
+            ? `<span class="status-pill completed">Active (${activeWCount})</span>`
+            : `<span class="status-pill pending">Standard</span>`;
+          const servicePill = (item.ongoing_services_count || 0) > 0
+            ? `<span class="status-pill in-progress">${item.ongoing_services_count} Ongoing</span>`
+            : `<span class="text-xs text-slate-500 font-medium">${item.completed_services_count || 0} Resolved</span>`;
+
+          return `
+            <tr class="hover:bg-slate-50/80 cursor-pointer transition" data-customer-row="${safe(item.customer_id)}">
+              <td>
+                <div class="customer-cell flex items-center gap-3">
+                  <span class="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 text-white font-bold flex items-center justify-center text-xs shadow-xs flex-shrink-0">${initials}</span>
+                  <span class="customer-name">
+                    <button type="button" class="font-bold text-slate-900 hover:text-blue-600 text-left block text-sm" data-view-customer="${safe(item.customer_id)}">${safe(item.customer_name)}</button>
+                    <small class="block text-slate-400 font-mono text-[10px]">ID: ${safe(item.customer_id)}</small>
+                  </span>
+                </div>
+              </td>
+              <td>
+                <div class="text-xs font-semibold text-slate-800">📞 ${safe(item.customer_phone)}</div>
+                ${item.customer_email ? `<small class="block text-slate-400 text-xs truncate max-w-[170px]" title="${safe(item.customer_email)}">✉️ ${safe(item.customer_email)}</small>` : `<small class="block text-slate-400 text-[10px]">Verified phone contact</small>`}
+              </td>
+              <td class="max-w-[180px]">
+                <span class="block text-xs font-medium text-slate-700 truncate" title="${safe(item.customer_address)}">📍 ${safe(item.short_location || item.customer_address || "Location not set")}</span>
+                <small class="block text-slate-400 text-[10px]">PIN: ${safe(item.pincode || "—")} · Territory</small>
+              </td>
+              <td>
+                <div class="flex items-center gap-1.5">
+                  <span class="px-2 py-0.5 rounded-full text-xs font-bold bg-blue-50 text-blue-700 border border-blue-200/70 whitespace-nowrap">${prodCount} Product${prodCount === 1 ? "" : "s"}</span>
+                </div>
+                <small class="block text-slate-500 font-medium truncate max-w-[160px] mt-0.5" title="${safe(item.products_summary || item.category || "")}">${safe(item.products_summary || item.category || "Appliance")}</small>
+              </td>
+              <td class="whitespace-nowrap">${warrantyPill}</td>
+              <td class="whitespace-nowrap">${servicePill}</td>
+              <td class="whitespace-nowrap text-right">
+                <button type="button" class="table-action font-bold text-blue-600 hover:text-blue-800 flex items-center gap-1" data-view-customer="${safe(item.customer_id)}">View Details →</button>
+              </td>
+            </tr>
+          `;
+        })
+        .join("")
+    : `<tr><td class="empty-row" colspan="7">${query ? "No customers match your search." : "No customers found in this franchise service area yet."}</td></tr>`;
 
   $("requestCount").textContent = `${filtered.length} customer${filtered.length === 1 ? "" : "s"} shown`;
   $("resourceGrid").innerHTML = "";
+
+  document.querySelectorAll("[data-view-customer]").forEach((button) =>
+    button.addEventListener("click", (e) => {
+      e.stopPropagation();
+      openCompanyCustomerDetail(button.dataset.viewCustomer);
+    })
+  );
+  document.querySelectorAll("[data-customer-row]").forEach((row) =>
+    row.addEventListener("click", (e) => {
+      if (e.target.closest("button") || e.target.closest("a")) return;
+      openCompanyCustomerDetail(row.dataset.customerRow);
+    })
+  );
 }
 
 function renderJobHistoryView() {
@@ -1312,13 +1443,15 @@ async function openCompanyCustomerDetail(customerId) {
     dialog.hidden = false;
   }
 
-  const existing = companyCustomers.find((c) => c.customer_id === customerId);
+  const existing = (role === "franchise" ? franchiseCustomers : companyCustomers).find(
+    (c) => c.customer_id === customerId || c.id === customerId
+  );
   if (existing) {
     if ($("custModalAvatar")) $("custModalAvatar").textContent = safe(existing.avatar || (existing.customer_name || "CU").slice(0, 2).toUpperCase());
     if ($("custModalName")) $("custModalName").textContent = existing.customer_name || "Customer";
-    if ($("custModalId")) $("custModalId").textContent = `ID: ${existing.customer_id}`;
+    if ($("custModalId")) $("custModalId").textContent = `ID: ${existing.customer_id || existing.id}`;
     if ($("custModalPhone")) $("custModalPhone").textContent = `📞 ${existing.customer_phone || "—"}`;
-    if ($("custModalEmail")) $("custModalEmail").textContent = `✉️ ${existing.customer_email || "—"}`;
+    if ($("custModalEmail")) $("custModalEmail").textContent = existing.customer_email ? `✉️ ${existing.customer_email}` : "✉️ No email registered";
     if ($("custModalAddress")) $("custModalAddress").textContent = `📍 ${existing.customer_address || "—"}`;
   }
 
@@ -1327,7 +1460,9 @@ async function openCompanyCustomerDetail(customerId) {
   if ($("custHistoryRows")) $("custHistoryRows").innerHTML = `<tr><td colspan="6" class="p-8 text-center text-slate-400">Loading service history...</td></tr>`;
 
   try {
-    const data = await companyApi(`/customers/${encodeURIComponent(customerId)}`);
+    const data = role === "franchise"
+      ? await franchiseApi(`/customers/${encodeURIComponent(customerId)}`)
+      : await companyApi(`/customers/${encodeURIComponent(customerId)}`);
     if (!data || !data.customer) throw new Error("Customer details not found");
 
     const c = data.customer;
@@ -1337,7 +1472,7 @@ async function openCompanyCustomerDetail(customerId) {
     if ($("custModalName")) $("custModalName").textContent = c.name;
     if ($("custModalId")) $("custModalId").textContent = `ID: ${c.id}`;
     if ($("custModalPhone")) $("custModalPhone").textContent = `📞 ${c.phone || "—"}`;
-    if ($("custModalEmail")) $("custModalEmail").textContent = `✉️ ${c.email || "—"}`;
+    if ($("custModalEmail")) $("custModalEmail").textContent = c.email ? `✉️ ${c.email}` : "✉️ No email registered";
     if ($("custModalAddress")) $("custModalAddress").textContent = `📍 ${c.address || "—"}`;
 
     if ($("custStatProducts")) $("custStatProducts").textContent = s.total_products || 0;
@@ -1353,10 +1488,63 @@ async function openCompanyCustomerDetail(customerId) {
     renderCustomerOngoing(data.ongoing_services || []);
     renderCustomerHistory(data.completed_services || []);
   } catch (err) {
-    showToast(extractErrorMessage(err.message, "Failed to load customer details"), "error");
+    if (existing && requests && requests.length) {
+      const custReqs = requests.filter((r) =>
+        (r.customer_id && (r.customer_id === customerId || r.customer_id === existing.customer_id)) ||
+        (r.customer_phone && r.customer_phone === existing.customer_phone) ||
+        (r.customer_name && r.customer_name === existing.customer_name)
+      );
+      const ongoing = custReqs.filter((r) => r.status !== "Completed" && r.status_badge !== "Completed");
+      const completed = custReqs.filter((r) => r.status === "Completed" || r.status_badge === "Completed");
+      const prods = existing.products && existing.products.length ? existing.products : custReqs.map((r) => ({
+        id: r.appliance_id || `app_${r.id}`,
+        category: r.appliance_name || "Appliance",
+        brand: r.brand || "Brand",
+        model_no: r.model_no || "—",
+        serial_no: "Registered for service",
+        warranty_status: r.is_under_warranty ? "Active" : "Standard",
+        is_under_warranty: Boolean(r.is_under_warranty),
+        registered_on: r.appointment_date || r.created_at || "Recent"
+      }));
+
+      if ($("custStatProducts")) $("custStatProducts").textContent = prods.length;
+      if ($("custStatWarranties")) $("custStatWarranties").textContent = prods.filter((p) => p.is_under_warranty).length;
+      if ($("custStatOngoing")) $("custStatOngoing").textContent = ongoing.length;
+      if ($("custStatHistory")) $("custStatHistory").textContent = completed.length;
+
+      if ($("tabCountCustProducts")) $("tabCountCustProducts").textContent = prods.length;
+      if ($("tabCountCustOngoing")) $("tabCountCustOngoing").textContent = ongoing.length;
+      if ($("tabCountCustHistory")) $("tabCountCustHistory").textContent = completed.length;
+
+      renderCustomerProducts(prods);
+      renderCustomerOngoing(ongoing.map((r) => ({
+        id: r.id,
+        appliance_name: r.appliance_name,
+        issue: r.issue,
+        branch_name: user?.branch_name || "Your Branch",
+        technician_name: r.technician?.name || "Unassigned",
+        appointment_date: r.appointment_date,
+        appointment_slot: r.appointment_slot,
+        status: r.status,
+        is_under_warranty: Boolean(r.is_under_warranty)
+      })));
+      renderCustomerHistory(completed.map((r) => ({
+        id: r.id,
+        appliance_name: r.appliance_name,
+        issue: r.issue,
+        technician_name: r.technician?.name || "Service Technician",
+        branch_name: user?.branch_name || "Your Branch",
+        payment_status: r.payment_status || "Completed",
+        total_amount: r.job_card?.total_amount || 0,
+        appointment_date: r.appointment_date || r.created_at
+      })));
+    } else {
+      showToast(extractErrorMessage(err.message, "Failed to load customer details"), "error");
+    }
   }
 }
 window.openCompanyCustomerDetail = openCompanyCustomerDetail;
+window.openCustomerDetail = openCompanyCustomerDetail;
 
 function renderCustomerProducts(products) {
   const container = $("custProductsList");
@@ -2027,7 +2215,7 @@ async function loadWorkspacePageData(page) {
   if (role === "company" && page === "Warranty Claims") { await loadCompanyWarrantyClaims(); return; }
   if (role === "company" && page === "Spares Catalog") { await loadCompanySparesCatalog(); return; }
   if (role === "franchise" && page === "Technicians") { await loadFranchiseTechnicians(); return; }
-  if (role === "franchise" && page === "Customers") { renderFranchiseCustomers(); return; }
+  if (role === "franchise" && page === "Customers") { await loadFranchiseCustomers(); return; }
   if (role === "franchise" && page === "Inventory & Spares") { await loadFranchiseInventory(); return; }
   renderPage(page);
 }
@@ -3715,6 +3903,7 @@ function renderResources() {
     let note = detail;
     if (role === "technician" && index === 0) note = requests.length + " jobs on your schedule";
     if (role === "company" && name === "Customers") note = companyCustomers.length + " registered product" + (companyCustomers.length === 1 ? "" : "s");
+    if (role === "franchise" && name === "Customers") note = franchiseCustomers.length + " customer" + (franchiseCustomers.length === 1 ? "" : "s");
     if (role === "franchise" && name === "Inventory items") note = franchiseInventory.length + " parts in warehouse";
     if (role === "company" && name === "Warranty claims") note = companyWarrantyClaims.length + " reimbursement claims";
     return `<div class="resource-card"><span class="resource-icon">${icon}</span><span><strong>${name}</strong><small>${note}</small></span></div>`;
@@ -3800,6 +3989,12 @@ async function loadDashboard() {
         franchiseInventory = await generalApi(`/api/inventory/branch/${encodeURIComponent(branchId)}`);
         localStorage.setItem("servora_cache_inventory", JSON.stringify(franchiseInventory));
       } catch { franchiseInventory = []; }
+      try {
+        franchiseCustomers = await franchiseApi("/customers");
+        localStorage.setItem("servora_cache_franchise_customers", JSON.stringify(franchiseCustomers));
+      } catch {
+        compileFranchiseCustomersFromRequests();
+      }
     }
   } catch (error) {
     const detail = error instanceof TypeError ? "Connecting to Servora API…" : error.message;
@@ -3829,6 +4024,10 @@ function initEvents() {
 
   $("statusFilter")?.addEventListener("change", () => {
     if (role === "admin" && $("crumbTitle")?.textContent === "Service requests") renderRequestDirectory();
+    else if ($("crumbTitle")?.textContent === "Customers") {
+      if (role === "company") renderCompanyCustomers();
+      else if (role === "franchise") renderFranchiseCustomers();
+    }
     else renderRequests();
   });
 
@@ -3846,10 +4045,12 @@ function initEvents() {
       return;
     }
     if (role === "franchise" && page === "Customers") {
-      const visibleReqs = requests.filter(requestForRole);
       const rows = [
-        ["Customer Name", "Contact Phone", "Service Address", "PIN Code", "Appliance", "Appointment Date"],
-        ...visibleReqs.map((r) => [r.customer_name, r.customer_phone || "", r.customer_address || "", r.pincode || "", r.appliance_name || "", r.appointment_date || ""])
+        ["Customer Name", "Customer Email", "Customer Phone", "Service Address", "PIN Code", "Registered Products", "Warranty Status", "Ongoing Jobs", "Completed Jobs"],
+        ...franchiseCustomers.map((c) => [
+          c.customer_name, c.customer_email || "", c.customer_phone, c.customer_address || "", c.pincode || "",
+          c.products_summary || "", c.warranty_status || "", c.ongoing_services_count || 0, c.completed_services_count || 0
+        ])
       ];
       downloadCsv(`servora-franchise-customers.csv`, rows);
       return;
