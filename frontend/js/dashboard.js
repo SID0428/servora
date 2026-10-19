@@ -1084,11 +1084,22 @@ function populateTracking(request) {
   if ($("trackingCompletionCard")) {
     $("trackingCompletionCard").classList.toggle("hidden", !isCompletedOrDisputed);
     if (isCompletedOrDisputed) {
-      if ($("openReceiptBtn")) $("openReceiptBtn").onclick = () => window.openReceiptModal(request.id, false);
+      const isReopenedResolved = Boolean((request.is_reopened || request.previous_job_card) && request.status === "Completed");
+      if ($("openReceiptBtn")) {
+        if (isReopenedResolved) {
+          const d2 = request.paid_at || new Date().toLocaleDateString('en-IN');
+          $("openReceiptBtn").innerHTML = `<span>🧾 Resolution Receipt (${d2})</span>`;
+        } else {
+          $("openReceiptBtn").innerHTML = `<span>🧾 Download Receipt</span>`;
+        }
+        $("openReceiptBtn").onclick = () => window.openReceiptModal(request.id, false);
+      }
       if ($("openPrevReceiptBtn")) {
         const hasPrevious = Boolean(request.is_reopened || request.previous_job_card);
         $("openPrevReceiptBtn").classList.toggle("hidden", !hasPrevious);
         if (hasPrevious) {
+          const d1 = (request.previous_job_card && request.previous_job_card.completed_at) || request.reopened_at || request.appointment_date || "Visit 1";
+          $("openPrevReceiptBtn").innerHTML = `<span>🧾 Initial Receipt (${d1})</span>`;
           $("openPrevReceiptBtn").onclick = () => window.openReceiptModal(request.id, true);
         }
       }
@@ -1749,76 +1760,147 @@ window.openJobCardModal = async function(requestId) {
 
   try {
     const jc = await readApiJson(`/api/requests/${encodeURIComponent(reqId)}/job-card`);
-    if ($("jcCardId")) $("jcCardId").textContent = jc.id;
-    if ($("jcRequestId")) $("jcRequestId").textContent = jc.request_id;
-    if ($("jcWorkSummary")) $("jcWorkSummary").textContent = jc.work_summary || "Routine appliance inspection & diagnosis.";
+    const targetReq = userRequests.find(r => r.id === reqId) || {};
+    const prevJc = targetReq.previous_job_card || null;
+    const isReopenedResolved = Boolean((targetReq.is_reopened || prevJc) && (targetReq.status === "Completed" || jc));
 
-    if ($("jcPartsBody")) {
-      if (Array.isArray(jc.parts_used) && jc.parts_used.length > 0) {
-        $("jcPartsBody").innerHTML = jc.parts_used.map(p => `
-          <tr>
-            <td class="py-2.5 px-3 font-medium text-slate-800">${escapeHtml(p.part_name)}</td>
-            <td class="py-2.5 px-3 text-center font-semibold text-slate-600">${p.quantity}</td>
-            <td class="py-2.5 px-3 text-right text-slate-600">₹${Number(p.unit_price).toFixed(2)}</td>
-            <td class="py-2.5 px-3 text-right font-bold text-slate-800">₹${Number(p.total_price || (p.quantity * p.unit_price)).toFixed(2)}</td>
-          </tr>
-        `).join("");
+    const tech1 = targetReq.previous_technician_name || "Authorized Field Technician";
+    const tech2 = targetReq.technician?.name || "Authorized Field Technician";
+    const date1 = (prevJc && prevJc.completed_at) || targetReq.reopened_at || targetReq.appointment_date || "Visit 1";
+    const date2 = (jc && jc.completed_at) || targetReq.paid_at || new Date().toLocaleDateString('en-IN');
+
+    function renderJobCardView(data, techName, subtitle, isHistorical = false) {
+      if (!data) return;
+      if ($("jcCardId")) $("jcCardId").textContent = data.id || `JC-${reqId}`;
+      if ($("jcRequestId")) $("jcRequestId").textContent = data.request_id || reqId;
+      if ($("jcWorkSummary")) $("jcWorkSummary").textContent = data.work_summary || "Routine appliance inspection & diagnosis.";
+      if ($("jcSubtitle")) $("jcSubtitle").textContent = subtitle || "Service breakdown and customer sign-off";
+
+      if ($("jcPartsBody")) {
+        if (Array.isArray(data.parts_used) && data.parts_used.length > 0) {
+          $("jcPartsBody").innerHTML = data.parts_used.map(p => `
+            <tr>
+              <td class="py-2.5 px-3 font-medium text-slate-800">${escapeHtml(p.part_name)}</td>
+              <td class="py-2.5 px-3 text-center font-semibold text-slate-600">${p.quantity || 1}</td>
+              <td class="py-2.5 px-3 text-right text-slate-600">₹${Number(p.unit_price || 0).toFixed(2)}</td>
+              <td class="py-2.5 px-3 text-right font-bold text-slate-800">₹${Number(p.total_price || ((p.quantity || 1) * (p.unit_price || 0))).toFixed(2)}</td>
+            </tr>
+          `).join("");
+        } else {
+          $("jcPartsBody").innerHTML = `<tr><td colspan="4" class="p-4 text-center text-slate-400">No spare parts billed. Standard diagnosis performed.</td></tr>`;
+        }
+      }
+
+      const pCost = Number(data.parts_cost || 0);
+      const lCost = Number(data.labor_cost || 0);
+      const tCost = Number(data.tax_amount || 0);
+      const grandTotal = Number(data.total_amount || 0);
+      if ($("jcPartsTotal")) $("jcPartsTotal").textContent = `₹${pCost.toFixed(2)}`;
+      if ($("jcLaborCost")) $("jcLaborCost").textContent = `₹${lCost.toFixed(2)}`;
+      if ($("jcTaxAmount")) $("jcTaxAmount").textContent = `₹${tCost.toFixed(2)}`;
+      if ($("jcGrandTotal")) $("jcGrandTotal").textContent = `₹${grandTotal.toFixed(2)}`;
+
+      // Technician Signature
+      if (data.technician_signature && $("jcTechSigImg")) {
+        $("jcTechSigImg").src = data.technician_signature;
+        $("jcTechSigImg").classList.remove("hidden");
+        if ($("jcTechSigPlaceholder")) $("jcTechSigPlaceholder").classList.add("hidden");
       } else {
-        $("jcPartsBody").innerHTML = `<tr><td colspan="4" class="p-4 text-center text-slate-400">No spare parts billed. Standard diagnosis performed.</td></tr>`;
+        if ($("jcTechSigImg")) $("jcTechSigImg").classList.add("hidden");
+        if ($("jcTechSigPlaceholder")) $("jcTechSigPlaceholder").classList.remove("hidden");
+      }
+
+      // Customer Status & Signatures
+      if (data.customer_status === "accepted" || isHistorical) {
+        if ($("jcStatusPill")) {
+          $("jcStatusPill").textContent = isHistorical ? "Initial Visit (Settled)" : "Signed & Approved";
+          $("jcStatusPill").className = "text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200";
+        }
+        if ($("jcCustomerSigImg") && data.customer_signature) {
+          $("jcCustomerSigImg").src = data.customer_signature;
+          $("jcCustomerSigImg").classList.remove("hidden");
+          if ($("jcCustomerSigPlaceholder")) $("jcCustomerSigPlaceholder").classList.add("hidden");
+        } else {
+          if ($("jcCustomerSigImg")) $("jcCustomerSigImg").classList.add("hidden");
+          if ($("jcCustomerSigPlaceholder")) $("jcCustomerSigPlaceholder").classList.remove("hidden");
+        }
+        if ($("jcCustomerSigStatus")) $("jcCustomerSigStatus").textContent = "✓ Verified Digital Signature";
+        if ($("jcSignaturePadBlock")) $("jcSignaturePadBlock").classList.add("hidden");
+        if ($("jcDisputeBlock")) $("jcDisputeBlock").classList.add("hidden");
+      } else if (data.customer_status === "disputed") {
+        if ($("jcStatusPill")) {
+          $("jcStatusPill").textContent = "Disputed by Customer";
+          $("jcStatusPill").className = "text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-100 text-rose-800 border border-rose-200";
+        }
+        if ($("jcSignaturePadBlock")) $("jcSignaturePadBlock").classList.add("hidden");
+        if ($("jcDisputeBlock")) {
+          $("jcDisputeBlock").classList.remove("hidden");
+          if ($("jcDisputeRemarks")) $("jcDisputeRemarks").textContent = data.customer_remarks || "Dispute reason recorded.";
+        }
+      } else {
+        if ($("jcStatusPill")) {
+          $("jcStatusPill").textContent = "Awaiting Customer Sign-off";
+          $("jcStatusPill").className = "text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 border border-blue-200";
+        }
+        if ($("jcCustomerSigImg")) $("jcCustomerSigImg").classList.add("hidden");
+        if ($("jcCustomerSigPlaceholder")) $("jcCustomerSigPlaceholder").classList.remove("hidden");
+        if ($("jcSignaturePadBlock")) $("jcSignaturePadBlock").classList.remove("hidden");
+        if ($("jcDisputeBlock")) $("jcDisputeBlock").classList.add("hidden");
+        setupCustomerSignaturePad();
       }
     }
 
-    if ($("jcPartsTotal")) $("jcPartsTotal").textContent = `₹${jc.parts_cost.toFixed(2)}`;
-    if ($("jcLaborCost")) $("jcLaborCost").textContent = `₹${jc.labor_cost.toFixed(2)}`;
-    if ($("jcTaxAmount")) $("jcTaxAmount").textContent = `₹${jc.tax_amount.toFixed(2)}`;
-    if ($("jcGrandTotal")) $("jcGrandTotal").textContent = `₹${jc.total_amount.toFixed(2)}`;
+    // Populate Reopened & Resolved Dual Receipts Section
+    if (isReopenedResolved) {
+      if ($("jcDualReceiptsSection")) {
+        $("jcDualReceiptsSection").classList.remove("hidden");
+        if ($("jcRec1No")) $("jcRec1No").textContent = `REC-${reqId}-V1`;
+        if ($("jcRec1Date")) $("jcRec1Date").textContent = date1;
+        if ($("jcRec1Total")) $("jcRec1Total").textContent = prevJc ? (prevJc.is_warranty_covered ? "₹0.00 (Warranty)" : `₹${Number(prevJc.total_amount || 0).toFixed(2)}`) : "₹0.00";
+        if ($("jcRec1TechName")) $("jcRec1TechName").textContent = `Technician: ${tech1}`;
+        if ($("jcOpenRec1Btn")) $("jcOpenRec1Btn").onclick = () => window.openReceiptModal(reqId, true);
 
-    // Technician Signature
-    if (jc.technician_signature && $("jcTechSigImg")) {
-      $("jcTechSigImg").src = jc.technician_signature;
-      $("jcTechSigImg").classList.remove("hidden");
-      if ($("jcTechSigPlaceholder")) $("jcTechSigPlaceholder").classList.add("hidden");
+        if ($("jcRec2No")) $("jcRec2No").textContent = `REC-${reqId}-V2`;
+        if ($("jcRec2Date")) $("jcRec2Date").textContent = date2;
+        if ($("jcRec2Total")) $("jcRec2Total").textContent = jc ? (jc.is_warranty_covered ? "₹0.00 (Warranty)" : `₹${Number(jc.total_amount || 0).toFixed(2)}`) : "₹0.00";
+        if ($("jcRec2TechName")) $("jcRec2TechName").textContent = `Technician: ${tech2}`;
+        if ($("jcOpenRec2Btn")) $("jcOpenRec2Btn").onclick = () => window.openReceiptModal(reqId, false);
+      }
+
+      if ($("jcVisitSwitcherBar")) {
+        $("jcVisitSwitcherBar").classList.remove("hidden");
+        const setVisitTab = (activeTab) => {
+          if ($("jcTabVisit1") && $("jcTabVisit2")) {
+            if (activeTab === 1) {
+              $("jcTabVisit1").className = "px-3 py-1 rounded-lg font-bold text-xs transition bg-white text-blue-600 shadow-2xs";
+              $("jcTabVisit2").className = "px-3 py-1 rounded-lg font-bold text-xs transition text-slate-600 hover:text-slate-900";
+            } else {
+              $("jcTabVisit1").className = "px-3 py-1 rounded-lg font-bold text-xs transition text-slate-600 hover:text-slate-900";
+              $("jcTabVisit2").className = "px-3 py-1 rounded-lg font-bold text-xs transition bg-white text-blue-600 shadow-2xs";
+            }
+          }
+        };
+
+        if ($("jcTabVisit1")) {
+          $("jcTabVisit1").onclick = () => {
+            setVisitTab(1);
+            renderJobCardView(prevJc || jc, tech1, `Visit 1: Initial Service (Completed ${date1})`, true);
+          };
+        }
+        if ($("jcTabVisit2")) {
+          $("jcTabVisit2").onclick = () => {
+            setVisitTab(2);
+            renderJobCardView(jc, tech2, `Visit 2: Reopened Revisit (Resolved ${date2})`, false);
+          };
+        }
+        setVisitTab(2);
+      }
     } else {
-      if ($("jcTechSigImg")) $("jcTechSigImg").classList.add("hidden");
-      if ($("jcTechSigPlaceholder")) $("jcTechSigPlaceholder").classList.remove("hidden");
+      if ($("jcDualReceiptsSection")) $("jcDualReceiptsSection").classList.add("hidden");
+      if ($("jcVisitSwitcherBar")) $("jcVisitSwitcherBar").classList.add("hidden");
     }
 
-    // Customer Status
-    if (jc.customer_status === "accepted") {
-      if ($("jcStatusPill")) {
-        $("jcStatusPill").textContent = "Signed & Approved";
-        $("jcStatusPill").className = "text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200";
-      }
-      if ($("jcCustomerSigImg") && jc.customer_signature) {
-        $("jcCustomerSigImg").src = jc.customer_signature;
-        $("jcCustomerSigImg").classList.remove("hidden");
-        if ($("jcCustomerSigPlaceholder")) $("jcCustomerSigPlaceholder").classList.add("hidden");
-      }
-      if ($("jcCustomerSigStatus")) $("jcCustomerSigStatus").textContent = "✓ Verified Digital Signature";
-      if ($("jcSignaturePadBlock")) $("jcSignaturePadBlock").classList.add("hidden");
-      if ($("jcDisputeBlock")) $("jcDisputeBlock").classList.add("hidden");
-    } else if (jc.customer_status === "disputed") {
-      if ($("jcStatusPill")) {
-        $("jcStatusPill").textContent = "Disputed by Customer";
-        $("jcStatusPill").className = "text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-100 text-rose-800 border border-rose-200";
-      }
-      if ($("jcSignaturePadBlock")) $("jcSignaturePadBlock").classList.add("hidden");
-      if ($("jcDisputeBlock")) {
-        $("jcDisputeBlock").classList.remove("hidden");
-        if ($("jcDisputeRemarks")) $("jcDisputeRemarks").textContent = jc.customer_remarks || "Dispute reason recorded.";
-      }
-    } else {
-      // Pending acceptance
-      if ($("jcStatusPill")) {
-        $("jcStatusPill").textContent = "Awaiting Customer Sign-off";
-        $("jcStatusPill").className = "text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 border border-blue-200";
-      }
-      if ($("jcCustomerSigImg")) $("jcCustomerSigImg").classList.add("hidden");
-      if ($("jcCustomerSigPlaceholder")) $("jcCustomerSigPlaceholder").classList.remove("hidden");
-      if ($("jcSignaturePadBlock")) $("jcSignaturePadBlock").classList.remove("hidden");
-      if ($("jcDisputeBlock")) $("jcDisputeBlock").classList.add("hidden");
-      setupCustomerSignaturePad();
-    }
+    renderJobCardView(jc, tech2, isReopenedResolved ? `Visit 2: Reopened Revisit (Resolved ${date2})` : "Service breakdown and customer sign-off", false);
 
     if ($("approveJobCardBtn")) {
       $("approveJobCardBtn").onclick = async () => {
@@ -2026,9 +2108,34 @@ window.openReceiptModal = async function(requestId, showPrevious = false) {
     }
   }
 
-  const invoiceNo = `REC-${reqId}${showPrevious ? '-PREV' : ''}`;
+  const hasMultipleReceipts = Boolean(targetReq.previous_job_card || targetReq.is_reopened);
+  const date1 = (targetReq.previous_job_card && targetReq.previous_job_card.completed_at) || targetReq.reopened_at || targetReq.appointment_date || "Visit 1";
+  const date2 = (jc && jc.completed_at) || targetReq.paid_at || new Date().toLocaleDateString('en-IN');
+
+  const switcherEl = $("receiptVisitSwitcher");
+  if (switcherEl) {
+    switcherEl.classList.toggle("hidden", !hasMultipleReceipts);
+    if (hasMultipleReceipts) {
+      if ($("receiptSwitchDate1")) $("receiptSwitchDate1").textContent = date1;
+      if ($("receiptSwitchDate2")) $("receiptSwitchDate2").textContent = date2;
+
+      if ($("receiptSwitchTab1") && $("receiptSwitchTab2")) {
+        if (showPrevious) {
+          $("receiptSwitchTab1").className = "px-3 py-1.5 rounded-lg font-bold text-xs transition bg-blue-600 text-white shadow-2xs";
+          $("receiptSwitchTab2").className = "px-3 py-1.5 rounded-lg font-bold text-xs transition text-slate-600 hover:text-slate-900";
+        } else {
+          $("receiptSwitchTab1").className = "px-3 py-1.5 rounded-lg font-bold text-xs transition text-slate-600 hover:text-slate-900";
+          $("receiptSwitchTab2").className = "px-3 py-1.5 rounded-lg font-bold text-xs transition bg-blue-600 text-white shadow-2xs";
+        }
+        $("receiptSwitchTab1").onclick = () => window.openReceiptModal(reqId, true);
+        $("receiptSwitchTab2").onclick = () => window.openReceiptModal(reqId, false);
+      }
+    }
+  }
+
+  const invoiceNo = `REC-${reqId}${showPrevious ? '-V1' : (hasMultipleReceipts ? '-V2' : '')}`;
   if ($("receiptInvoiceNo")) $("receiptInvoiceNo").textContent = invoiceNo;
-  if ($("receiptDate")) $("receiptDate").textContent = (jc && jc.completed_at) || targetReq.paid_at || targetReq.appointment_date || new Date().toLocaleDateString('en-IN');
+  if ($("receiptDate")) $("receiptDate").textContent = showPrevious ? date1 : date2;
 
   const isWarranty = Boolean(targetReq.is_under_warranty || (jc && jc.is_warranty_covered));
   const isPaid = targetReq.payment_status === "Paid" || targetReq.payment_status === "Paid (Warranty Covered)" || (jc && isWarranty);
@@ -2043,7 +2150,8 @@ window.openReceiptModal = async function(requestId, showPrevious = false) {
   if ($("receiptPaymentMeta")) {
     const pMethod = targetReq.payment_method ? targetReq.payment_method.toUpperCase() : "UPI / ONLINE";
     const pTxn = targetReq.payment_transaction_id || `PAY-${reqId}`;
-    $("receiptPaymentMeta").textContent = isWarranty ? "OEM Brand Reimbursed · Customer Liability ₹0.00" : `${pMethod} · Ref: ${pTxn}`;
+    const visitSuffix = showPrevious ? " (Visit 1)" : (hasMultipleReceipts ? " (Visit 2)" : "");
+    $("receiptPaymentMeta").textContent = isWarranty ? `OEM Brand Reimbursed · Customer Liability ₹0.00${visitSuffix}` : `${pMethod} · Ref: ${pTxn}${visitSuffix}`;
   }
 
   // Customer info
@@ -2056,9 +2164,9 @@ window.openReceiptModal = async function(requestId, showPrevious = false) {
     ? (targetReq.previous_technician_name || "Original Technician")
     : (targetReq.technician?.name || targetReq.previous_technician_name || "Authorized Field Technician");
   if ($("receiptBranchName")) $("receiptBranchName").textContent = "Servora Authorized Franchise Partner";
-  if ($("receiptTechName")) $("receiptTechName").textContent = `Technician: ${techName}`;
+  if ($("receiptTechName")) $("receiptTechName").textContent = `Technician: ${techName}${showPrevious ? " (Initial Visit)" : (hasMultipleReceipts ? " (Revisit Resolution)" : "")}`;
   if ($("receiptApplianceDetails")) $("receiptApplianceDetails").textContent = `${targetReq.brand || ''} ${targetReq.appliance_name || 'Home Appliance'} (${targetReq.model_no || 'Standard'})`;
-  if ($("receiptIssueDescription")) $("receiptIssueDescription").textContent = `Service: ${targetReq.issue || 'Routine Service'}`;
+  if ($("receiptIssueDescription")) $("receiptIssueDescription").textContent = `Service: ${targetReq.issue || 'Routine Service'}${showPrevious ? " [Initial Service]" : (hasMultipleReceipts ? " [Reopened Service]" : "")}`;
 
   // Itemized breakdown adhering to Phase 2 automated price engine
   const parts = (jc && Array.isArray(jc.parts_used)) ? jc.parts_used : [];
@@ -2543,42 +2651,6 @@ window.respondToCustomerEstimate = async function(action) {
     }
     showToast(action === "approve" ? "✓ Estimate approved! Technician authorized to begin repair." : "Estimate declined. Franchise notified.", "info");
     closeDialog("customerEstimateModal");
-    await loadTrackingDetails(selectedRequestId);
-    await loadDashboardData();
-  } catch (err) {
-    showToast(err.message, "error");
-  }
-};
-
-window.openCustomerEscalateModal = function(requestId = selectedRequestId) {
-  if (!requestId) return;
-  if ($("escModalSubtitle")) $("escModalSubtitle").textContent = `Service Request #${requestId}`;
-  if ($("escCustomerReason")) $("escCustomerReason").value = "";
-  openDialog("customerEscalationModal");
-};
-
-window.submitCustomerEscalation = async function() {
-  if (!selectedRequestId) return;
-  const reason = $("escCustomerReason")?.value.trim();
-  if (!reason || reason.length < 5) {
-    showToast("Please provide a reason for escalation (min 5 characters).", "warning");
-    return;
-  }
-  try {
-    const res = await apiFetch("/api/escalations", {
-      method: "POST",
-      body: JSON.stringify({
-        request_id: selectedRequestId,
-        reason: reason,
-        level: 1
-      })
-    });
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.detail || "Failed to raise escalation");
-    }
-    showToast("🚨 SLA Escalation raised. Franchise management has been alerted.", "info");
-    closeDialog("customerEscalationModal");
     await loadTrackingDetails(selectedRequestId);
     await loadDashboardData();
   } catch (err) {
