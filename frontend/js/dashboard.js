@@ -1048,7 +1048,8 @@ function populateTracking(request) {
 
   // Reopen Banner Display (Phase 1 FR-FBK-005)
   if ($("trackingReopenBanner")) {
-    if (request.status === "Reopened / Under Review" || request.status_badge === "Disputed" || request.is_reopened) {
+    const isActivelyReopened = (request.status === "Reopened / Under Review" || request.status_badge === "Reopened" || (Boolean(request.is_reopened) && request.status !== "Completed"));
+    if (isActivelyReopened) {
       $("trackingReopenBanner").classList.remove("hidden");
       if ($("trackingReopenReason")) {
         $("trackingReopenReason").textContent = request.reopened_reason || "Customer requested priority revisit & review under Servora Customer Protection.";

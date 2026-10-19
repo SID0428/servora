@@ -1133,11 +1133,17 @@ function renderRequests() {
             <span class="text-[11px] font-bold uppercase tracking-wider text-blue-600 font-mono">${safe(item.id)}</span>
             <h3 class="text-base font-bold text-slate-800 mt-0.5">${safe(item.appliance_name || item.brand)}</h3>
             <p class="text-xs text-slate-500 mt-0.5">Issue: <span class="font-medium text-slate-700">${safe(item.issue)}</span></p>
-            <div class="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-blue-50 border border-blue-200 text-blue-700 text-xs font-semibold">
-              <span>📌 You have been assigned this work</span>
-            </div>
+            ${(item.status === 'Completed' || item.status_badge === 'Completed') ? `
+              <div class="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold">
+                <span>✓ Work Completed & Settled</span>
+              </div>
+            ` : `
+              <div class="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-blue-50 border border-blue-200 text-blue-700 text-xs font-semibold">
+                <span>📌 You have been assigned this work</span>
+              </div>
+            `}
           </div>
-          <span class="status-pill ${statusClass(item.status_badge || item.status)}">${safe(item.status_badge || item.status)}</span>
+          ${renderStatusBadge(item)}
         </div>
 
         ${item.defect_photo ? `
@@ -1150,7 +1156,7 @@ function renderRequests() {
           </div>
         ` : ''}
 
-        ${item.is_reopened ? `
+        ${(item.is_reopened && item.status !== 'Completed' && item.status_badge !== 'Completed') ? `
           <div class="p-3 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-950 space-y-1.5">
             <div class="flex items-center gap-2 font-bold">
               <span class="text-sm">⚠️</span>
@@ -1187,7 +1193,7 @@ function renderRequests() {
         </div>
 
         <div class="flex flex-wrap items-center gap-2 pt-1 border-t border-slate-100">
-          ${item.status_badge !== 'Completed' ? `
+          ${item.status_badge !== 'Completed' && item.status !== 'Completed' ? `
             ${item.status === 'Technician on the Way' ? `
               <button type="button" class="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs shadow-sm transition flex items-center gap-1.5" onclick="techStartServiceWithOtp('${safe(item.id)}')">
                 ▶ Start Service (OTP)
@@ -1211,6 +1217,11 @@ function renderRequests() {
             <button type="button" class="px-3.5 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 font-semibold text-xs transition flex items-center gap-1.5" onclick="openOpsReceiptModal('${safe(item.id)}')">
               🧾 Receipt
             </button>
+            ${item.previous_job_card ? `
+              <button type="button" class="px-3.5 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 font-semibold text-xs transition flex items-center gap-1.5" onclick="openOpsReceiptModal('${safe(item.id)}', true)">
+                🧾 Prev Receipt
+              </button>
+            ` : ''}
           `}
           <button type="button" class="ml-auto text-xs font-semibold text-blue-600 hover:underline" onclick="openTechRouteMap('${safe(item.id)}')">
             🗺️ Open Map Route →
@@ -1260,20 +1271,23 @@ function renderRequests() {
 
       const priorityBadge = `<span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${priorityClass(item.priority || 'Medium')}">${safe(item.priority || 'Medium')}</span>`;
       const isCurrentlyReopened = (item.status === "Reopened / Under Review" || item.status_badge === "Reopened" || Boolean(item.is_reopened)) && item.status !== "Completed";
+      const isCompleted = item.status === "Completed" || item.status_badge === "Completed";
       const statusPill = renderStatusBadge(item);
 
-      const isDispatched = item.status === "Technician on the Way" || (isAssigned && item.status !== "Completed");
+      const isDispatched = item.status === "Technician on the Way" || (isAssigned && !isCompleted);
       const trackBtn = isDispatched ? `<button class="table-action px-2 py-1 rounded-lg bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 font-semibold text-xs ml-1" onclick="openTechRouteMap('${safe(item.id)}')">Track 📍</button>` : '';
 
       const assignBtn = isCurrentlyReopened
         ? `<button class="table-action px-2.5 py-1 rounded-lg bg-rose-50 text-rose-800 hover:bg-rose-100 border border-rose-300 font-semibold text-xs flex items-center gap-1" onclick="openFranchiseReassignModal('${safe(item.id)}')"><span>↺</span> Reassign</button>`
-        : (isAssigned
-          ? `<button class="table-action px-2.5 py-1 rounded-lg bg-amber-50 text-amber-800 hover:bg-amber-100 border border-amber-300 font-semibold text-xs flex items-center gap-1" onclick="selectRequestForAssignment('${safe(item.id)}')"><span>↺</span> Reassign</button>`
-          : `<button class="table-action px-3 py-1 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs shadow-sm flex items-center gap-1" onclick="selectRequestForAssignment('${safe(item.id)}')"><span>⚡</span> Assign →</button>`);
+        : (isCompleted
+          ? ''
+          : (isAssigned
+            ? `<button class="table-action px-2.5 py-1 rounded-lg bg-amber-50 text-amber-800 hover:bg-amber-100 border border-amber-300 font-semibold text-xs flex items-center gap-1" onclick="selectRequestForAssignment('${safe(item.id)}')"><span>↺</span> Reassign</button>`
+            : `<button class="table-action px-3 py-1 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs shadow-sm flex items-center gap-1" onclick="selectRequestForAssignment('${safe(item.id)}')"><span>⚡</span> Assign →</button>`));
 
       const detailBtn = `<button class="table-action px-2 py-1 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 font-semibold text-xs ml-1" onclick="viewRequestDetails('${safe(item.id)}')">Details 👁️</button>`;
       const jcBtn = `<button class="table-action px-2 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs ml-1" onclick="openOpsJobCardModal('${safe(item.id)}')">Job Card 📄</button>`;
-      const receiptBtn = (item.status_badge === "Completed" || item.status === "Completed" || item.previous_job_card)
+      const receiptBtn = (isCompleted || item.previous_job_card)
         ? `<button class="table-action px-2 py-1 rounded-lg bg-emerald-50 text-emerald-800 hover:bg-emerald-100 border border-emerald-200 font-semibold text-xs ml-1" onclick="openOpsReceiptModal('${safe(item.id)}')">Receipt 🧾</button>`
         : '';
 
@@ -1735,13 +1749,49 @@ window.viewRequestDetails = async function(requestId) {
   // Reopen Notice Banner
   const reopenBanner = $("ticketModalReopenBanner");
   if (reopenBanner) {
-    const isReopenedTicket = req.is_reopened || req.reopened_reason || req.status === "Reopened / Under Review";
-    if (isReopenedTicket) {
+    const isCurrentlyReopened = (req.status === "Reopened / Under Review" || req.status_badge === "Reopened" || Boolean(req.is_reopened)) && req.status !== "Completed";
+    const isCompletedRevisit = (req.status === "Completed" || req.status_badge === "Completed") && Boolean(req.is_reopened || req.previous_job_card);
+
+    if (isCurrentlyReopened) {
       reopenBanner.classList.remove("hidden");
-      if ($("ticketModalReopenDate")) $("ticketModalReopenDate").textContent = req.reopened_at ? `Reopened on ${req.reopened_at}` : "Reopened recently";
+      reopenBanner.className = "rounded-2xl bg-amber-50 border border-amber-200 p-4 space-y-2 text-amber-950";
+      if ($("ticketModalReopenIcon")) $("ticketModalReopenIcon").textContent = "⚠️";
+      if ($("ticketModalReopenTitle")) {
+        $("ticketModalReopenTitle").textContent = "Warranty Revisit Ticket (Active)";
+        $("ticketModalReopenTitle").className = "text-xs font-bold uppercase tracking-wider text-amber-900";
+      }
+      if ($("ticketModalReopenDate")) {
+        $("ticketModalReopenDate").textContent = req.reopened_at ? `Reopened on ${req.reopened_at}` : "Reopened recently";
+        $("ticketModalReopenDate").className = "text-[10px] font-semibold text-amber-700 bg-amber-100/80 px-2 py-0.5 rounded-full";
+      }
       if ($("ticketModalReopenReason")) $("ticketModalReopenReason").textContent = req.reopened_reason || "Customer reported repeat issue under 7-day guarantee.";
       if ($("ticketModalPrevTech")) {
         $("ticketModalPrevTech").textContent = req.previous_technician_name ? `Previous Technician: ${req.previous_technician_name}` : "Original technician record preserved";
+      }
+      const prevReceiptBtn = $("ticketModalPrevReceiptBtn");
+      if (prevReceiptBtn) {
+        if (req.previous_job_card) {
+          prevReceiptBtn.classList.remove("hidden");
+          prevReceiptBtn.onclick = () => window.openOpsReceiptModal(req.id, true);
+        } else {
+          prevReceiptBtn.classList.add("hidden");
+        }
+      }
+    } else if (isCompletedRevisit) {
+      reopenBanner.classList.remove("hidden");
+      reopenBanner.className = "rounded-2xl bg-emerald-50/80 border border-emerald-200 p-4 space-y-2 text-emerald-950";
+      if ($("ticketModalReopenIcon")) $("ticketModalReopenIcon").textContent = "✓";
+      if ($("ticketModalReopenTitle")) {
+        $("ticketModalReopenTitle").textContent = "Warranty Revisit (Resolved & Completed)";
+        $("ticketModalReopenTitle").className = "text-xs font-bold uppercase tracking-wider text-emerald-900";
+      }
+      if ($("ticketModalReopenDate")) {
+        $("ticketModalReopenDate").textContent = req.reopened_at ? `Reopened on ${req.reopened_at} · Resolved` : "Resolved Revisit";
+        $("ticketModalReopenDate").className = "text-[10px] font-semibold text-emerald-700 bg-emerald-100/80 px-2 py-0.5 rounded-full";
+      }
+      if ($("ticketModalReopenReason")) $("ticketModalReopenReason").textContent = req.reopened_reason || "Customer reported repeat issue under 7-day guarantee (Resolved & Settled).";
+      if ($("ticketModalPrevTech")) {
+        $("ticketModalPrevTech").textContent = req.previous_technician_name ? `Original Technician: ${req.previous_technician_name}` : "Original technician record preserved";
       }
       const prevReceiptBtn = $("ticketModalPrevReceiptBtn");
       if (prevReceiptBtn) {
