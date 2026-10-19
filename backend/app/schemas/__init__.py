@@ -157,6 +157,7 @@ class ServiceRequestDetail(BaseModel):
     previous_technician_id: Optional[str] = None
     previous_technician_name: Optional[str] = None
     previous_job_card: Optional[JobCardResponse] = None
+    job_card: Optional[JobCardResponse] = None
     is_reopened: Optional[bool] = False
     payment_status: Optional[str] = "Pending"
     branch_id: Optional[str] = None

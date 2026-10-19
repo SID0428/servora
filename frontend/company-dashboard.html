@@ -22,6 +22,32 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
   <script type="module" src="./js/ops-dashboard.js"></script>
+  <style>
+    @media print {
+      body * {
+        visibility: hidden !important;
+      }
+      #opsReceiptDialog, #opsReceiptDialog * {
+        visibility: visible !important;
+      }
+      #opsReceiptDialog {
+        position: fixed !important;
+        left: 0 !important;
+        top: 0 !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        height: auto !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        border: none !important;
+        box-shadow: none !important;
+        background: white !important;
+      }
+      .print\:hidden {
+        display: none !important;
+      }
+    }
+  </style>
 </head>
 <body class="ops-page" data-role="company">
   <div id="toast-container" class="fixed top-5 right-5 z-50 flex flex-col space-y-3 pointer-events-none"></div>
@@ -157,6 +183,268 @@
           <button id="saveOpsEditBtn" type="submit" class="rounded-xl bg-blue-600 hover:bg-blue-700 px-4 py-2 font-bold text-white transition shadow-sm">Save Changes</button>
         </div>
       </form>
+    </div>
+  </dialog>
+
+  <!-- Service Request Deep-Dive Details Modal -->
+  <dialog id="ticketDetailModal" class="w-[min(94vw,760px)] rounded-3xl border-0 p-0 shadow-2xl overflow-hidden bg-white">
+    <div class="p-6 sm:p-7 space-y-4 max-h-[90vh] overflow-y-auto">
+      <!-- Modal Header -->
+      <div class="flex items-start justify-between border-b border-slate-100 pb-3.5">
+        <div>
+          <div class="flex items-center gap-2">
+            <span class="text-[10px] font-bold tracking-[.16em] text-blue-600 uppercase">SERVICE REQUEST DETAILS</span>
+            <span id="ticketModalPriority" class="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-slate-100 text-slate-700">Medium</span>
+          </div>
+          <div class="flex items-center gap-3 mt-1">
+            <h3 class="font-display text-xl font-bold text-slate-900" id="ticketModalReqId">SR-7845</h3>
+            <div id="ticketModalStatusWrap"></div>
+          </div>
+          <p class="text-xs text-slate-400 mt-0.5">Created on <span id="ticketModalCreatedAt" class="text-slate-600 font-medium">—</span></p>
+        </div>
+        <button type="button" id="closeTicketDetailModal" class="rounded-xl p-1.5 text-slate-400 hover:bg-slate-100 text-lg leading-none" aria-label="Close">✕</button>
+      </div>
+
+      <!-- Reopen Notice Banner (shows if ticket was reopened for repeat issue) -->
+      <div id="ticketModalReopenBanner" class="hidden rounded-2xl bg-amber-50 border border-amber-200 p-4 space-y-2 text-amber-950">
+        <div class="flex items-start justify-between gap-2">
+          <div class="flex items-center gap-2">
+            <span class="text-base">⚠️</span>
+            <strong class="text-xs font-bold uppercase tracking-wider text-amber-900">Warranty Revisit Ticket</strong>
+          </div>
+          <span id="ticketModalReopenDate" class="text-[10px] font-semibold text-amber-700 bg-amber-100/80 px-2 py-0.5 rounded-full">Reopened recently</span>
+        </div>
+        <div>
+          <span class="text-[10px] font-bold text-amber-800 uppercase tracking-wider block">Customer's Reported Issue / Reopen Reason:</span>
+          <p id="ticketModalReopenReason" class="text-xs font-medium text-amber-900 mt-0.5 leading-relaxed bg-white/70 p-2.5 rounded-xl border border-amber-200/60">—</p>
+        </div>
+        <div class="flex items-center justify-between text-xs pt-1">
+          <span id="ticketModalPrevTech" class="text-amber-800 font-medium text-[11px]">—</span>
+          <button type="button" id="ticketModalPrevReceiptBtn" class="hidden px-2.5 py-1 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-bold text-[11px] shadow-xs transition">
+            View Previous Receipt 🧾
+          </button>
+        </div>
+      </div>
+
+      <!-- Customer & Appliance 2-Column Grid -->
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+        <!-- Customer & Location Card -->
+        <div class="p-4 rounded-2xl bg-slate-50 border border-slate-100 space-y-2">
+          <span class="text-[10px] font-bold uppercase tracking-wider text-blue-600 block">Customer Information</span>
+          <div>
+            <strong id="ticketModalCustomerName" class="text-sm font-bold text-slate-900 block">—</strong>
+            <a id="ticketModalCustomerPhone" href="#" class="text-xs text-blue-600 font-semibold hover:underline block mt-0.5">📞 —</a>
+          </div>
+          <div>
+            <span class="text-[10px] text-slate-400 block font-medium">Service Address:</span>
+            <p id="ticketModalCustomerAddress" class="text-slate-700 mt-0.5 leading-relaxed font-medium">—</p>
+          </div>
+          <div class="flex items-center gap-2 pt-1">
+            <span id="ticketModalPincode" class="px-2 py-0.5 rounded bg-blue-100/80 text-blue-800 font-mono font-bold text-[11px]">PIN: —</span>
+            <span id="ticketModalGps" class="hidden px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-mono text-[10px] font-semibold">GPS</span>
+          </div>
+        </div>
+
+        <!-- Appliance & Issue Card -->
+        <div class="p-4 rounded-2xl bg-slate-50 border border-slate-100 space-y-2">
+          <span class="text-[10px] font-bold uppercase tracking-wider text-blue-600 block">Appliance & Complaint</span>
+          <div>
+            <strong id="ticketModalAppliance" class="text-sm font-bold text-slate-900 block">—</strong>
+            <span id="ticketModalModelSerial" class="text-[11px] text-slate-500 font-mono block">—</span>
+          </div>
+          <div>
+            <span class="text-[10px] text-slate-400 block font-medium">Reported Problem:</span>
+            <p id="ticketModalIssue" class="text-slate-800 font-bold mt-0.5">—</p>
+          </div>
+          <div>
+            <span class="text-[10px] text-slate-400 block font-medium">Description:</span>
+            <p id="ticketModalDesc" class="text-slate-600 text-[11px] mt-0.5 leading-relaxed">—</p>
+          </div>
+          <div id="ticketModalDefectWrap" class="hidden pt-1">
+            <span class="text-[10px] text-slate-400 block font-medium mb-1">Attached Defect Photo:</span>
+            <img id="ticketModalDefectImg" src="" alt="Defect Photo" class="w-20 h-20 object-cover rounded-xl border border-slate-200 cursor-pointer hover:opacity-90 shadow-xs" title="Click to open full image">
+          </div>
+        </div>
+      </div>
+
+      <!-- Operational Routing & Field Assignment Card -->
+      <div class="p-4 rounded-2xl bg-blue-50/50 border border-blue-100 text-xs grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+          <span class="text-[10px] font-bold uppercase tracking-wider text-blue-600 block mb-1">Routed Franchise</span>
+          <strong id="ticketModalBranchName" class="text-slate-900 font-bold block text-sm">—</strong>
+          <span id="ticketModalBranchPhone" class="text-slate-600 text-[11px] block mt-0.5">—</span>
+          <div class="mt-2 text-slate-600 text-[11px]">
+            <span>Scheduled: </span><strong id="ticketModalAppointment" class="text-slate-800 font-semibold">—</strong>
+          </div>
+        </div>
+        <div class="sm:border-l sm:border-blue-100 sm:pl-4">
+          <span class="text-[10px] font-bold uppercase tracking-wider text-blue-600 block mb-1">Assigned Technician</span>
+          <div class="flex items-center gap-2">
+            <strong id="ticketModalTechName" class="text-slate-900 font-bold block text-sm">—</strong>
+            <span id="ticketModalTechRating" class="text-amber-600 font-bold text-xs">★ 4.9</span>
+          </div>
+          <span id="ticketModalTechTitle" class="text-slate-500 text-[11px] block mt-0.5">—</span>
+          <a id="ticketModalTechPhone" href="#" class="text-blue-600 font-semibold text-[11px] hover:underline block mt-1">📞 —</a>
+        </div>
+      </div>
+
+      <!-- Security Handshake OTPs Card -->
+      <div class="p-3.5 rounded-2xl bg-slate-50 border border-slate-100 text-xs grid grid-cols-2 gap-3">
+        <div class="p-2.5 bg-white rounded-xl border border-slate-100">
+          <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Service Start OTP</span>
+          <strong id="ticketModalStartOtp" class="font-mono text-base font-black text-blue-600 tracking-wider block mt-0.5">••••</strong>
+          <small class="text-[10px] text-slate-400">Doorstep check-in verification</small>
+        </div>
+        <div class="p-2.5 bg-white rounded-xl border border-slate-100">
+          <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Completion OTP</span>
+          <strong id="ticketModalCompOtp" class="font-mono text-base font-black text-emerald-600 tracking-wider block mt-0.5">••••</strong>
+          <small class="text-[10px] text-slate-400">Job closure verification code</small>
+        </div>
+      </div>
+
+      <!-- Digital Job Card & Financial Breakdown (shows if job card exists) -->
+      <div id="ticketModalJobCardWrap" class="hidden p-4 rounded-2xl bg-white border border-slate-200 text-xs space-y-3 shadow-xs">
+        <div class="flex items-center justify-between border-b border-slate-100 pb-2.5">
+          <div>
+            <span class="text-[10px] font-bold uppercase tracking-wider text-emerald-600 block">Digital Job Card & Invoice</span>
+            <strong id="ticketModalJcId" class="font-mono text-xs font-bold text-slate-800">JC-0000</strong>
+          </div>
+          <span class="px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold">✓ PAID & SETTLED</span>
+        </div>
+        <div>
+          <span class="text-[10px] text-slate-400 block font-medium">Work Performed / Technical Summary:</span>
+          <p id="ticketModalJcWork" class="text-slate-800 font-medium text-xs mt-0.5 leading-relaxed bg-slate-50 p-2.5 rounded-xl">—</p>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-xs border border-slate-100 rounded-xl overflow-hidden">
+            <thead class="bg-slate-50 text-[10px] font-bold text-slate-500 uppercase">
+              <tr><th class="p-2">#</th><th class="p-2">Spare Part / Material</th><th class="p-2 text-center">Qty</th><th class="p-2 text-right">Rate</th><th class="p-2 text-right">Amount</th></tr>
+            </thead>
+            <tbody id="ticketModalPartsBody" class="divide-y divide-slate-100"></tbody>
+            <tfoot class="bg-slate-50 border-t border-slate-100">
+              <tr><td colspan="4" class="p-1.5 text-right font-medium text-slate-600">Labor Charges:</td><td id="ticketModalLaborCost" class="p-1.5 text-right font-semibold text-slate-800">₹0.00</td></tr>
+              <tr><td colspan="4" class="p-1.5 text-right font-medium text-slate-600">GST (18%):</td><td id="ticketModalTaxCost" class="p-1.5 text-right font-semibold text-slate-800">₹0.00</td></tr>
+              <tr class="text-sm font-bold bg-emerald-50/60"><td colspan="4" class="p-2 text-right text-emerald-900">Total Settled:</td><td id="ticketModalGrandTotal" class="p-2 text-right text-emerald-900">₹0.00</td></tr>
+            </tfoot>
+          </table>
+        </div>
+        <div class="flex justify-end pt-1">
+          <button type="button" id="ticketModalPrintReceiptBtn" class="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-sm transition flex items-center gap-1.5">
+            <span>🖨️</span> View Official Tax Invoice
+          </button>
+        </div>
+      </div>
+
+      <!-- Lifecycle Progress Timeline -->
+      <div class="p-4 rounded-2xl bg-slate-50 border border-slate-100 text-xs space-y-2.5">
+        <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Service Progress Lifecycle</span>
+        <div id="ticketModalTimeline" class="space-y-1"></div>
+      </div>
+
+      <!-- Modal Bottom Actions -->
+      <div class="flex items-center justify-between pt-2 border-t border-slate-100">
+        <button type="button" id="ticketModalTrackBtn" class="hidden px-4 py-2 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 font-bold text-xs transition flex items-center gap-1.5">
+          <span>🛵</span> Track Technician on Map
+        </button>
+        <button type="button" id="closeTicketDetailModalBtn" class="ml-auto px-5 py-2 rounded-xl bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs transition shadow-sm">
+          Close
+        </button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- Official Payment Receipt Modal for Ops -->
+  <dialog id="opsReceiptDialog" class="w-[min(94vw,680px)] rounded-3xl border-0 p-0 shadow-2xl overflow-hidden bg-white">
+    <div class="p-6 sm:p-8 space-y-5 max-h-[90vh] overflow-y-auto" id="opsReceiptPrintArea">
+      <div class="flex items-start justify-between border-b border-slate-200 pb-4">
+        <div>
+          <div class="flex items-center gap-2">
+            <span class="w-8 h-8 rounded-xl bg-[#0066ff] text-white flex items-center justify-center font-display font-extrabold text-sm">S</span>
+            <span class="font-display font-black text-xl tracking-tight text-slate-900">SERVORA</span>
+          </div>
+          <p class="text-[11px] text-slate-400 mt-1">Official GST Tax Invoice & Service Receipt</p>
+        </div>
+        <div class="text-right">
+          <span id="opsReceiptInvoiceNo" class="font-mono text-xs font-bold text-slate-800 block">REC-SR-7845</span>
+          <span id="opsReceiptDate" class="text-[11px] text-slate-500 block">19 Oct 2026, 03:30 PM</span>
+          <span id="opsReceiptPaidBadge" class="mt-1 inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold border border-emerald-200">
+            ✓ PAID IN FULL
+          </span>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs bg-slate-50/70 p-4 rounded-2xl border border-slate-100">
+        <div>
+          <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">Customer & Service Address</span>
+          <strong id="opsReceiptCustomerName" class="text-slate-800 font-bold block text-sm">Customer Name</strong>
+          <span id="opsReceiptCustomerPhone" class="text-slate-500 block mt-0.5">+91 98765 43210</span>
+          <p id="opsReceiptCustomerAddress" class="text-slate-600 mt-1 leading-relaxed">Doorstep Address</p>
+        </div>
+        <div class="sm:border-l sm:border-slate-200/80 sm:pl-4">
+          <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">Servicing Franchise & Technician</span>
+          <strong id="opsReceiptBranchName" class="text-slate-800 font-bold block text-sm">Servora Authorized Franchise</strong>
+          <span id="opsReceiptTechName" class="text-blue-600 font-semibold block mt-0.5">Technician: Rahul Sharma</span>
+          <span id="opsReceiptApplianceDetails" class="text-slate-600 block mt-1">LG Inverter AC (LG-INV-15)</span>
+          <span id="opsReceiptIssueDescription" class="text-slate-500 text-[11px] block mt-0.5">Service: Cooling repair</span>
+        </div>
+      </div>
+
+      <div>
+        <table class="w-full text-left text-xs border border-slate-200 rounded-xl overflow-hidden">
+          <thead class="bg-slate-100/80 text-[10px] font-bold uppercase tracking-wider text-slate-500 border-b border-slate-200">
+            <tr>
+              <th class="py-2.5 px-3">#</th>
+              <th class="py-2.5 px-3">Description</th>
+              <th class="py-2.5 px-3 text-center">Qty</th>
+              <th class="py-2.5 px-3 text-right">Unit Rate (₹)</th>
+              <th class="py-2.5 px-3 text-right">Amount (₹)</th>
+            </tr>
+          </thead>
+          <tbody id="opsReceiptItemsBody" class="divide-y divide-slate-100"></tbody>
+          <tfoot class="bg-slate-50 text-xs border-t border-slate-200">
+            <tr>
+              <td colspan="4" class="py-1.5 px-3 text-right font-medium text-slate-600">Parts Subtotal:</td>
+              <td id="opsReceiptPartsSubtotal" class="py-1.5 px-3 text-right font-semibold text-slate-800">₹0.00</td>
+            </tr>
+            <tr>
+              <td colspan="4" class="py-1.5 px-3 text-right font-medium text-slate-600">Labor & Diagnostic Charges:</td>
+              <td id="opsReceiptLaborCost" class="py-1.5 px-3 text-right font-semibold text-slate-800">₹0.00</td>
+            </tr>
+            <tr>
+              <td colspan="4" class="py-1.5 px-3 text-right font-medium text-slate-600">GST (18%):</td>
+              <td id="opsReceiptTaxAmount" class="py-1.5 px-3 text-right font-semibold text-slate-800">₹0.00</td>
+            </tr>
+            <tr class="bg-emerald-50/50 font-bold text-sm">
+              <td colspan="4" class="py-2.5 px-3 text-right text-emerald-900 font-display">Grand Total Settled:</td>
+              <td id="opsReceiptGrandTotal" class="py-2.5 px-3 text-right text-emerald-900 font-display font-extrabold text-base">₹0.00</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+
+      <div class="grid grid-cols-2 gap-4 pt-2 border-t border-slate-100 text-[11px] text-slate-500">
+        <div>
+          <span class="font-bold text-slate-700 block">Authorized Franchise Stamp:</span>
+          <span class="block mt-0.5 text-slate-400">Servora Authorized Network Partner</span>
+          <span class="inline-block mt-2 px-2.5 py-1 rounded border border-emerald-300 bg-emerald-50 text-emerald-800 font-mono text-[10px] font-bold">
+            ELECTRONICALLY SETTLED
+          </span>
+        </div>
+        <div class="text-right">
+          <span class="font-bold text-slate-700 block">Customer Touch Sign-off:</span>
+          <span class="text-emerald-600 font-semibold block mt-0.5">✓ Digital OTP & Touch Verified</span>
+          <span class="text-[10px] text-slate-400 block mt-1">Computer-generated tax invoice.</span>
+        </div>
+      </div>
+
+      <div class="flex items-center justify-between pt-3 border-t border-slate-200 print:hidden">
+        <button type="button" id="closeOpsReceiptDialog" class="px-4 py-2 rounded-xl text-slate-600 hover:bg-slate-100 font-semibold text-xs">
+          Close
+        </button>
+        <button type="button" id="printOpsReceiptBtn" class="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-sm flex items-center gap-1.5 transition">
+          <span>🖨️</span> Print / Download PDF
+        </button>
+      </div>
     </div>
   </dialog>
 </body>

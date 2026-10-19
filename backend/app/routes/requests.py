@@ -122,6 +122,18 @@ def format_request_detail(req: ServiceRequestModel, db: Session) -> ServiceReque
     completion_otp_val = getattr(req, "completion_otp", None)
     payment_status_val = getattr(req, "payment_status", None) or ("Paid" if req.status == "Completed" else "Pending")
 
+    current_jc = db.query(JobCardModel).filter(JobCardModel.request_id == req.id).first()
+    current_job_card = format_job_card(current_jc) if current_jc else None
+
+    # Status badge normalization: Reopened warranty revisits should display as "Reopened", not "Disputed"
+    computed_badge = req.status_badge or "Pending"
+    if req.status == "Completed":
+        computed_badge = "Completed"
+    elif req.is_reopened and req.status != "Completed":
+        computed_badge = "Reopened"
+    elif req.status == "Reopened / Under Review":
+        computed_badge = "Reopened"
+
     return ServiceRequestDetail(
         id=req.id,
         customer_id=req.customer_id,
@@ -136,7 +148,7 @@ def format_request_detail(req: ServiceRequestModel, db: Session) -> ServiceReque
         description=req.description,
         priority=req.priority,
         status=req.status,
-        status_badge=req.status_badge,
+        status_badge=computed_badge,
         created_at=req.created_at,
         appointment_date=req.appointment_date,
         appointment_slot=req.appointment_slot,
@@ -148,6 +160,7 @@ def format_request_detail(req: ServiceRequestModel, db: Session) -> ServiceReque
         previous_technician_id=getattr(req, "previous_technician_id", None),
         previous_technician_name=getattr(req, "previous_technician_name", None),
         previous_job_card=previous_job_card,
+        job_card=current_job_card,
         is_reopened=bool(getattr(req, "is_reopened", False)),
         payment_status=payment_status_val,
         branch_id=req.branch_id,
@@ -212,7 +225,7 @@ def get_request(request_id: str, request: Request, db: Session = Depends(get_db)
     if user.role == "company":
         is_company_request = (
             req.company_id == user.id or
-            req.brand.lower() == user.name.lower() or
+            (req.brand and user.name and (req.brand.lower() in user.name.lower() or user.name.lower() in req.brand.lower())) or
             db.query(ApplianceModel).filter(
                 ApplianceModel.id == req.appliance_id,
                 (ApplianceModel.company_id == user.id) | (ApplianceModel.brand.ilike(user.name.strip()))
@@ -861,7 +874,7 @@ def reopen_ticket(request_id: str, payload: TicketReopenPayload, request: Reques
     req.completion_otp = new_completion_otp
     req.is_reopened = True
     req.status = "Reopened / Under Review"
-    req.status_badge = "Disputed"
+    req.status_badge = "Reopened"
     req.reopened_reason = full_reason
     req.reopened_at = now_str
 
