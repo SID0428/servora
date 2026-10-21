@@ -248,6 +248,8 @@ def update_franchise_technician(
 
     technician = db.query(TechnicianModel).filter_by(id=technician_id).first()
     user = db.query(UserModel).filter_by(id=technician_id, role="technician").first()
+    if not user and technician:
+        user = db.query(UserModel).filter(UserModel.phone == technician.phone, UserModel.role == "technician").first()
     if not technician or not user:
         raise HTTPException(status_code=404, detail="Technician account not found")
 

@@ -4059,6 +4059,7 @@ async function loadDashboard() {
       localStorage.setItem("servora_user", JSON.stringify(user));
       const roleKey = (user.role === "branch" || user.role === "franchise") ? "franchise" : user.role;
       localStorage.setItem(`servora_user_${roleKey}`, JSON.stringify(user));
+      setProfile();
     } else if (userResponse.status === 401) {
       if (user?.id) {
         console.warn("Transient 401 on /api/auth/me; retaining stored ops session.");
@@ -4397,6 +4398,43 @@ function initEvents() {
         technicians[idx] = { ...technicians[idx], ...updated };
       }
       localStorage.setItem("servora_cache_techs", JSON.stringify(technicians));
+
+      // Synchronize technician stored user in localStorage
+      try {
+        const storedTech = localStorage.getItem("servora_user_technician");
+        if (storedTech) {
+          const parsed = JSON.parse(storedTech);
+          if (parsed && (parsed.id === techId || parsed.email === updated.email)) {
+            const synced = {
+              ...parsed,
+              name: updated.name,
+              title: updated.title,
+              phone: updated.mobile,
+              address: updated.address ? `${updated.address}${updated.pincode ? `, ${updated.pincode}` : ''}` : parsed.address,
+              pincode: updated.pincode || parsed.pincode,
+            };
+            localStorage.setItem("servora_user_technician", JSON.stringify(synced));
+            const gen = localStorage.getItem("servora_user");
+            if (gen) {
+              const genParsed = JSON.parse(gen);
+              if (genParsed && (genParsed.id === techId || genParsed.email === updated.email)) {
+                localStorage.setItem("servora_user", JSON.stringify(synced));
+              }
+            }
+          }
+        }
+      } catch (err) {}
+
+      // Broadcast update event to any open tabs
+      try {
+        if (typeof BroadcastChannel !== "undefined") {
+          const bc = new BroadcastChannel("servora_technician_sync");
+          bc.postMessage({ type: "TECHNICIAN_UPDATED", technician: updated });
+          bc.close();
+        }
+        localStorage.setItem("servora_tech_updated_at", Date.now().toString());
+      } catch (err) {}
+
       $("editTechnicianDialog")?.close();
       renderFranchiseTechnicians();
       showToast(`Technician ${updated.name || "details"} updated successfully.`);
@@ -4421,27 +4459,30 @@ function initEvents() {
   initCustomerDetailModalEvents();
 }
 
-// Profile Modal & Edit Details for Ops Portals (Technician, Franchise, Company, Admin)
-window.openOpsProfileModal = function() {
-  const dialog = $("opsProfileDialog");
-  if (!dialog) return;
-
+function populateOpsProfileModal() {
   const displayName = user?.name || "Servora User";
   const displayRole = user?.role || role || "technician";
   const displayEmail = user?.email || "user@servora.in";
-  const displayPhone = user?.phone || "+91 98765 43210";
-  const displayAddr = user?.address || "Not provided";
+  const displayPhone = user?.phone || user?.mobile || "+91 98765 43210";
+  const displayTitle = user?.title || "Field Service Specialist";
+  const displayBranch = user?.branch_name || user?.company_branch || (user?.branch_id ? `Branch #${user?.branch_id}` : "");
+
+  let displayAddr = user?.address || "Not provided";
+  if (user?.pincode && !displayAddr.includes(user.pincode)) {
+    displayAddr = `${displayAddr}, ${user.pincode}`;
+  }
 
   if ($("opsProfileNameText")) $("opsProfileNameText").textContent = displayName;
-  if ($("opsProfileRoleBadge")) $("opsProfileRoleBadge").textContent = displayRole.toUpperCase();
+  if ($("opsProfileRoleBadge")) $("opsProfileRoleBadge").textContent = (role === "technician" ? "AUTHORIZED TECHNICIAN" : displayRole.toUpperCase());
   if ($("opsProfileAvatar")) $("opsProfileAvatar").textContent = displayName.split(/\s+/).map((p) => p[0]).slice(0, 2).join("").toUpperCase() || "U";
   if ($("opsProfileEmailText")) $("opsProfileEmailText").textContent = displayEmail;
   if ($("opsProfilePhoneText")) $("opsProfilePhoneText").textContent = displayPhone;
+  if ($("opsProfileTitleText")) $("opsProfileTitleText").textContent = displayTitle;
   if ($("opsProfileAddressText")) $("opsProfileAddressText").textContent = displayAddr;
 
-  if (user?.branch_name || user?.branch_id) {
+  if (displayBranch) {
     if ($("opsProfileBranchRow")) $("opsProfileBranchRow").classList.remove("hidden");
-    if ($("opsProfileBranchText")) $("opsProfileBranchText").textContent = user?.branch_name || `Branch #${user?.branch_id}`;
+    if ($("opsProfileBranchText")) $("opsProfileBranchText").textContent = displayBranch;
   } else if ($("opsProfileBranchRow")) {
     $("opsProfileBranchRow").classList.add("hidden");
   }
@@ -4457,8 +4498,29 @@ window.openOpsProfileModal = function() {
 
   if ($("opsProfileViewMode")) $("opsProfileViewMode").classList.remove("hidden");
   if ($("opsProfileEditForm")) $("opsProfileEditForm").classList.add("hidden");
+}
 
+window.openOpsProfileModal = async function() {
+  const dialog = $("opsProfileDialog");
+  if (!dialog) return;
+
+  populateOpsProfileModal();
   dialog.showModal();
+
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/auth/me`, { credentials: "include", headers: authHeaders() });
+    if (res.ok) {
+      const resData = await res.json();
+      if (resData?.user) {
+        user = { ...user, ...resData.user };
+        const roleKey = (user.role === "branch" || user.role === "franchise") ? "franchise" : user.role;
+        localStorage.setItem(`servora_user_${roleKey}`, JSON.stringify(user));
+        localStorage.setItem("servora_user", JSON.stringify(user));
+        setProfile();
+        populateOpsProfileModal();
+      }
+    }
+  } catch (e) {}
 };
 
 // ==========================================
@@ -4898,6 +4960,45 @@ function initOpsApp() {
   renderInsights();
   renderResources();
   loadDashboard();
+
+  // Real-time technician sync across tabs / windows
+  try {
+    if (typeof BroadcastChannel !== "undefined") {
+      const bc = new BroadcastChannel("servora_technician_sync");
+      bc.onmessage = (event) => {
+        if (event.data?.type === "TECHNICIAN_UPDATED" && role === "technician") {
+          const updated = event.data.technician;
+          if (user && (user.id === updated.id || user.email === updated.email)) {
+            user.name = updated.name || user.name;
+            user.title = updated.title || user.title;
+            user.phone = updated.mobile || user.phone;
+            user.address = updated.address ? `${updated.address}${updated.pincode ? `, ${updated.pincode}` : ''}` : user.address;
+            user.pincode = updated.pincode || user.pincode;
+            localStorage.setItem("servora_user_technician", JSON.stringify(user));
+            localStorage.setItem("servora_user", JSON.stringify(user));
+            setProfile();
+            if ($("opsProfileDialog")?.open) {
+              populateOpsProfileModal();
+            }
+          }
+        }
+      };
+    }
+    window.addEventListener("storage", (e) => {
+      if (e.key === "servora_user_technician" && role === "technician" && e.newValue) {
+        try {
+          const parsed = JSON.parse(e.newValue);
+          if (parsed && (!user || user.id === parsed.id)) {
+            user = { ...user, ...parsed };
+            setProfile();
+            if ($("opsProfileDialog")?.open) {
+              populateOpsProfileModal();
+            }
+          }
+        } catch {}
+      }
+    });
+  } catch (e) {}
 }
 
 if (document.readyState === "loading") {

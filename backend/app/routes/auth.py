@@ -3,7 +3,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from uuid import uuid4
 from app.db.session import get_db
-from app.db.models import BranchOnboardingModel, CompanyOnboardingModel, TechnicianOnboardingModel, UserModel, CompanyBranchModel, TechnicianModel
+from app.db.models import BranchOnboardingModel, BranchTechnicianModel, CompanyOnboardingModel, TechnicianOnboardingModel, UserModel, CompanyBranchModel, TechnicianModel
 from app.security import create_user_session, get_authenticated_user, revoke_user_session
 from app.schemas import CustomerAddressUpdate, CustomerRegistration, LoginRequest, UserProfileUpdate
 import hashlib
@@ -43,16 +43,28 @@ def user_payload(user: UserModel, db: Session = None) -> dict:
                 if company:
                     data["company_name"] = company.name
         elif user.role == "technician":
-            tech = db.query(TechnicianModel).filter(
-                (TechnicianModel.id == user.id) | (TechnicianModel.name == user.name)
-            ).first()
+            tech = db.query(TechnicianModel).filter_by(id=user.id).first()
+            if not tech:
+                tech = db.query(TechnicianModel).filter(
+                    (TechnicianModel.phone == user.phone) | (TechnicianModel.name == user.name)
+                ).first()
             if tech:
+                data["name"] = tech.name
                 data["title"] = tech.title
+                data["phone"] = tech.phone
                 data["company_branch"] = tech.company_branch
                 data["rating"] = tech.rating
                 data["total_jobs"] = tech.total_jobs
                 if tech.avatar:
                     data["avatar"] = tech.avatar
+            b_tech = db.query(BranchTechnicianModel).filter_by(technician_id=user.id).first()
+            if b_tech:
+                data["address"] = b_tech.address
+                data["pincode"] = b_tech.pincode
+                branch = db.query(CompanyBranchModel).filter_by(id=b_tech.branch_id).first()
+                if branch:
+                    data["branch_id"] = branch.id
+                    data["branch_name"] = branch.branch_name
     return data
 
 
