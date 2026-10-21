@@ -22,7 +22,7 @@ async function submitJson(path, payload) {
 
 passwordForm.addEventListener("submit", async (event) => {
   event.preventDefault();
-  if (!token) { message("This setup link is missing its invitation token. Ask Servora to resend it.", true); return; }
+  if (!token) { message("This setup link is missing its invitation token. Ask ServSure to resend it.", true); return; }
   if ($("password").value !== $("confirmPassword").value) { message("The passwords do not match.", true); return; }
   if ($("password").value.length < 10) { message("Use a password with at least 10 characters.", true); return; }
   const button = $("passwordSubmit"); button.disabled = true; button.textContent = "Sending code…"; message("");
@@ -62,4 +62,4 @@ $("resendOtp").addEventListener("click", async () => {
   finally { button.disabled = false; button.textContent = "Send a new code"; }
 });
 
-if (!token) message("This setup link is missing its invitation token. Ask Servora to resend it.", true);
+if (!token) message("This setup link is missing its invitation token. Ask ServSure to resend it.", true);

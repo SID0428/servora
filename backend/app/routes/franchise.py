@@ -115,9 +115,9 @@ def issue_technician_invite(
     send_brevo_email(
         user.email,
         technician.name,
-        "Set up your Servora technician portal",
-        f"Hello {technician.name},\n\n{branch.branch_name} has added you as a Servora technician. Your details are:\n\n{details_text}\n\nCreate your password and verify your email using this link (valid for 48 hours):\n{setup_url}\n\nUse {user.email} to sign in to the technician portal.",
-        f"<p>Hello {html.escape(technician.name)},</p><p><strong>{html.escape(branch.branch_name)}</strong> has added you as a Servora technician. Your details:</p><ul>{details_html}</ul><p>Create your password and verify your email using the link below. The link expires in 48 hours.</p><p><a href=\"{html.escape(setup_url, quote=True)}\">Set up your technician portal password</a></p><p>Registered login email: <strong>{html.escape(user.email)}</strong></p>",
+        "Set up your ServSure technician portal",
+        f"Hello {technician.name},\n\n{branch.branch_name} has added you as a ServSure technician. Your details are:\n\n{details_text}\n\nCreate your password and verify your email using this link (valid for 48 hours):\n{setup_url}\n\nUse {user.email} to sign in to the technician portal.",
+        f"<p>Hello {html.escape(technician.name)},</p><p><strong>{html.escape(branch.branch_name)}</strong> has added you as a ServSure technician. Your details:</p><ul>{details_html}</ul><p>Create your password and verify your email using the link below. The link expires in 48 hours.</p><p><a href=\"{html.escape(setup_url, quote=True)}\">Set up your technician portal password</a></p><p>Registered login email: <strong>{html.escape(user.email)}</strong></p>",
     )
     return setup_url
 
@@ -146,7 +146,7 @@ def create_franchise_technician(
     _, branch = require_franchise(request, db)
     email = payload.email.strip().lower()
     if db.query(UserModel).filter(UserModel.email.ilike(email)).first():
-        raise HTTPException(status_code=409, detail="A Servora account with this email already exists")
+        raise HTTPException(status_code=409, detail="A ServSure account with this email already exists")
     if not os.getenv("BREVO_API_KEY") or not os.getenv("BREVO_SENDER_EMAIL"):
         raise HTTPException(status_code=503, detail="Brevo is not configured on the backend.")
 
@@ -566,9 +566,9 @@ def begin_technician_password_setup(payload: CompanyPasswordSetup, db: Session =
         send_brevo_email(
             user.email,
             user.name,
-            "Your Servora technician verification code",
-            f"Your Servora verification code is {otp}. It expires in 10 minutes. If you did not request this, ignore this email.",
-            f"<p>Your Servora verification code is:</p><p style=\"font-size:28px;font-weight:700;letter-spacing:6px\">{otp}</p><p>This code expires in 10 minutes.</p>",
+            "Your ServSure technician verification code",
+            f"Your ServSure verification code is {otp}. It expires in 10 minutes. If you did not request this, ignore this email.",
+            f"<p>Your ServSure verification code is:</p><p style=\"font-size:28px;font-weight:700;letter-spacing:6px\">{otp}</p><p>This code expires in 10 minutes.</p>",
         )
         db.commit()
     except Exception:
@@ -607,9 +607,9 @@ def verify_technician_setup_otp(payload: CompanyOtpVerify, db: Session = Depends
         send_brevo_email(
             user.email,
             user.name,
-            "Your Servora technician password is set",
+            "Your ServSure technician password is set",
             f"Hello {user.name},\n\nYour password is set. You can now access the technician portal for {branch_name} using your registered email and password:\n{portal_url}",
-            f"<p>Hello {html.escape(user.name)},</p><p>Your password is set. You can now access the technician portal for <strong>{html.escape(branch_name)}</strong>.</p><p><a href=\"{html.escape(portal_url, quote=True)}\">Open the Servora technician portal</a></p>",
+            f"<p>Hello {html.escape(user.name)},</p><p>Your password is set. You can now access the technician portal for <strong>{html.escape(branch_name)}</strong>.</p><p><a href=\"{html.escape(portal_url, quote=True)}\">Open the ServSure technician portal</a></p>",
         )
         confirmation_email_sent = True
     except Exception:

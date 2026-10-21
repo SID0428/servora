@@ -37,13 +37,13 @@ function getStoredOpsUser(desiredRole) {
   try {
     const roleKey = (desiredRole === "branch" || desiredRole === "franchise") ? "franchise" : desiredRole;
     if (roleKey) {
-      const specific = localStorage.getItem(`servora_user_${roleKey}`);
+      const specific = localStorage.getItem(`servsure_user_${roleKey}`) || localStorage.getItem(`servora_user_${roleKey}`);
       if (specific) {
         const parsed = JSON.parse(specific);
         if (parsed && roleMatches(parsed.role, desiredRole)) return parsed;
       }
     }
-    const generic = localStorage.getItem("servora_user");
+    const generic = localStorage.getItem("servsure_user") || localStorage.getItem("servora_user");
     if (generic) {
       const parsed = JSON.parse(generic);
       if (parsed && roleMatches(parsed.role, desiredRole)) return parsed;
@@ -76,7 +76,7 @@ const roleConfig = {
   technician: { title: "Technician workspace", kicker: "FIELD SERVICE", nav: ["My jobs", "Job history", "Route & schedule", "Earnings", "Help center"], columns: ["Ticket", "Customer", "Appliance", "Appointment", "Status", "Action"], tableTitle: "My assigned jobs", tableSubtitle: "Your service calls and the next step for each job.", bottomTitle: "Today's schedule", sideTitle: "My performance", resources: [["Assigned today", "Jobs on your schedule", "▤"], ["Completed", "Jobs closed this week", "✓"], ["Customer rating", "From recent service visits", "☆"], ["Service area", "Your assigned territory", "⌖"]] },
   franchise: { title: "Franchise workspace", kicker: "BRANCH OPERATIONS", nav: ["Dashboard", "Service requests", "Technicians", "Inventory & Spares", "Escalations", "Active jobs", "Customers", "Reports", "Settings"], columns: ["Request ID", "Customer", "Appliance", "Issue", "Technician", "Status", "Action"], tableTitle: "Incoming service requests", tableSubtitle: "Review requests and coordinate local service work.", bottomTitle: "Branch resources", sideTitle: "Branch performance", resources: [["Technicians", "Available in this branch", "♙"], ["Active jobs", "Assigned and in progress", "⚒"], ["Inventory items", "Parts in local warehouse", "📦"], ["Service area", "Local coverage", "⌖"]] },
   company: { title: "Company workspace", kicker: "COMPANY OPERATIONS", nav: ["Dashboard", "Branches", "Technicians", "Warranty Claims", "Spares Catalog", "Escalations", "Customers", "Service requests", "Reports", "Settings"], columns: ["Request ID", "Customer", "Company", "Appliance", "Status", "Date", "Action"], tableTitle: "Recent service requests", tableSubtitle: "Monitor service activity across the company network.", bottomTitle: "Network resources", sideTitle: "Network health", resources: [["Branches", "Locations in your network", "▥"], ["Warranty claims", "OEM reimbursement requests", "🛡️"], ["Technicians", "Field service professionals", "♙"], ["Customers", "Customers served", "♧"]] },
-  admin: { title: "Platform overview", kicker: "SERVORA PLATFORM", nav: ["Overview", "Companies", "Branches", "Technicians", "Escalations", "Customers", "Service requests", "Reports", "System settings"], columns: ["Request ID", "Customer", "Company", "Appliance", "Status", "Date", "Action"], tableTitle: "Platform service activity", tableSubtitle: "A view of requests moving across Servora.", bottomTitle: "Platform directory", sideTitle: "Platform health", resources: [["Companies", "Service partners", "▥"], ["Branches", "Operational locations", "⌖"], ["Technicians", "Verified professionals", "♙"], ["Customers", "Registered accounts", "♧"]] },
+  admin: { title: "Platform overview", kicker: "SERVSURE PLATFORM", nav: ["Overview", "Companies", "Branches", "Technicians", "Escalations", "Customers", "Service requests", "Reports", "System settings"], columns: ["Request ID", "Customer", "Company", "Appliance", "Status", "Date", "Action"], tableTitle: "Platform service activity", tableSubtitle: "A view of requests moving across ServSure.", bottomTitle: "Platform directory", sideTitle: "Platform health", resources: [["Companies", "Service partners", "▥"], ["Branches", "Operational locations", "⌖"], ["Technicians", "Verified professionals", "♙"], ["Customers", "Registered accounts", "♧"]] },
 };
 let config = roleConfig[role] || roleConfig.company;
 const $ = (id) => document.getElementById(id);
@@ -112,7 +112,10 @@ function authHeaders(extraHeaders = {}) {
   const uid = user?.id || initialUser?.id;
   const headers = { ...extraHeaders };
   if (token) headers["Authorization"] = `Bearer ${token}`;
-  if (uid) headers["X-Servora-User-Id"] = uid;
+  if (uid) {
+    headers["X-ServSure-User-Id"] = uid;
+    headers["X-Servora-User-Id"] = uid;
+  }
   return headers;
 }
 function jsonHeaders(extraHeaders = {}) {
@@ -137,7 +140,7 @@ function showToast(message, type = "info") {
   note.textContent = message; host.append(note); setTimeout(() => note.remove(), 3200);
 }
 function setProfile() {
-  const name = user?.name || "Servora user";
+  const name = user?.name || "ServSure user";
   const displayName = role === "admin" ? "Siddharth" : name;
   const portalPath = {
     admin: "./admin-dashboard.html",
@@ -620,12 +623,12 @@ function renderHelpCenterView() {
   $("requestHead").innerHTML = ["Support resource", "Contact / Details", "Hours", "Action"].map((l) => `<th>${safe(l)}</th>`).join("");
   $("requestRows").innerHTML = `
     <tr><td>Franchise Branch Supervisor</td><td>${safe(user?.branch_name || 'Assigned Branch')}</td><td>8:00 AM – 8:00 PM</td><td><a href="tel:+919876543210" class="table-action font-semibold text-blue-600">📞 Call branch →</a></td></tr>
-    <tr><td>Technical Parts & Spare Support</td><td>Spares Desk · Crompton / LG / Whirlpool</td><td>9:00 AM – 6:00 PM</td><td><a href="mailto:spares@servora.com" class="table-action font-semibold text-blue-600">✉ Email desk →</a></td></tr>
+    <tr><td>Technical Parts & Spare Support</td><td>Spares Desk · Crompton / LG / Whirlpool</td><td>9:00 AM – 6:00 PM</td><td><a href="mailto:spares@servsure.com" class="table-action font-semibold text-blue-600">✉ Email desk →</a></td></tr>
     <tr><td>Emergency Field Hotline</td><td>Safety & roadside assistance</td><td>24x7 Available</td><td><a href="tel:112" class="table-action font-semibold text-rose-600">🚨 112 / Emergency</a></td></tr>
   `;
   $("requestCount").textContent = "3 support channels active";
   $("sidePanelTitle").textContent = "Field Guidelines";
-  $("healthContent").innerHTML = `<div class="section-empty">Always carry your Servora digital ID card, verified tool kit, and wear shoe covers during customer doorstep visits.</div>`;
+  $("healthContent").innerHTML = `<div class="section-empty">Always carry your ServSure digital ID card, verified tool kit, and wear shoe covers during customer doorstep visits.</div>`;
   $("activityContent").innerHTML = `<div class="section-empty">Confirm diagnosis and price estimate with the customer prior to replacing any spare parts.</div>`;
   $("resourceGrid").innerHTML = "";
 }
@@ -1063,13 +1066,13 @@ function renderCompanies() {
   if ($("addCompanyButton")) $("addCompanyButton").innerHTML = "<span>＋</span> Add company";
   setHidden("pageContent", false);
   setHidden("metricGrid", true);
-  if ($("tableTitle")) $("tableTitle").textContent = "Companies on Servora";
+  if ($("tableTitle")) $("tableTitle").textContent = "Companies on ServSure";
   if ($("tableSubtitle")) $("tableSubtitle").textContent = "Click any company to view its branches, technicians, products, and services.";
   if ($("sidePanelTitle")) $("sidePanelTitle").textContent = "Company access";
-  if ($("healthContent")) $("healthContent").innerHTML = `<div class="section-empty"><strong>${companies.length}</strong> partner companies are listed on Servora.</div>`;
+  if ($("healthContent")) $("healthContent").innerHTML = `<div class="section-empty"><strong>${companies.length}</strong> partner companies are listed on ServSure.</div>`;
   if ($("activityContent")) $("activityContent").innerHTML = `<div class="section-empty">Click on any company row or "View Details →" to inspect its branches, technicians, registered appliances, and active tickets.</div>`;
   if ($("bottomTitle")) $("bottomTitle").textContent = "Company directory";
-  if ($("bottomSubtitle")) $("bottomSubtitle").textContent = "Company portal accounts registered on Servora.";
+  if ($("bottomSubtitle")) $("bottomSubtitle").textContent = "Company portal accounts registered on ServSure.";
   if ($("requestHead")) $("requestHead").innerHTML = ["Company", "Administrator email", "Phone", "Portal", "Details", "Action"].map((name) => `<th>${name}</th>`).join("");
   $("requestRows").innerHTML = companies.length ? companies.map((company) => {
     const passwordDate = company.password_set_at ? new Intl.DateTimeFormat("en-IN", { dateStyle: "medium", timeStyle: "short" }).format(new Date(company.password_set_at)) : "Not set yet";
@@ -1273,7 +1276,7 @@ async function companyApi(path, options = {}) {
   try {
     response = await fetch(`${API_BASE_URL}/api/company${path}`, { ...options, credentials: "include", headers: jsonHeaders(options.headers) });
   } catch (error) {
-    if (error instanceof TypeError) throw new Error("The Servora API did not return a response. Check that the backend is running and allows this frontend origin in CORS settings.");
+    if (error instanceof TypeError) throw new Error("The ServSure API did not return a response. Check that the backend is running and allows this frontend origin in CORS settings.");
     throw error;
   }
   const data = await response.json().catch(() => ({}));
@@ -1285,7 +1288,7 @@ async function franchiseApi(path, options = {}) {
   try {
     response = await fetch(`${API_BASE_URL}/api/franchise${path}`, { ...options, credentials: "include", headers: jsonHeaders(options.headers) });
   } catch (error) {
-    if (error instanceof TypeError) throw new Error("The Servora API did not return a response. Check that the backend is running and allows this frontend origin in CORS settings.");
+    if (error instanceof TypeError) throw new Error("The ServSure API did not return a response. Check that the backend is running and allows this frontend origin in CORS settings.");
     throw error;
   }
   const data = await response.json().catch(() => ({}));
@@ -1297,7 +1300,7 @@ async function generalApi(path, options = {}) {
   try {
     response = await fetch(`${API_BASE_URL}${path}`, { ...options, credentials: "include", headers: jsonHeaders(options.headers) });
   } catch (error) {
-    if (error instanceof TypeError) throw new Error("The Servora API did not return a response. Check that the backend is running and allows this frontend origin in CORS settings.");
+    if (error instanceof TypeError) throw new Error("The ServSure API did not return a response. Check that the backend is running and allows this frontend origin in CORS settings.");
     throw error;
   }
   const data = await response.json().catch(() => ({}));
@@ -2262,7 +2265,7 @@ async function loadAdminPageData(page) {
     if (page === "Companies") {
       companies = [];
       renderCompanies();
-      $("requestRows").innerHTML = `<tr><td class="empty-row" colspan="6">${safe(error.message)}. Check the Servora API connection and try again.</td></tr>`;
+      $("requestRows").innerHTML = `<tr><td class="empty-row" colspan="6">${safe(error.message)}. Check the ServSure API connection and try again.</td></tr>`;
       $("requestCount").textContent = "Could not load company records";
       showToast(`Companies could not load: ${error.message}`, "error");
       return;
@@ -2273,10 +2276,10 @@ async function loadAdminPageData(page) {
 }
 function renderDirectory(page) {
   $("metricGrid").hidden = true; $("requestSearch").placeholder = `Search ${page.toLowerCase()}`;
-  $("tableTitle").textContent = page; $("tableSubtitle").textContent = `All ${page.toLowerCase()} accounts registered on Servora.`;
+  $("tableTitle").textContent = page; $("tableSubtitle").textContent = `All ${page.toLowerCase()} accounts registered on ServSure.`;
   $("sidePanelTitle").textContent = `${page} directory`;
   $("healthContent").innerHTML = `<div class="section-empty"><strong>${directoryRows.length}</strong> ${page.toLowerCase()} accounts</div>`;
-  $("activityContent").innerHTML = `<div class="section-empty">Directory records are loaded from the Servora account database.</div>`;
+  $("activityContent").innerHTML = `<div class="section-empty">Directory records are loaded from the ServSure account database.</div>`;
   $("requestHead").innerHTML = ["Name", "Email", "Phone", "Address", "Account type"].map((label) => `<th>${label}</th>`).join("");
   const query = ($("requestSearch")?.value || "").trim().toLowerCase(); const filtered = directoryRows.filter((item) => [item.name, item.email, item.phone, item.address].join(" ").toLowerCase().includes(query));
   $("requestRows").innerHTML = filtered.length ? filtered.map((item) => `<tr><td>${safe(item.name)}</td><td>${safe(item.email)}</td><td>${safe(item.phone)}</td><td>${safe(item.address || "—")}</td><td><span class="status-pill">${safe(item.role)}</span></td></tr>`).join("") : `<tr><td class="empty-row" colspan="5">No ${page.toLowerCase()} accounts found.</td></tr>`;
@@ -2285,7 +2288,7 @@ function renderDirectory(page) {
 }
 function renderRequestDirectory() {
   $("metricGrid").hidden = true; $("requestSearch").placeholder = "Search service requests";
-  $("tableTitle").textContent = "Service requests"; $("tableSubtitle").textContent = "Service activity across all Servora accounts.";
+  $("tableTitle").textContent = "Service requests"; $("tableSubtitle").textContent = "Service activity across all ServSure accounts.";
   $("requestHead").innerHTML = ["Request ID", "Customer", "Appliance", "Issue", "Status", "Date"].map((label) => `<th>${label}</th>`).join("");
   const query = ($("requestSearch")?.value || "").trim().toLowerCase(); const filtered = requests.filter((item) => [item.id, item.customer_name, item.appliance_name, item.issue, item.status_badge].join(" ").toLowerCase().includes(query));
   $("requestRows").innerHTML = filtered.length ? filtered.map((item) => `<tr><td>${safe(item.id)}</td><td>${safe(item.customer_name)}</td><td>${safe(item.appliance_name)}</td><td>${safe(item.issue)}</td><td><span class="status-pill ${statusClass(item.status_badge)}">${safe(item.status_badge)}</span></td><td>${safe(item.appointment_date)}</td></tr>`).join("") : `<tr><td class="empty-row" colspan="6">No service requests found.</td></tr>`;
@@ -2296,21 +2299,21 @@ function renderRequestDirectory() {
 }
 function renderReports() {
   $("metricGrid").hidden = false; $("metricGrid").innerHTML = `<article class="metric-card"><div class="metric-label">Service requests</div><div class="metric-value">${requests.length}</div><div class="metric-bottom">All recorded requests</div></article><article class="metric-card"><div class="metric-label">Completed</div><div class="metric-value">${requests.filter((item) => item.status_badge === "Completed").length}</div><div class="metric-bottom">Requests marked complete</div></article><article class="metric-card"><div class="metric-label">Active</div><div class="metric-value">${requests.filter((item) => !["Completed", "Cancelled"].includes(item.status_badge)).length}</div><div class="metric-bottom">Open requests</div></article><article class="metric-card"><div class="metric-label">Companies</div><div class="metric-value">${companies.length}</div><div class="metric-bottom">Partner accounts</div></article>`;
-  $("tableTitle").textContent = "Reports"; $("tableSubtitle").textContent = "Export current Servora platform service data.";
+  $("tableTitle").textContent = "Reports"; $("tableSubtitle").textContent = "Export current ServSure platform service data.";
   $("requestHead").innerHTML = ["Report", "Coverage", "Records", "Action"].map((label) => `<th>${label}</th>`).join("");
   $("requestRows").innerHTML = `<tr><td>Service requests</td><td>All platform activity</td><td>${requests.length}</td><td><button class="table-action" id="downloadRequests">Download CSV →</button></td></tr><tr><td>Company directory</td><td>Registered partner accounts</td><td>${companies.length}</td><td><button class="table-action" id="downloadCompanies">Download CSV →</button></td></tr>`;
   $("requestCount").textContent = "2 reports available"; $("sidePanelTitle").textContent = "Report coverage";
   $("healthContent").innerHTML = `<div class="section-empty">Reports include current service request and company account records.</div>`;
   $("activityContent").innerHTML = `<div class="section-empty">Use the Download CSV actions to export a snapshot.</div>`;
   $("resourceGrid").innerHTML = ""; $("bottomTitle").textContent = "Available reports"; $("bottomSubtitle").textContent = "Download a CSV snapshot";
-  $("downloadRequests").addEventListener("click", () => downloadCsv("servora-service-requests.csv", [["Request ID", "Customer", "Appliance", "Issue", "Status", "Date"], ...requests.map((item) => [item.id, item.customer_name, item.appliance_name, item.issue, item.status_badge, item.appointment_date])]));
-  $("downloadCompanies").addEventListener("click", () => downloadCsv("servora-companies.csv", [["Company", "Email", "Phone", "Address"], ...companies.map((item) => [item.name, item.email, item.phone, item.address || ""]) ]));
+  $("downloadRequests").addEventListener("click", () => downloadCsv("servsure-service-requests.csv", [["Request ID", "Customer", "Appliance", "Issue", "Status", "Date"], ...requests.map((item) => [item.id, item.customer_name, item.appliance_name, item.issue, item.status_badge, item.appointment_date])]));
+  $("downloadCompanies").addEventListener("click", () => downloadCsv("servsure-companies.csv", [["Company", "Email", "Phone", "Address"], ...companies.map((item) => [item.name, item.email, item.phone, item.address || ""]) ]));
 }
 function renderSettings() {
   $("metricGrid").hidden = true; $("tableTitle").textContent = "System settings";
   $("tableSubtitle").textContent = "Platform connection and email delivery configuration.";
   $("requestHead").innerHTML = ["Setting", "Configuration", "Status"].map((label) => `<th>${label}</th>`).join("");
-  $("requestRows").innerHTML = `<tr><td>Servora API</td><td>${safe(API_BASE_URL)}</td><td><span class="status-pill completed">Connected when API is reachable</span></td></tr><tr><td>Company credential email</td><td>Brevo SMTP API</td><td><span class="status-pill">Configured on backend</span></td></tr><tr><td>Administrator access</td><td>Signed-in admin account</td><td><span class="status-pill completed">Protected</span></td></tr>`;
+  $("requestRows").innerHTML = `<tr><td>ServSure API</td><td>${safe(API_BASE_URL)}</td><td><span class="status-pill completed">Connected when API is reachable</span></td></tr><tr><td>Company credential email</td><td>Brevo SMTP API</td><td><span class="status-pill">Configured on backend</span></td></tr><tr><td>Administrator access</td><td>Signed-in admin account</td><td><span class="status-pill completed">Protected</span></td></tr>`;
   $("requestCount").textContent = "3 platform settings"; $("sidePanelTitle").textContent = "Email delivery";
   $("healthContent").innerHTML = `<div class="section-empty">Company invitation emails are sent through Brevo. API keys and sender identity are stored on the backend.</div>`;
   $("activityContent").innerHTML = `<div class="section-empty">Set BREVO_API_KEY and BREVO_SENDER_EMAIL in the backend environment to enable delivery.</div>`;
@@ -2633,7 +2636,7 @@ function renderRequests() {
 
   if ($("requestHead")) $("requestHead").innerHTML = head.map((name) => `<th>${safe(name)}</th>`).join("");
   if ($("requestRows")) $("requestRows").innerHTML = filtered.length ? filtered.map((item) => {
-    const customer = `<div class="customer-cell"><span class="customer-avatar">${safe((item.customer_name || "U").split(/\s+/).map((part) => part[0]).slice(0, 2).join(""))}</span><span class="customer-name">${safe(item.customer_name)}<small>${safe(item.customer_phone || "Servora customer")}</small></span></div>`;
+    const customer = `<div class="customer-cell"><span class="customer-avatar">${safe((item.customer_name || "U").split(/\s+/).map((part) => part[0]).slice(0, 2).join(""))}</span><span class="customer-name">${safe(item.customer_name)}<small>${safe(item.customer_phone || "ServSure customer")}</small></span></div>`;
 
     if (role === "franchise") {
       const assignedTech = technicians.find(t => t.id === item.technician_id || t.name === item.technician_name) || item.technician;
@@ -3031,7 +3034,7 @@ window.openOpsReceiptModal = async function(requestId, showPrevious = false) {
   const techName = showPrevious
     ? (req.previous_technician_name || "Original Technician")
     : (req.technician?.name || req.previous_technician_name || "Authorized Field Technician");
-  if ($("opsReceiptBranchName")) $("opsReceiptBranchName").textContent = "Servora Authorized Franchise Partner";
+  if ($("opsReceiptBranchName")) $("opsReceiptBranchName").textContent = "ServSure Authorized Franchise Partner";
   if ($("opsReceiptTechName")) $("opsReceiptTechName").textContent = `Technician: ${techName}`;
   if ($("opsReceiptApplianceDetails")) $("opsReceiptApplianceDetails").textContent = `${req.brand || ''} ${req.appliance_name || 'Appliance'} (${req.model_no || 'Standard'})`;
   if ($("opsReceiptIssueDescription")) $("opsReceiptIssueDescription").textContent = `Service: ${req.issue || 'Repair inspection'}`;
@@ -4042,7 +4045,7 @@ async function loadDashboard() {
   const storedUser = getStoredOpsUser(currentRole);
   if (storedUser) user = storedUser;
   else {
-    const rawStored = localStorage.getItem("servora_user");
+    const rawStored = localStorage.getItem("servsure_user") || localStorage.getItem("servora_user");
     if (rawStored) { try { user = JSON.parse(rawStored); } catch { user = null; } }
   }
   try {
@@ -4056,8 +4059,10 @@ async function loadDashboard() {
       }
       const token = resData.session_token || user?.session_token || initialUser?.session_token;
       user = { ...user, ...authenticated, session_token: token };
-      localStorage.setItem("servora_user", JSON.stringify(user));
       const roleKey = (user.role === "branch" || user.role === "franchise") ? "franchise" : user.role;
+      localStorage.setItem("servsure_user", JSON.stringify(user));
+      localStorage.setItem(`servsure_user_${roleKey}`, JSON.stringify(user));
+      localStorage.setItem("servora_user", JSON.stringify(user));
       localStorage.setItem(`servora_user_${roleKey}`, JSON.stringify(user));
       setProfile();
     } else if (userResponse.status === 401) {
@@ -4076,7 +4081,7 @@ async function loadDashboard() {
     else if (user?.role && roleConfig[user.role]) role = user.role;
     config = roleConfig[role] || roleConfig.company;
     if (document.body) document.body.dataset.role = role;
-    document.title = `${config.title} — Servora`;
+    document.title = `${config.title} — ServSure`;
     if ($("workspaceKicker")) $("workspaceKicker").textContent = config.kicker;
     if ($("tableTitle")) $("tableTitle").textContent = config.tableTitle;
     if ($("tableSubtitle")) $("tableSubtitle").textContent = config.tableSubtitle;
@@ -4128,7 +4133,7 @@ async function loadDashboard() {
       }
     }
   } catch (error) {
-    const detail = error instanceof TypeError ? "Connecting to Servora API…" : error.message;
+    const detail = error instanceof TypeError ? "Connecting to ServSure API…" : error.message;
     console.warn("API notice:", detail);
   }
   setProfile(); buildNav(); setMetrics(); renderRequests(); renderInsights(); renderResources();
@@ -4172,7 +4177,7 @@ function initEvents() {
           item.category, item.brand, item.model_no, item.serial_no || "", item.warranty_status || "", item.registered_on || ""
         ])
       ];
-      downloadCsv(`servora-company-customers.csv`, rows);
+      downloadCsv(`servsure-company-customers.csv`, rows);
       return;
     }
     if (role === "franchise" && page === "Customers") {
@@ -4183,7 +4188,7 @@ function initEvents() {
           c.products_summary || "", c.warranty_status || "", c.ongoing_services_count || 0, c.completed_services_count || 0
         ])
       ];
-      downloadCsv(`servora-franchise-customers.csv`, rows);
+      downloadCsv(`servsure-franchise-customers.csv`, rows);
       return;
     }
     if (role === "franchise" && page === "Inventory & Spares") {
@@ -4194,7 +4199,7 @@ function initEvents() {
           item.unit_price, item.quantity_available, item.reorder_level, item.is_low_stock ? "YES" : "NO"
         ])
       ];
-      downloadCsv("servora-franchise-inventory.csv", rows);
+      downloadCsv("servsure-franchise-inventory.csv", rows);
       return;
     }
     if (role === "company" && page === "Warranty Claims") {
@@ -4205,7 +4210,7 @@ function initEvents() {
           item.claim_amount, item.status, item.submitted_at || "", item.settled_at || ""
         ])
       ];
-      downloadCsv("servora-warranty-claims.csv", rows);
+      downloadCsv("servsure-warranty-claims.csv", rows);
       return;
     }
     if (role === "company" && page === "Spares Catalog") {
@@ -4215,18 +4220,20 @@ function initEvents() {
           item.part_code, item.name, item.brand, item.category, item.hsn_code || "841890", item.unit_price
         ])
       ];
-      downloadCsv("servora-spares-catalog.csv", rows);
+      downloadCsv("servsure-spares-catalog.csv", rows);
       return;
     }
     const rows = [["Request ID", "Customer", "Appliance", "Issue", "Status", "Date"], ...requests.map((item) => [item.id, item.customer_name, item.appliance_name, item.issue, item.status_badge, item.appointment_date])];
-    downloadCsv(`servora-${role}-requests.csv`, rows);
+    downloadCsv(`servsure-${role}-requests.csv`, rows);
   });
 
   $("logoutBtn")?.addEventListener("click", () => {
     const logoutRole = dashboardRouteRole || role;
     const headers = authHeaders();
+    localStorage.removeItem("servsure_user");
     localStorage.removeItem("servora_user");
     const rKey = (logoutRole === "branch" || logoutRole === "franchise") ? "franchise" : logoutRole;
+    localStorage.removeItem(`servsure_user_${rKey}`);
     localStorage.removeItem(`servora_user_${rKey}`);
     const loginPath = {
       admin: "/admin-login.html",
@@ -4308,7 +4315,11 @@ function initEvents() {
         throw new Error(extractErrorMessage(data, "Failed to update profile"));
       }
       user = { ...user, name: data.name, phone: data.phone, address: data.address };
+      const roleKey = (user.role === "branch" || user.role === "franchise") ? "franchise" : user.role;
+      localStorage.setItem("servsure_user", JSON.stringify(user));
+      localStorage.setItem(`servsure_user_${roleKey}`, JSON.stringify(user));
       localStorage.setItem("servora_user", JSON.stringify(user));
+      localStorage.setItem(`servora_user_${roleKey}`, JSON.stringify(user));
       setProfile();
 
       if ($("opsProfileNameText")) $("opsProfileNameText").textContent = user.name;
@@ -4401,7 +4412,7 @@ function initEvents() {
 
       // Synchronize technician stored user in localStorage
       try {
-        const storedTech = localStorage.getItem("servora_user_technician");
+        const storedTech = localStorage.getItem("servsure_user_technician") || localStorage.getItem("servora_user_technician");
         if (storedTech) {
           const parsed = JSON.parse(storedTech);
           if (parsed && (parsed.id === techId || parsed.email === updated.email)) {
@@ -4413,11 +4424,13 @@ function initEvents() {
               address: updated.address ? `${updated.address}${updated.pincode ? `, ${updated.pincode}` : ''}` : parsed.address,
               pincode: updated.pincode || parsed.pincode,
             };
+            localStorage.setItem("servsure_user_technician", JSON.stringify(synced));
             localStorage.setItem("servora_user_technician", JSON.stringify(synced));
-            const gen = localStorage.getItem("servora_user");
+            const gen = localStorage.getItem("servsure_user") || localStorage.getItem("servora_user");
             if (gen) {
               const genParsed = JSON.parse(gen);
               if (genParsed && (genParsed.id === techId || genParsed.email === updated.email)) {
+                localStorage.setItem("servsure_user", JSON.stringify(synced));
                 localStorage.setItem("servora_user", JSON.stringify(synced));
               }
             }
@@ -4428,10 +4441,14 @@ function initEvents() {
       // Broadcast update event to any open tabs
       try {
         if (typeof BroadcastChannel !== "undefined") {
+          const bcSure = new BroadcastChannel("servsure_technician_sync");
+          bcSure.postMessage({ type: "TECHNICIAN_UPDATED", technician: updated });
+          bcSure.close();
           const bc = new BroadcastChannel("servora_technician_sync");
           bc.postMessage({ type: "TECHNICIAN_UPDATED", technician: updated });
           bc.close();
         }
+        localStorage.setItem("servsure_tech_updated_at", Date.now().toString());
         localStorage.setItem("servora_tech_updated_at", Date.now().toString());
       } catch (err) {}
 
@@ -4460,9 +4477,9 @@ function initEvents() {
 }
 
 function populateOpsProfileModal() {
-  const displayName = user?.name || "Servora User";
+  const displayName = user?.name || "ServSure User";
   const displayRole = user?.role || role || "technician";
-  const displayEmail = user?.email || "user@servora.in";
+  const displayEmail = user?.email || "user@servsure.in";
   const displayPhone = user?.phone || user?.mobile || "+91 98765 43210";
   const displayTitle = user?.title || "Field Service Specialist";
   const displayBranch = user?.branch_name || user?.company_branch || (user?.branch_id ? `Branch #${user?.branch_id}` : "");
@@ -4514,6 +4531,8 @@ window.openOpsProfileModal = async function() {
       if (resData?.user) {
         user = { ...user, ...resData.user };
         const roleKey = (user.role === "branch" || user.role === "franchise") ? "franchise" : user.role;
+        localStorage.setItem(`servsure_user_${roleKey}`, JSON.stringify(user));
+        localStorage.setItem("servsure_user", JSON.stringify(user));
         localStorage.setItem(`servora_user_${roleKey}`, JSON.stringify(user));
         localStorage.setItem("servora_user", JSON.stringify(user));
         setProfile();
@@ -4578,7 +4597,7 @@ function renderEscalationsView() {
       </p>
     </div>
   `;
-  $("activityContent").innerHTML = `<div class="section-empty text-xs">Mandatory resolution notes are required by the Servora governance engine to resolve any escalation.</div>`;
+  $("activityContent").innerHTML = `<div class="section-empty text-xs">Mandatory resolution notes are required by the ServSure governance engine to resolve any escalation.</div>`;
 
   $("requestHead").innerHTML = [
     "Escalation ID",
@@ -4943,7 +4962,7 @@ function initOpsApp() {
   else if (document.body?.dataset?.role && roleConfig[document.body.dataset.role]) role = document.body.dataset.role;
   config = roleConfig[role] || roleConfig.company;
 
-  document.title = `${config.title} — Servora`;
+  document.title = `${config.title} — ServSure`;
   if (document.body) document.body.dataset.role = role;
   if ($("crumbTitle")) $("crumbTitle").textContent = config.title;
   if ($("workspaceKicker")) $("workspaceKicker").textContent = config.kicker;
@@ -4963,29 +4982,34 @@ function initOpsApp() {
 
   // Real-time technician sync across tabs / windows
   try {
-    if (typeof BroadcastChannel !== "undefined") {
-      const bc = new BroadcastChannel("servora_technician_sync");
-      bc.onmessage = (event) => {
-        if (event.data?.type === "TECHNICIAN_UPDATED" && role === "technician") {
-          const updated = event.data.technician;
-          if (user && (user.id === updated.id || user.email === updated.email)) {
-            user.name = updated.name || user.name;
-            user.title = updated.title || user.title;
-            user.phone = updated.mobile || user.phone;
-            user.address = updated.address ? `${updated.address}${updated.pincode ? `, ${updated.pincode}` : ''}` : user.address;
-            user.pincode = updated.pincode || user.pincode;
-            localStorage.setItem("servora_user_technician", JSON.stringify(user));
-            localStorage.setItem("servora_user", JSON.stringify(user));
-            setProfile();
-            if ($("opsProfileDialog")?.open) {
-              populateOpsProfileModal();
-            }
+    const handleTechUpdated = (event) => {
+      if (event.data?.type === "TECHNICIAN_UPDATED" && role === "technician") {
+        const updated = event.data.technician;
+        if (user && (user.id === updated.id || user.email === updated.email)) {
+          user.name = updated.name || user.name;
+          user.title = updated.title || user.title;
+          user.phone = updated.mobile || user.phone;
+          user.address = updated.address ? `${updated.address}${updated.pincode ? `, ${updated.pincode}` : ''}` : user.address;
+          user.pincode = updated.pincode || user.pincode;
+          localStorage.setItem("servsure_user_technician", JSON.stringify(user));
+          localStorage.setItem("servsure_user", JSON.stringify(user));
+          localStorage.setItem("servora_user_technician", JSON.stringify(user));
+          localStorage.setItem("servora_user", JSON.stringify(user));
+          setProfile();
+          if ($("opsProfileDialog")?.open) {
+            populateOpsProfileModal();
           }
         }
-      };
+      }
+    };
+    if (typeof BroadcastChannel !== "undefined") {
+      const bcSure = new BroadcastChannel("servsure_technician_sync");
+      bcSure.onmessage = handleTechUpdated;
+      const bc = new BroadcastChannel("servora_technician_sync");
+      bc.onmessage = handleTechUpdated;
     }
     window.addEventListener("storage", (e) => {
-      if (e.key === "servora_user_technician" && role === "technician" && e.newValue) {
+      if ((e.key === "servsure_user_technician" || e.key === "servora_user_technician") && role === "technician" && e.newValue) {
         try {
           const parsed = JSON.parse(e.newValue);
           if (parsed && (!user || user.id === parsed.id)) {

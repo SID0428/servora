@@ -18,12 +18,12 @@ const roleDestinations = {
 
 function readStoredUser() {
   try {
-    const specific = localStorage.getItem("servora_user_customer");
+    const specific = localStorage.getItem("servsure_user_customer") || localStorage.getItem("servora_user_customer");
     if (specific) {
       const parsed = JSON.parse(specific);
       if (parsed && parsed.role === "customer") return parsed;
     }
-    const generic = localStorage.getItem("servora_user");
+    const generic = localStorage.getItem("servsure_user") || localStorage.getItem("servora_user");
     if (generic) {
       const parsed = JSON.parse(generic);
       if (parsed && parsed.role === "customer") return parsed;
@@ -41,6 +41,7 @@ function apiFetch(path, options = {}) {
     headers.Authorization = `Bearer ${storedUser.session_token}`;
   }
   if (storedUser?.id) {
+    headers["X-ServSure-User-Id"] = storedUser.id;
     headers["X-Servora-User-Id"] = storedUser.id;
   }
   return fetch(`${API_BASE_URL}${path}`, {
@@ -98,7 +99,7 @@ function setProfile(user) {
   if ($("userAvatarHeader")) $("userAvatarHeader").textContent = initials;
   if ($("profileAvatarBig")) $("profileAvatarBig").textContent = initials;
   if ($("profileFullName")) $("profileFullName").textContent = name;
-  if ($("profileEmail")) $("profileEmail").textContent = user.email || "customer@servora.com";
+  if ($("profileEmail")) $("profileEmail").textContent = user.email || "customer@servsure.com";
   if ($("profilePhone")) $("profilePhone").textContent = user.phone || "+91 98765 43210";
   if ($("profileAddress")) $("profileAddress").textContent = user.address || "No address provided";
 
@@ -144,6 +145,8 @@ async function loadCurrentCustomer() {
         redirectForRole(currentUser.role);
         return false;
       }
+      localStorage.setItem("servsure_user", JSON.stringify(currentUser));
+      localStorage.setItem("servsure_user_customer", JSON.stringify(currentUser));
       localStorage.setItem("servora_user", JSON.stringify(currentUser));
       localStorage.setItem("servora_user_customer", JSON.stringify(currentUser));
       return true;
@@ -333,7 +336,7 @@ async function loadDashboardData() {
   } catch (error) {
     console.error("Customer dashboard loading failed:", error);
     showToast(
-      "Could not connect to the Servora service. Please try again.",
+      "Could not connect to the ServSure service. Please try again.",
       "error"
     );
   }
@@ -553,7 +556,7 @@ function renderCompanyOptions() {
   if ($("applianceCompanyHelp")) {
     $("applianceCompanyHelp").textContent = registeredCompanies.length
       ? "Choose the company associated with this appliance."
-      : "A Servora registered company must be available before you can register an appliance.";
+      : "A ServSure registered company must be available before you can register an appliance.";
   }
 }
 
@@ -1082,7 +1085,7 @@ function populateTracking(request) {
     if (isActivelyReopened) {
       $("trackingReopenBanner").classList.remove("hidden");
       if ($("trackingReopenReason")) {
-        $("trackingReopenReason").textContent = request.reopened_reason || "Customer requested priority revisit & review under Servora Customer Protection.";
+        $("trackingReopenReason").textContent = request.reopened_reason || "Customer requested priority revisit & review under ServSure Customer Protection.";
       }
       if ($("openPrevReceiptFromBannerBtn")) {
         $("openPrevReceiptFromBannerBtn").onclick = () => window.openReceiptModal(request.id, true);
@@ -1385,6 +1388,8 @@ async function submitProfileEdit(event) {
       currentUser.phone = user.phone !== undefined ? user.phone : phone;
       if (user.email) currentUser.email = user.email;
       if (user.address !== undefined) currentUser.address = user.address;
+      localStorage.setItem("servsure_user", JSON.stringify(currentUser));
+      localStorage.setItem("servsure_user_customer", JSON.stringify(currentUser));
       localStorage.setItem("servora_user", JSON.stringify(currentUser));
       localStorage.setItem("servora_user_customer", JSON.stringify(currentUser));
       setProfile(currentUser);
@@ -1514,7 +1519,7 @@ async function submitAppliance(event) {
   ) {
     if ($("applianceMessage")) {
       $("applianceMessage").textContent =
-        "Select a company registered on Servora before saving.";
+        "Select a company registered on ServSure before saving.";
     }
     button.disabled = registeredCompanies.length === 0;
     button.textContent = "Save appliance";
@@ -1586,6 +1591,8 @@ async function submitAddress(event) {
     $("addressForm").reset();
     if (currentUser) {
       currentUser.address = data.address;
+      localStorage.setItem("servsure_user", JSON.stringify(currentUser));
+      localStorage.setItem("servsure_user_customer", JSON.stringify(currentUser));
       localStorage.setItem("servora_user", JSON.stringify(currentUser));
       localStorage.setItem("servora_user_customer", JSON.stringify(currentUser));
       setProfile(currentUser);
@@ -1684,6 +1691,8 @@ window.closeDrawer = closeDrawer;
 
 function logout() {
   const token = currentUser?.session_token;
+  localStorage.removeItem("servsure_user");
+  localStorage.removeItem("servsure_user_customer");
   localStorage.removeItem("servora_user");
   localStorage.removeItem("servora_user_customer");
   const headers = token ? { Authorization: `Bearer ${token}` } : {};
@@ -2212,7 +2221,7 @@ window.openReceiptModal = async function(requestId, showPrevious = false) {
   const techName = showPrevious
     ? (targetReq.previous_technician_name || "Original Technician")
     : (targetReq.technician?.name || targetReq.previous_technician_name || "Authorized Field Technician");
-  if ($("receiptBranchName")) $("receiptBranchName").textContent = "Servora Authorized Franchise Partner";
+  if ($("receiptBranchName")) $("receiptBranchName").textContent = "ServSure Authorized Franchise Partner";
   if ($("receiptTechName")) $("receiptTechName").textContent = `Technician: ${techName}${showPrevious ? " (Initial Visit)" : (hasMultipleReceipts ? " (Revisit Resolution)" : "")}`;
   if ($("receiptApplianceDetails")) $("receiptApplianceDetails").textContent = `${targetReq.brand || ''} ${targetReq.appliance_name || 'Home Appliance'} (${targetReq.model_no || 'Standard'})`;
   if ($("receiptIssueDescription")) $("receiptIssueDescription").textContent = `Service: ${targetReq.issue || 'Routine Service'}${showPrevious ? " [Initial Service]" : (hasMultipleReceipts ? " [Reopened Service]" : "")}`;

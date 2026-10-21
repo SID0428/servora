@@ -165,11 +165,11 @@ def seed_database(db: Session):
             UserModel(
                 id="admin_1",
                 name="Vikramaditya Rao",
-                email="admin@servora.com",
+                email="admin@servsure.com",
                 phone="+91 99999 00000",
                 role="admin",
                 avatar="https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&w=250&q=80",
-                address="Servora Platform Command Center, Bengaluru"
+                address="ServSure Platform Command Center, Bengaluru"
             )
         ]
         db.add_all(users)

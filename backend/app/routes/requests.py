@@ -354,7 +354,7 @@ def create_request(payload: ServiceBookingCreate, request: Request, db: Session 
             "id": "step_1",
             "title": "Request Created",
             "timestamp": now_str,
-            "description": "Service ticket registered in Servora platform",
+            "description": "Service ticket registered in ServSure platform",
             "state": "completed"
         },
         {

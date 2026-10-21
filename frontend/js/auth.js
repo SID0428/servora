@@ -6,7 +6,7 @@ const roleSettings = {
   company: { title: "Company sign in", subtitle: "Manage your organization and service network.", identifier: "Work email", placeholder: "name@company.com", type: "text", destination: "./company-dashboard.html" },
   franchise: { title: "Franchise sign in", subtitle: "Access your location and service operations.", identifier: "Email or phone number", placeholder: "you@example.com", type: "text", destination: "./franchise-dashboard.html" },
   technician: { title: "Technician sign in", subtitle: "View your assigned jobs and keep service moving.", identifier: "Work email or phone number", placeholder: "you@example.com or +91 98765 43210", type: "text", destination: "./technician-dashboard.html" },
-  admin: { title: "Servora admin sign in", subtitle: "Sign in with your Servora administrator credentials.", identifier: "Administrator email", placeholder: "admin@servora.com", type: "email", destination: "./admin-dashboard.html" },
+  admin: { title: "ServSure admin sign in", subtitle: "Sign in with your ServSure administrator credentials.", identifier: "Administrator email", placeholder: "admin@servsure.com", type: "email", destination: "./admin-dashboard.html" },
 };
 const config = roleSettings[role] || roleSettings.customer;
 const byId = (id) => document.getElementById(id);
@@ -36,8 +36,8 @@ function updateApiStatus(state, label) {
 }
 
 window.promptApiUrl = function () {
-  const current = localStorage.getItem("servora_api_url") || API_BASE_URL;
-  const next = prompt("Enter your Render backend URL (for example https://servora-backend.onrender.com):", current);
+  const current = localStorage.getItem("servsure_api_url") || localStorage.getItem("servora_api_url") || API_BASE_URL;
+  const next = prompt("Enter your Render backend URL (for example https://servsure-backend.onrender.com):", current);
   if (next !== null) setCustomApiUrl(next.trim());
 };
 
@@ -66,6 +66,8 @@ function handleAuthSuccess(user, session_token, targetMessageId = "formMessage")
   const userRole = user?.role || role;
   const roleKey = (userRole === "branch" || userRole === "franchise") ? "franchise" : userRole;
   const userData = { ...user, session_token };
+  localStorage.setItem("servsure_user", JSON.stringify(userData));
+  localStorage.setItem(`servsure_user_${roleKey}`, JSON.stringify(userData));
   localStorage.setItem("servora_user", JSON.stringify(userData));
   localStorage.setItem(`servora_user_${roleKey}`, JSON.stringify(userData));
   setMessage(`Welcome back, ${user.name}.`, true, targetMessageId);
@@ -269,7 +271,7 @@ async function handleSignupRequestOtp(event) {
     setMessage("", false, "signupOtpMessage");
     byId("signupOtpCode").focus();
   } catch (error) {
-    setMessage(error.message || "Could not connect to Servora. Please try again.", false, "signupMessage");
+    setMessage(error.message || "Could not connect to ServSure. Please try again.", false, "signupMessage");
     button.disabled = false;
     button.innerHTML = original;
   }
@@ -394,7 +396,7 @@ async function initGoogleOAuth() {
 // DOM Initialization & Event Wireup
 // -------------------------------------------------------------
 document.addEventListener("DOMContentLoaded", () => {
-  document.title = `${config.title} — Servora`;
+  document.title = `${config.title} — ServSure`;
   byId("pageTitle").textContent = config.title;
   byId("pageSubtitle").textContent = config.subtitle;
 
@@ -499,7 +501,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
         byId("pageTitle").textContent = openingSignup ? "Create your account" : config.title;
         byId("pageSubtitle").textContent = openingSignup ? "Create a customer account to manage appliances and service visits." : config.subtitle;
-        byId("signupPrompt").textContent = openingSignup ? "Already have an account?" : "New to Servora?";
+        byId("signupPrompt").textContent = openingSignup ? "Already have an account?" : "New to ServSure?";
         signupToggle.textContent = openingSignup ? "Sign in" : "Create an account";
         setMessage("", false, "signupMessage");
         setMessage("", false, "signupOtpMessage");
@@ -524,7 +526,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // Forgot password placeholder
   byId("forgotLink")?.addEventListener("click", (event) => {
     event.preventDefault();
-    setMessage("For password assistance, contact your organization administrator or Servora support.");
+    setMessage("For password assistance, contact your organization administrator or ServSure support.");
   });
 
   checkBackend();

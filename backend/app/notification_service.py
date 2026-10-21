@@ -75,9 +75,9 @@ def send_notification_email(
 
 def notify_booking_created(req: ServiceRequestModel, db: Session):
     customer = db.query(UserModel).filter(UserModel.id == req.customer_id).first()
-    to_email = customer.email if customer else "customer@servora.com"
+    to_email = customer.email if customer else "customer@servsure.com"
     to_name = req.customer_name or "Valued Customer"
-    subject = f"Servora Service Booking Confirmed: #{req.id}"
+    subject = f"ServSure Service Booking Confirmed: #{req.id}"
     
     text = f"""Hello {to_name},
 
@@ -92,15 +92,15 @@ Booking Summary:
 - Doorstep Address: {req.customer_address}
 
 Our authorized local franchise is assigning a certified technician to your doorstep visit.
-You can track live technician status on your Servora Customer Dashboard.
+You can track live technician status on your ServSure Customer Dashboard.
 
 Best regards,
-Servora Customer Support Team
+ServSure Customer Support Team
 """
     html = f"""
     <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 12px; background: #ffffff;">
         <div style="border-bottom: 2px solid #2563eb; padding-bottom: 12px; margin-bottom: 20px;">
-            <h2 style="color: #1e293b; margin: 0;">Servora Service Confirmation</h2>
+            <h2 style="color: #1e293b; margin: 0;">ServSure Service Confirmation</h2>
             <p style="color: #64748b; font-size: 14px; margin: 4px 0 0 0;">Authorized Home Appliance Service Platform</p>
         </div>
         <p style="font-size: 15px; color: #334155;">Hello <strong>{to_name}</strong>,</p>
@@ -121,10 +121,10 @@ Servora Customer Support Team
 
 def notify_technician_assigned(req: ServiceRequestModel, tech: TechnicianModel, db: Session):
     customer = db.query(UserModel).filter(UserModel.id == req.customer_id).first()
-    to_email = customer.email if customer else "customer@servora.com"
+    to_email = customer.email if customer else "customer@servsure.com"
     to_name = req.customer_name or "Valued Customer"
     start_otp = getattr(req, "start_otp", None) or req.verification_otp
-    subject = f"Technician Assigned for Servora Ticket #{req.id}"
+    subject = f"Technician Assigned for ServSure Ticket #{req.id}"
 
     text = f"""Hello {to_name},
 
@@ -140,7 +140,7 @@ Your Service Start OTP is: {start_otp}
 Please share this 4-digit OTP code ONLY when the technician arrives in person at your doorstep to initiate inspection.
 
 Best regards,
-Servora Operations
+ServSure Operations
 """
     html = f"""
     <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 12px; background: #ffffff;">
@@ -168,14 +168,14 @@ Servora Operations
 
 def notify_technician_arrival(req: ServiceRequestModel, db: Session):
     customer = db.query(UserModel).filter(UserModel.id == req.customer_id).first()
-    to_email = customer.email if customer else "customer@servora.com"
+    to_email = customer.email if customer else "customer@servsure.com"
     to_name = req.customer_name or (customer.name if customer else "Valued Customer")
     tech = db.query(TechnicianModel).filter(TechnicianModel.id == req.technician_id).first() if req.technician_id else None
     tech_name = tech.name if tech else "Your Field Service Technician"
     start_otp = getattr(req, "start_otp", None) or req.verification_otp
     comp_otp = getattr(req, "completion_otp", None) or "----"
     appliance_desc = f"{req.brand or ''} {req.appliance_name or 'Appliance'}".strip()
-    subject = f"Your Technician is on the Way! · Servora Ticket #{req.id}"
+    subject = f"Your Technician is on the Way! · ServSure Ticket #{req.id}"
 
     text = f"""Hello {to_name},
 
@@ -186,19 +186,19 @@ Service Verification Details:
 - Service Completion OTP: {comp_otp} (Share ONLY when the repair is fully finished, tested, and you are satisfied)
 
 Live Location Tracking:
-You can track {tech_name}'s real-time live location directly on your Servora Customer Dashboard:
-https://servora.vercel.app/customer-dashboard.html
+You can track {tech_name}'s real-time live location directly on your ServSure Customer Dashboard:
+https://servsure.vercel.app/customer-dashboard.html
 
 Service Address:
 {req.customer_address}
 
 Best regards,
-Servora Customer Care & Field Operations
+ServSure Customer Care & Field Operations
 """
     html = f"""
     <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 14px; background: #ffffff;">
         <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 20px;">
-            <span style="font-size: 22px; font-weight: 800; color: #0066ff;">servora<span style="color: #0066ff;">.</span></span>
+            <span style="font-size: 22px; font-weight: 800; color: #0066ff;">servsure<span style="color: #0066ff;">.</span></span>
             <span style="font-size: 11px; font-weight: 700; color: #10b981; background: #ecfdf5; padding: 3px 8px; border-radius: 9999px; border: 1px solid #a7f3d0; margin-left: auto;">📍 TECHNICIAN EN ROUTE</span>
         </div>
 
@@ -212,7 +212,7 @@ Servora Customer Care & Field Operations
         <div style="background: linear-gradient(135deg, #eff6ff 0%, #e0e7ff 100%); border: 1px solid #bfdbfe; border-radius: 10px; padding: 14px 16px; margin: 0 0 20px 0; text-align: center;">
             <p style="font-size: 13px; font-weight: 700; color: #1d4ed8; margin: 0 0 8px 0;">🗺️ Live Location Sharing Active</p>
             <p style="font-size: 12px; color: #475569; margin: 0 0 12px 0;">You can view {tech_name}'s live GPS location on the map in real time on your dashboard.</p>
-            <a href="https://servora.vercel.app/customer-dashboard.html" style="display: inline-block; background: #0066ff; color: #ffffff; text-decoration: none; font-size: 12px; font-weight: 700; padding: 8px 18px; border-radius: 8px;">Track Technician Live →</a>
+            <a href="https://servsure.vercel.app/customer-dashboard.html" style="display: inline-block; background: #0066ff; color: #ffffff; text-decoration: none; font-size: 12px; font-weight: 700; padding: 8px 18px; border-radius: 8px;">Track Technician Live →</a>
         </div>
 
         <!-- Verification OTPs -->
@@ -239,9 +239,9 @@ Servora Customer Care & Field Operations
 
 def notify_estimate_submitted(req: ServiceRequestModel, estimate, db: Session):
     customer = db.query(UserModel).filter(UserModel.id == req.customer_id).first()
-    to_email = customer.email if customer else "customer@servora.com"
+    to_email = customer.email if customer else "customer@servsure.com"
     to_name = req.customer_name or "Valued Customer"
-    subject = f"Action Required: Approve Pre-Repair Estimate for Servora Ticket #{req.id}"
+    subject = f"Action Required: Approve Pre-Repair Estimate for ServSure Ticket #{req.id}"
 
     text = f"""Hello {to_name},
 
@@ -252,12 +252,12 @@ Cost Breakdown:
 - Labor Charges: ₹{estimate.labor_estimate:.2f}
 - Total Pre-Repair Estimate: ₹{estimate.total_estimate:.2f}
 
-Under Servora Customer Protection (SRS 6.10), repair and parts replacement will NOT begin until you approve this estimate on your customer portal.
+Under ServSure Customer Protection (SRS 6.10), repair and parts replacement will NOT begin until you approve this estimate on your customer portal.
 
-Please log in to your Servora Customer Dashboard to review and approve or decline this estimate.
+Please log in to your ServSure Customer Dashboard to review and approve or decline this estimate.
 
 Best regards,
-Servora Customer Care
+ServSure Customer Care
 """
     html = f"""
     <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 12px; background: #ffffff;">
@@ -274,13 +274,13 @@ Servora Customer Care
                 <tr style="border-top: 1px solid #fde68a;"><td style="padding: 8px 0; font-weight: bold; color: #78350f;">Total Estimate:</td><td style="text-align: right; font-weight: 800; font-size: 18px; color: #b45309;">₹{estimate.total_estimate:.2f}</td></tr>
             </table>
         </div>
-        <p style="font-size: 13px; color: #475569;">Please open your <strong>Servora Customer Portal</strong> to approve or decline the estimate.</p>
+        <p style="font-size: 13px; color: #475569;">Please open your <strong>ServSure Customer Portal</strong> to approve or decline the estimate.</p>
     </div>
     """
     send_notification_email(to_email, to_name, subject, text, html, "estimate_pending", req.id, req.customer_id, db)
 
 def notify_escalation_raised(escalation, req: ServiceRequestModel, db: Session):
-    recipient_email = "admin@servora.com"
+    recipient_email = "admin@servsure.com"
     recipient_name = "Platform Administrator"
     
     if escalation.level == 1:
@@ -289,7 +289,7 @@ def notify_escalation_raised(escalation, req: ServiceRequestModel, db: Session):
             if branch_user:
                 recipient_email = branch_user.email
                 recipient_name = branch_user.name
-        if recipient_email == "admin@servora.com":
+        if recipient_email == "admin@servsure.com":
             franchise = db.query(UserModel).filter(UserModel.role.in_(["branch", "franchise"])).first()
             if franchise:
                 recipient_email = franchise.email
@@ -317,17 +317,17 @@ Escalation Details:
 - Tier: {lvl_label}
 - Due Date: {escalation.due_date or 'Immediate Action Required'}
 
-Under Servora SLA Governance (SRS 6.15), tickets cannot be closed without an authorized resolution note. Please take corrective operational action.
+Under ServSure SLA Governance (SRS 6.15), tickets cannot be closed without an authorized resolution note. Please take corrective operational action.
 
-Servora SLA Escalation Engine
+ServSure SLA Escalation Engine
 """
     send_notification_email(recipient_email, recipient_name, subject, text, None, "escalation_raised", req.id, None, db)
 
 def notify_escalation_resolved(escalation, req: ServiceRequestModel, db: Session):
     customer = db.query(UserModel).filter(UserModel.id == req.customer_id).first()
-    to_email = customer.email if customer else "customer@servora.com"
+    to_email = customer.email if customer else "customer@servsure.com"
     to_name = req.customer_name or "Valued Customer"
-    subject = f"✓ [RESOLVED] Escalation #{escalation.id} for Servora Ticket #{req.id}"
+    subject = f"✓ [RESOLVED] Escalation #{escalation.id} for ServSure Ticket #{req.id}"
 
     text = f"""Hello {to_name},
 
@@ -337,8 +337,8 @@ Resolution Details:
 - Resolution Note: {escalation.resolution_note}
 - Resolved At: {escalation.resolved_at}
 
-Thank you for your patience with Servora.
+Thank you for your patience with ServSure.
 
-Servora Support Team
+ServSure Support Team
 """
     send_notification_email(to_email, to_name, subject, text, None, "escalation_resolved", req.id, req.customer_id, db)

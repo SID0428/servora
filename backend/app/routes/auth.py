@@ -43,17 +43,17 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 def send_otp_email(email: str, name: str, otp: str, purpose: str) -> None:
     purpose_label = "account creation" if purpose == "signup" else "sign in"
-    subject = f"{otp} is your Servora verification code"
+    subject = f"{otp} is your ServSure verification code"
     text_content = (
         f"Hello {name},\n\n"
-        f"Your Servora verification code for {purpose_label} is: {otp}\n\n"
+        f"Your ServSure verification code for {purpose_label} is: {otp}\n\n"
         f"This code will expire in 10 minutes.\n"
         f"If you did not request this, please disregard this email."
     )
     html_content = f"""
     <div style="font-family:'DM Sans',-apple-system,BlinkMacSystemFont,sans-serif;max-width:520px;margin:0 auto;padding:32px 24px;background:#ffffff;border:1px solid #e2e8f0;border-radius:12px">
       <div style="margin-bottom:24px">
-        <span style="font-size:24px;font-weight:800;color:#0b2545;letter-spacing:-0.5px">s<span style="color:#0ea5e9">.</span> servora</span>
+        <span style="font-size:24px;font-weight:800;color:#0b2545;letter-spacing:-0.5px">s<span style="color:#0ea5e9">.</span> servsure</span>
       </div>
       <h2 style="font-size:20px;font-weight:700;color:#0f172a;margin:0 0 12px">Verify your email address</h2>
       <p style="font-size:14px;color:#475569;line-height:1.6;margin:0 0 20px">
@@ -67,7 +67,7 @@ def send_otp_email(email: str, name: str, otp: str, purpose: str) -> None:
       </p>
       <hr style="border:none;border-top:1px solid #e2e8f0;margin:24px 0 16px">
       <p style="font-size:11px;color:#94a3b8;margin:0">
-        © 2026 Servora Unified Service Intelligence Platform.
+        © 2026 ServSure Unified Service Intelligence Platform.
       </p>
     </div>
     """
@@ -77,6 +77,19 @@ def send_otp_email(email: str, name: str, otp: str, purpose: str) -> None:
         print(f"[AUTH OTP] {purpose.upper()} OTP for {email} ({name}): {otp} (Brevo notification: {exc})")
         if os.getenv("BREVO_API_KEY"):
             raise HTTPException(status_code=502, detail="Failed to send verification email. Please try again.")
+
+
+def set_auth_cookies(response: Response, user_id: str):
+    for key in ("servsure_user_id", "servora_user_id"):
+        response.set_cookie(
+            key=key,
+            value=user_id,
+            httponly=True,
+            max_age=86400 * 7,
+            path="/",
+            samesite="none",
+            secure=True,
+        )
 
 
 def make_password_hash(password: str) -> str:
@@ -232,15 +245,7 @@ def verify_registration_otp(payload: CustomerRegistrationVerifyOtp, response: Re
         db.rollback()
         raise HTTPException(status_code=409, detail="An account with this email already exists. Sign in instead.") from exc
 
-    response.set_cookie(
-        key="servora_user_id",
-        value=user.id,
-        httponly=True,
-        max_age=86400 * 7,
-        path="/",
-        samesite="none",
-        secure=True,
-    )
+    set_auth_cookies(response, user.id)
     return {"status": "success", "session_token": session_token, "user": user_payload(user, db)}
 
 
@@ -304,15 +309,7 @@ def verify_login_otp(payload: CustomerLoginVerifyOtp, response: Response, db: Se
     session_token = create_user_session(user, db)
     db.commit()
 
-    response.set_cookie(
-        key="servora_user_id",
-        value=user.id,
-        httponly=True,
-        max_age=86400 * 7,
-        path="/",
-        samesite="none",
-        secure=True,
-    )
+    set_auth_cookies(response, user.id)
     return {"status": "success", "session_token": session_token, "user": user_payload(user, db)}
 
 
@@ -324,7 +321,7 @@ def google_auth(payload: GoogleAuthPayload, response: Response, db: Session = De
     # First attempt: Verify with Google's tokeninfo API
     try:
         url = f"https://oauth2.googleapis.com/tokeninfo?id_token={credential}"
-        req = urllib.request.Request(url, headers={"User-Agent": "Servora/1.0"})
+        req = urllib.request.Request(url, headers={"User-Agent": "ServSure/1.0"})
         with urllib.request.urlopen(req, timeout=8) as res:
             data = json.loads(res.read().decode("utf-8"))
     except Exception:
@@ -376,15 +373,7 @@ def google_auth(payload: GoogleAuthPayload, response: Response, db: Session = De
     session_token = create_user_session(user, db)
     db.commit()
 
-    response.set_cookie(
-        key="servora_user_id",
-        value=user.id,
-        httponly=True,
-        max_age=86400 * 7,
-        path="/",
-        samesite="none",
-        secure=True,
-    )
+    set_auth_cookies(response, user.id)
     return {"status": "success", "session_token": session_token, "user": user_payload(user, db)}
 
 
@@ -412,15 +401,7 @@ def register_customer(payload: CustomerRegistration, response: Response, db: Ses
         db.rollback()
         raise HTTPException(status_code=409, detail="An account with this email already exists. Sign in instead.") from exc
 
-    response.set_cookie(
-        key="servora_user_id",
-        value=user.id,
-        httponly=True,
-        max_age=86400 * 7,
-        path="/",
-        samesite="none",
-        secure=True,
-    )
+    set_auth_cookies(response, user.id)
     return {"status": "success", "session_token": session_token, "user": user_payload(user, db)}
 
 @router.post("/login")
@@ -435,6 +416,13 @@ def login(payload: LoginRequest, response: Response, db: Session = Depends(get_d
         user = db.query(UserModel).filter(
             (UserModel.email.ilike(ident)) | (UserModel.phone == ident)
         ).first()
+
+    if not user and ident.endswith("@servsure.com"):
+        alt_ident = ident.replace("@servsure.com", "@servora.com")
+        user = db.query(UserModel).filter(UserModel.email.ilike(alt_ident)).first()
+    elif not user and ident.endswith("@servora.com"):
+        alt_ident = ident.replace("@servora.com", "@servsure.com")
+        user = db.query(UserModel).filter(UserModel.email.ilike(alt_ident)).first()
 
     if not user:
         raise HTTPException(status_code=401, detail="Invalid email, phone, or password")
@@ -474,15 +462,7 @@ def login(payload: LoginRequest, response: Response, db: Session = Depends(get_d
     if not password_ok:
         raise HTTPException(status_code=401, detail="Invalid email, phone, or password")
 
-    response.set_cookie(
-        key="servora_user_id",
-        value=user.id,
-        httponly=True,
-        max_age=86400 * 7,
-        path="/",
-        samesite="none",
-        secure=True
-    )
+    set_auth_cookies(response, user.id)
     session_token = create_user_session(user, db)
     db.commit()
 
@@ -519,6 +499,7 @@ def refresh_session(request: Request, db: Session = Depends(get_db)):
 def logout(request: Request, response: Response, db: Session = Depends(get_db)):
     revoke_user_session(request, db)
     db.commit()
+    response.delete_cookie(key="servsure_user_id", path="/", samesite="none", secure=True)
     response.delete_cookie(key="servora_user_id", path="/", samesite="none", secure=True)
     return {"status": "success", "message": "Logged out successfully"}
 

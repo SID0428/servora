@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 class Settings:
-    PROJECT_NAME: str = "SERVORA - Unified Service Intelligence Platform"
+    PROJECT_NAME: str = "SERVSURE - Unified Service Intelligence Platform"
     VERSION: str = "1.0.0"
     
     # Database Configuration (Aiven MySQL or local fallback SQLite)
@@ -16,7 +16,7 @@ class Settings:
     ALLOWED_ORIGINS: list[str] = [
         origin.strip() for origin in os.getenv(
             "ALLOWED_ORIGINS",
-            "http://localhost:3000,http://localhost:5173,http://127.0.0.1:5500,https://servora.vercel.app,https://servora-frontend-xi.vercel.app",
+            "http://localhost:3000,http://localhost:5173,http://127.0.0.1:5500,https://servora.vercel.app,https://servora-frontend-xi.vercel.app,https://servsure.vercel.app",
         ).split(",") if origin.strip()
     ]
 

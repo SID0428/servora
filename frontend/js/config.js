@@ -1,4 +1,4 @@
-// Servora Frontend API Configuration for Vercel & Localhost
+// ServSure Frontend API Configuration for Vercel & Localhost
 
 const DEFAULT_LOCAL_API = "http://127.0.0.1:8000";
 // When you deploy your backend to Render, replace this with your actual Render URL:
@@ -11,14 +11,16 @@ const isLocalhost = window.location.hostname === "localhost" ||
                     window.location.protocol === "file:";
 
 // Allow overriding via localStorage for testing live Render backend from any browser
-const savedApiUrl = localStorage.getItem("servora_api_url");
+const savedApiUrl = localStorage.getItem("servsure_api_url") || localStorage.getItem("servora_api_url");
 
 export const API_BASE_URL = savedApiUrl || (isLocalhost ? DEFAULT_LOCAL_API : DEFAULT_RENDER_API);
 
 export function setCustomApiUrl(url) {
   if (url) {
+    localStorage.setItem("servsure_api_url", url);
     localStorage.setItem("servora_api_url", url);
   } else {
+    localStorage.removeItem("servsure_api_url");
     localStorage.removeItem("servora_api_url");
   }
   window.location.reload();

@@ -41,7 +41,7 @@ async def keep_alive_ping_loop():
             def _ping():
                 req = urllib.request.Request(
                     health_url,
-                    headers={"User-Agent": "Servora-KeepAlive/1.0"}
+                    headers={"User-Agent": "ServSure-KeepAlive/1.0"}
                 )
                 with urllib.request.urlopen(req, timeout=15) as resp:
                     return resp.status
@@ -196,7 +196,7 @@ app.mount("/uploads", StaticFiles(directory=uploads_static_dir), name="uploads")
 def root():
     return {
         "status": "online",
-        "service": "Servora (USIP) Backend API",
+        "service": "ServSure (USIP) Backend API",
         "version": settings.VERSION,
         "docs_url": "/docs"
     }
@@ -223,5 +223,5 @@ def health():
 if __name__ == "__main__":
     import uvicorn
     port = int(os.getenv("PORT", 8000))
-    print(f"🚀 Servora Backend running at http://127.0.0.1:{port}")
+    print(f"🚀 ServSure Backend running at http://127.0.0.1:{port}")
     uvicorn.run("main:app", host="0.0.0.0", port=port, reload=True)

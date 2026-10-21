@@ -12,7 +12,7 @@ def send_brevo_email(to_email: str, to_name: str, subject: str, text: str, html:
     if not api_key or not sender_email:
         raise HTTPException(status_code=503, detail="Brevo is not configured. Set BREVO_API_KEY and BREVO_SENDER_EMAIL on the backend.")
     body = {
-        "sender": {"name": os.getenv("BREVO_SENDER_NAME", "Servora"), "email": sender_email},
+        "sender": {"name": os.getenv("BREVO_SENDER_NAME", "ServSure"), "email": sender_email},
         "to": [{"email": to_email, "name": to_name}], "subject": subject, "textContent": text,
     }
     if html:

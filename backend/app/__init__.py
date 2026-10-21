@@ -1,4 +1,4 @@
 """
-Servora Backend Package
+ServSure Backend Package
 """
 __version__ = "1.0.0"

@@ -81,7 +81,7 @@ def get_session_token(request: Request) -> str | None:
 
 def get_authenticated_user(request: Request, db: Session) -> UserModel:
     token = get_session_token(request)
-    custom_uid = request.headers.get("x-servora-user-id")
+    custom_uid = request.headers.get("x-servsure-user-id") or request.headers.get("x-servora-user-id")
 
     if token:
         token_hash = hashlib.sha256(token.encode()).hexdigest()
@@ -165,7 +165,7 @@ def get_authenticated_user(request: Request, db: Session) -> UserModel:
             db.rollback()
 
     # Fallback 5: cookie-based authentication
-    cookie_user_id = request.cookies.get("servora_user_id")
+    cookie_user_id = request.cookies.get("servsure_user_id") or request.cookies.get("servora_user_id")
     if cookie_user_id:
         try:
             user = db.query(UserModel).filter(UserModel.id == cookie_user_id).first()

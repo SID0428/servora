@@ -41,7 +41,7 @@ def add_appliance(payload: NewApplianceCreate, request: Request, db: Session = D
         UserModel.role == "company",
     ).first()
     if not company:
-        raise HTTPException(status_code=422, detail="Choose a company registered on Servora")
+        raise HTTPException(status_code=422, detail="Choose a company registered on ServSure")
     
     icon_map = {
         "air conditioner": "air-vent",

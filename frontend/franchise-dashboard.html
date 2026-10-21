@@ -2,18 +2,18 @@
 <html lang="en">
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="theme-color" content="#f4f7fb">
-  <title>Franchise Dashboard — Servora</title>
+  <title>Franchise Dashboard — ServSure</title>
   <script>
     (function() {
       try {
         var u = null;
         try {
-          var uRole = localStorage.getItem("servora_user_franchise");
+          var uRole = localStorage.getItem("servsure_user_franchise");
           if (uRole) u = JSON.parse(uRole);
         } catch(e) {}
         if (!u || !u.role || (u.role !== "franchise" && u.role !== "branch")) {
           try {
-            var uGen = JSON.parse(localStorage.getItem("servora_user") || "null");
+            var uGen = JSON.parse(localStorage.getItem("servsure_user") || "null");
             if (uGen && (uGen.role === "franchise" || uGen.role === "branch")) u = uGen;
           } catch(e) {}
         }
@@ -64,26 +64,26 @@
   <div id="toast-container" class="fixed top-5 right-5 z-50 flex flex-col space-y-3 pointer-events-none"></div>
   <div class="ops-layout">
     <aside class="ops-sidebar">
-      <a class="ops-brand" href="#overview"><span class="ops-brand-mark">S</span><span>SERVORA<small>Service, connected.</small></span></a>
+      <a class="ops-brand" href="#overview"><span class="ops-brand-mark">S</span><span>SERVSURE<small>Service, connected.</small></span></a>
       <div class="workspace-label">WORKSPACE</div>
       <nav id="opsNav" class="ops-nav"></nav>
-      <div class="sidebar-bottom"><div class="support-card"><span class="support-icon">✦</span><strong>Need a hand?</strong><span>Visit Servora support for help with your workspace.</span><a href="mailto:help@servora.com">Contact support →</a></div><button id="logoutBtn" class="logout-button"><span>↪</span> Sign out</button></div>
+      <div class="sidebar-bottom"><div class="support-card"><span class="support-icon">✦</span><strong>Need a hand?</strong><span>Visit ServSure support for help with your workspace.</span><a href="mailto:help@servsure.com">Contact support →</a></div><button id="logoutBtn" class="logout-button"><span>↪</span> Sign out</button></div>
     </aside>
     <main class="ops-main">
-      <header class="ops-topbar"><button class="mobile-menu" id="menuToggle" aria-label="Open navigation">☰</button><div class="breadcrumb">Workspace <span>/</span> <strong id="crumbTitle">Overview</strong></div><div class="topbar-actions"><span class="top-date" id="todayLabel"></span><button class="icon-button" title="Notifications">♧<i></i></button><button class="profile-button" id="profileButton"><span class="avatar" id="userAvatar">U</span><span class="profile-copy"><strong id="userName">Servora user</strong><small id="userRole">Workspace</small></span><span class="chevron">⌄</span></button></div></header>
+      <header class="ops-topbar"><button class="mobile-menu" id="menuToggle" aria-label="Open navigation">☰</button><div class="breadcrumb">Workspace <span>/</span> <strong id="crumbTitle">Overview</strong></div><div class="topbar-actions"><span class="top-date" id="todayLabel"></span><button class="icon-button" title="Notifications">♧<i></i></button><button class="profile-button" id="profileButton"><span class="avatar" id="userAvatar">U</span><span class="profile-copy"><strong id="userName">ServSure user</strong><small id="userRole">Workspace</small></span><span class="chevron">⌄</span></button></div></header>
       <div class="ops-content">
         <section class="welcome-row"><div><div class="section-kicker" id="workspaceKicker">OPERATIONS</div><h1 id="welcomeTitle">Good morning</h1><p id="welcomeSubtitle">Here is your service operation at a glance.</p></div><div class="welcome-actions"><button class="primary-action" id="addCompanyButton" hidden><span>＋</span> Add company</button><button class="primary-action" id="addBranchButton" hidden><span>＋</span> Add branch</button><button class="primary-action" id="addTechnicianButton" hidden><span>＋</span> Add technician</button><button class="primary-action" id="exportButton"><span>↓</span> Export report</button></div></section>
         <section id="pageContent">
         <section class="metric-grid" id="metricGrid"></section>
         <section class="dashboard-grid"><div class="panel requests-panel"><div class="panel-heading"><div><h2 id="tableTitle">Recent service requests</h2><p id="tableSubtitle">Track requests across your network.</p></div><div class="table-tools"><button class="primary-action company-inline-add" id="companyInlineAdd" hidden><span>＋</span> Add company</button><label class="search-box"><span>⌕</span><input id="requestSearch" type="search" placeholder="Search requests"></label><select id="statusFilter" aria-label="Filter request status"><option value="all">All status</option><option>In Progress</option><option>Scheduled</option><option>Completed</option></select></div></div><div class="table-scroll"><table><thead><tr id="requestHead"></tr></thead><tbody id="requestRows"><tr><td colspan="7" class="empty-row">Loading service requests…</td></tr></tbody></table></div><div class="panel-foot"><span id="requestCount">Loading records</span><span>Updated just now</span></div></div>
           <aside class="side-panels"><div class="panel health-panel"><div class="panel-heading"><div><h2 id="sidePanelTitle">Network health</h2><p>Current service performance</p></div><span class="more-button">···</span></div><div id="healthContent"></div></div><div class="panel activity-panel"><div class="panel-heading"><div><h2>Service overview</h2><p>Live workflow snapshot</p></div></div><div id="activityContent"></div></div></aside></section>
-        <section class="panel bottom-panel"><div class="panel-heading"><div><h2 id="bottomTitle">Team & service resources</h2><p id="bottomSubtitle">People and assets supporting your service network.</p></div><a href="mailto:help@servora.com" class="text-link">Manage resources →</a></div><div class="resource-grid" id="resourceGrid"></div></section>
+        <section class="panel bottom-panel"><div class="panel-heading"><div><h2 id="bottomTitle">Team & service resources</h2><p id="bottomSubtitle">People and assets supporting your service network.</p></div><a href="mailto:help@servsure.com" class="text-link">Manage resources →</a></div><div class="resource-grid" id="resourceGrid"></div></section>
         </section>
-        <footer class="ops-footer"><span>© 2026 Servora · Service, connected.</span><span>Privacy&nbsp;&nbsp; · &nbsp;&nbsp;Help center</span></footer>
+        <footer class="ops-footer"><span>© 2026 ServSure · Service, connected.</span><span>Privacy&nbsp;&nbsp; · &nbsp;&nbsp;Help center</span></footer>
       </div>
     </main>
   </div>
-  <dialog id="companyDialog" class="company-dialog"><form id="companyForm"><div class="dialog-heading"><div><div class="section-kicker">COMPANY DIRECTORY</div><h2>Add a company</h2><p>Create a company account. Servora will automatically email a password setup link.</p></div><button type="button" class="dialog-close" id="closeCompanyDialog" aria-label="Close">×</button></div><label>Company name<input name="name" required maxlength="128" placeholder="Example Industries"></label><label>Admin email<input name="email" type="email" required placeholder="admin@example.com"></label><label>Phone<input name="phone" required maxlength="32" placeholder="+91 98765 43210"></label><label>Address <span class="optional-label">Optional</span><textarea name="address" rows="2" placeholder="Company address"></textarea></label><p class="dialog-message" id="companyFormMessage" aria-live="polite"></p><div class="dialog-actions"><button type="button" class="secondary-button" id="cancelCompany">Cancel</button><button type="submit" class="primary-action">Create company</button></div></form></dialog>
+  <dialog id="companyDialog" class="company-dialog"><form id="companyForm"><div class="dialog-heading"><div><div class="section-kicker">COMPANY DIRECTORY</div><h2>Add a company</h2><p>Create a company account. ServSure will automatically email a password setup link.</p></div><button type="button" class="dialog-close" id="closeCompanyDialog" aria-label="Close">×</button></div><label>Company name<input name="name" required maxlength="128" placeholder="Example Industries"></label><label>Admin email<input name="email" type="email" required placeholder="admin@example.com"></label><label>Phone<input name="phone" required maxlength="32" placeholder="+91 98765 43210"></label><label>Address <span class="optional-label">Optional</span><textarea name="address" rows="2" placeholder="Company address"></textarea></label><p class="dialog-message" id="companyFormMessage" aria-live="polite"></p><div class="dialog-actions"><button type="button" class="secondary-button" id="cancelCompany">Cancel</button><button type="submit" class="primary-action">Create company</button></div></form></dialog>
   <dialog id="branchDialog" class="company-dialog"><form id="branchForm"><div class="dialog-heading"><div><div class="section-kicker">BRANCH DIRECTORY</div><h2>Add a branch</h2><p>Add a branch and its franchise owner or manager contact details.</p></div><button type="button" class="dialog-close" id="closeBranchDialog" aria-label="Close">×</button></div><label>Branch name<input name="branch_name" required minlength="2" maxlength="128" placeholder="Example: Noida Sector 18"></label><label>Franchise owner or manager<input name="manager_name" required minlength="2" maxlength="128" placeholder="Full name"></label><label>Email<input name="email" type="email" required maxlength="128" placeholder="manager@example.com"></label><label>Mobile number<input name="mobile" type="tel" required minlength="7" maxlength="32" placeholder="+91 98765 43210"></label><label>Address<textarea name="address" rows="2" required minlength="5" maxlength="512" placeholder="Street, area, city, state"></textarea></label><label>Pincode<input name="pincode" required minlength="6" maxlength="10" inputmode="numeric" placeholder="201301"></label><p class="dialog-message" id="branchFormMessage" aria-live="polite"></p><div class="dialog-actions"><button type="button" class="secondary-button" id="cancelBranch">Cancel</button><button type="submit" class="primary-action">Save branch</button></div></form></dialog>
   <dialog id="technicianDialog" class="company-dialog"><form id="technicianForm"><div class="dialog-heading"><div><div class="section-kicker">TECHNICIAN DIRECTORY</div><h2>Add a technician</h2><p>Save the technician to this franchise and email a password setup link.</p></div><button type="button" class="dialog-close" id="closeTechnicianDialog" aria-label="Close">×</button></div><label>Technician name<input name="name" required minlength="2" maxlength="128" placeholder="Full name"></label><label>Technician title or specialty<input name="title" required minlength="2" maxlength="128" placeholder="Appliance service technician"></label><label>Email<input name="email" type="email" required maxlength="128" placeholder="technician@example.com"></label><label>Mobile number<input name="mobile" type="tel" required minlength="7" maxlength="32" placeholder="+91 98765 43210"></label><label>Address<textarea name="address" rows="2" required minlength="5" maxlength="512" placeholder="Street, area, city, state"></textarea></label><label>Pincode<input name="pincode" required minlength="6" maxlength="10" inputmode="numeric" placeholder="201301"></label><p class="dialog-message" id="technicianFormMessage" aria-live="polite"></p><div class="dialog-actions"><button type="button" class="secondary-button" id="cancelTechnician">Cancel</button><button type="submit" class="primary-action">Save technician</button></div></form></dialog>
   <dialog id="editTechnicianDialog" class="company-dialog"><form id="editTechnicianForm"><input type="hidden" id="editTechId" name="id"><div class="dialog-heading"><div><div class="section-kicker">TECHNICIAN DIRECTORY</div><h2>Edit technician details</h2><p>Update technician details for your franchise branch.</p></div><button type="button" class="dialog-close" id="closeEditTechnicianDialog" aria-label="Close">×</button></div><label>Technician name<input id="editTechName" name="name" required minlength="2" maxlength="128" placeholder="Full name"></label><label>Technician title or specialty<input id="editTechTitle" name="title" required minlength="2" maxlength="128" placeholder="Appliance service technician"></label><label>Email<input id="editTechEmail" name="email" type="email" readonly disabled class="opacity-60 cursor-not-allowed bg-slate-50" title="Login email cannot be changed directly"></label><label>Mobile number<input id="editTechMobile" name="mobile" type="tel" required minlength="7" maxlength="32" placeholder="+91 98765 43210"></label><label>Address<textarea id="editTechAddress" name="address" rows="2" required minlength="5" maxlength="512" placeholder="Street, area, city, state"></textarea></label><label>Pincode<input id="editTechPincode" name="pincode" required minlength="6" maxlength="10" inputmode="numeric" placeholder="201301"></label><p class="dialog-message" id="editTechnicianFormMessage" aria-live="polite"></p><div class="dialog-actions"><button type="button" class="secondary-button" id="cancelEditTechnician">Cancel</button><button type="submit" class="primary-action">Save Changes</button></div></form></dialog>
@@ -409,7 +409,7 @@
         <div>
           <div class="flex items-center gap-2">
             <span class="w-8 h-8 rounded-xl bg-[#0066ff] text-white flex items-center justify-center font-display font-extrabold text-sm">S</span>
-            <span class="font-display font-black text-xl tracking-tight text-slate-900">SERVORA</span>
+            <span class="font-display font-black text-xl tracking-tight text-slate-900">SERVSURE</span>
           </div>
           <p class="text-[11px] text-slate-400 mt-1">Official GST Tax Invoice & Service Receipt</p>
         </div>
@@ -431,7 +431,7 @@
         </div>
         <div class="sm:border-l sm:border-slate-200/80 sm:pl-4">
           <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">Servicing Franchise & Technician</span>
-          <strong id="opsReceiptBranchName" class="text-slate-800 font-bold block text-sm">Servora Authorized Franchise</strong>
+          <strong id="opsReceiptBranchName" class="text-slate-800 font-bold block text-sm">ServSure Authorized Franchise</strong>
           <span id="opsReceiptTechName" class="text-blue-600 font-semibold block mt-0.5">Technician: Rahul Sharma</span>
           <span id="opsReceiptApplianceDetails" class="text-slate-600 block mt-1">LG Inverter AC (LG-INV-15)</span>
           <span id="opsReceiptIssueDescription" class="text-slate-500 text-[11px] block mt-0.5">Service: Cooling repair</span>
@@ -486,7 +486,7 @@
       </div>
 
       <div class="p-3 bg-slate-50 rounded-xl text-[10px] text-slate-400 text-center leading-normal">
-        Official GST Tax Invoice · Servora Authorized Service Operations
+        Official GST Tax Invoice · ServSure Authorized Service Operations
       </div>
 
       </div>

@@ -61,9 +61,9 @@ def issue_invite(company: UserModel, onboarding: CompanyOnboardingModel) -> str:
     safe_name = html.escape(company.name)
     safe_email = html.escape(company.email)
     send_brevo_email(
-        company.email, company.name, "Set up your Servora company admin account",
-        f"Hello {company.name},\n\nYour company has been added to Servora. To set up your company admin password, verify your registered email and follow this link (valid for 48 hours):\n{link}\n\nYour registered login email is {company.email}.",
-        f"<p>Hello {safe_name},</p><p>Your company has been added to Servora. Use the link below to verify your registered email and create your company admin password. This link expires in 48 hours.</p><p><a href=\"{link}\">Create your Servora password</a></p><p>Registered login email: <strong>{safe_email}</strong></p>",
+        company.email, company.name, "Set up your ServSure company admin account",
+        f"Hello {company.name},\n\nYour company has been added to ServSure. To set up your company admin password, verify your registered email and follow this link (valid for 48 hours):\n{link}\n\nYour registered login email is {company.email}.",
+        f"<p>Hello {safe_name},</p><p>Your company has been added to ServSure. Use the link below to verify your registered email and create your company admin password. This link expires in 48 hours.</p><p><a href=\"{link}\">Create your ServSure password</a></p><p>Registered login email: <strong>{safe_email}</strong></p>",
     )
     return link
 
@@ -279,10 +279,10 @@ def send_company_credentials(payload: CompanyCredentialsEmail, request: Request,
 def get_setup_context(token: str, email: str, db: Session):
     onboarding = db.query(CompanyOnboardingModel).filter_by(invite_token_hash=digest(token)).first()
     if not onboarding or not onboarding.invite_expires_at or onboarding.invite_expires_at < datetime.utcnow():
-        raise HTTPException(status_code=400, detail="This password setup link is invalid or expired. Ask Servora to send a new one.")
+        raise HTTPException(status_code=400, detail="This password setup link is invalid or expired. Ask ServSure to send a new one.")
     company = db.query(UserModel).filter_by(id=onboarding.company_id, role="company").first()
     if not company or not hmac.compare_digest(company.email.lower(), email.strip().lower()):
-        raise HTTPException(status_code=400, detail="Enter the email address registered with Servora")
+        raise HTTPException(status_code=400, detail="Enter the email address registered with ServSure")
     if onboarding.password_set_at:
         raise HTTPException(status_code=400, detail="This company account is already set up. Please sign in.")
     return company, onboarding
@@ -297,9 +297,9 @@ def begin_company_password_setup(payload: CompanyPasswordSetup, db: Session = De
     onboarding.otp_expires_at = datetime.utcnow() + timedelta(minutes=10)
     try:
         send_brevo_email(
-            company.email, company.name, "Your Servora verification code",
-            f"Your Servora verification code is {otp}. It expires in 10 minutes. If you did not request this, ignore this email.",
-            f"<p>Your Servora verification code is:</p><p style=\"font-size:28px;font-weight:700;letter-spacing:6px\">{otp}</p><p>This code expires in 10 minutes.</p>",
+            company.email, company.name, "Your ServSure verification code",
+            f"Your ServSure verification code is {otp}. It expires in 10 minutes. If you did not request this, ignore this email.",
+            f"<p>Your ServSure verification code is:</p><p style=\"font-size:28px;font-weight:700;letter-spacing:6px\">{otp}</p><p>This code expires in 10 minutes.</p>",
         )
         db.commit()
     except Exception:
@@ -333,9 +333,9 @@ def verify_company_setup_otp(payload: CompanyOtpVerify, db: Session = Depends(ge
     safe_url = html.escape(portal_url, quote=True)
     try:
         send_brevo_email(
-            company.email, company.name, "Your Servora company password is set",
-            f"Hello {company.name},\n\nYour Servora company admin password has been set successfully. You can now access your company portal using your registered email and password:\n{portal_url}\n\nIf you did not make this change, please contact Servora support.",
-            f"<p>Hello {safe_name},</p><p>Your Servora company admin password has been set successfully. You can now access your company portal using your registered email and password.</p><p><a href=\"{safe_url}\">Open the Servora company portal</a></p><p>If you did not make this change, please contact Servora support.</p>",
+            company.email, company.name, "Your ServSure company password is set",
+            f"Hello {company.name},\n\nYour ServSure company admin password has been set successfully. You can now access your company portal using your registered email and password:\n{portal_url}\n\nIf you did not make this change, please contact ServSure support.",
+            f"<p>Hello {safe_name},</p><p>Your ServSure company admin password has been set successfully. You can now access your company portal using your registered email and password.</p><p><a href=\"{safe_url}\">Open the ServSure company portal</a></p><p>If you did not make this change, please contact ServSure support.</p>",
         )
         confirmation_email_sent = True
     except Exception:

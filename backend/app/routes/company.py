@@ -82,9 +82,9 @@ def issue_franchise_invite(branch: CompanyBranchModel, onboarding: BranchOnboard
     send_brevo_email(
         branch.email,
         branch.manager_name,
-        "Your Servora franchise portal is ready",
-        f"Hello {branch.manager_name},\n\nYour franchise branch has been added to Servora by {company.name}. Here are your branch details:\n\n{details_text}\n\nSet up your password and verify your email using this link (valid for 48 hours):\n{setup_url}\n\nYour registered login email is {branch.email}.",
-        f"<p>Hello {html.escape(branch.manager_name)},</p><p>Your franchise branch has been added to Servora by <strong>{html.escape(company.name)}</strong>. Branch details:</p><ul>{details_html}</ul><p>Create your password and verify your email using the link below. The link expires in 48 hours.</p><p><a href=\"{html.escape(setup_url, quote=True)}\">Set up your franchise portal password</a></p><p>Registered login email: <strong>{html.escape(branch.email)}</strong></p>",
+        "Your ServSure franchise portal is ready",
+        f"Hello {branch.manager_name},\n\nYour franchise branch has been added to ServSure by {company.name}. Here are your branch details:\n\n{details_text}\n\nSet up your password and verify your email using this link (valid for 48 hours):\n{setup_url}\n\nYour registered login email is {branch.email}.",
+        f"<p>Hello {html.escape(branch.manager_name)},</p><p>Your franchise branch has been added to ServSure by <strong>{html.escape(company.name)}</strong>. Branch details:</p><ul>{details_html}</ul><p>Create your password and verify your email using the link below. The link expires in 48 hours.</p><p><a href=\"{html.escape(setup_url, quote=True)}\">Set up your franchise portal password</a></p><p>Registered login email: <strong>{html.escape(branch.email)}</strong></p>",
     )
     return setup_url
 
@@ -162,7 +162,7 @@ def get_company_branch_details(
         t_user = db.query(UserModel).filter(
             or_(UserModel.id == t.id, UserModel.phone == t.phone)
         ).first()
-        t_email = t_user.email if t_user else f"{t.name.lower().replace(' ', '.')}@servora.com"
+        t_email = t_user.email if t_user else f"{t.name.lower().replace(' ', '.')}@servsure.com"
 
         completed_jobs = db.query(ServiceRequestModel).filter(
             ServiceRequestModel.technician_id == t.id,
@@ -528,7 +528,7 @@ def create_company_branch(payload: CompanyBranchCreate, request: Request, db: Se
     company = require_company(request, db)
     email = payload.email.strip().lower()
     if db.query(UserModel).filter(UserModel.email.ilike(email)).first():
-        raise HTTPException(status_code=409, detail="A Servora account with this email already exists")
+        raise HTTPException(status_code=409, detail="A ServSure account with this email already exists")
     if not os.getenv("BREVO_API_KEY") or not os.getenv("BREVO_SENDER_EMAIL"):
         raise HTTPException(status_code=503, detail="Brevo is not configured. Set BREVO_API_KEY and BREVO_SENDER_EMAIL on the backend.")
 
@@ -585,11 +585,11 @@ def resend_franchise_setup_link(payload: BranchCredentialsEmail, request: Reques
 
         branch_user = db.query(UserModel).filter_by(id=branch.id).first()
         if branch_user and (branch_user.role != "branch" or branch_user.email.lower() != branch.email.lower()):
-            raise HTTPException(status_code=409, detail="This branch ID is already linked to a different Servora account")
+            raise HTTPException(status_code=409, detail="This branch ID is already linked to a different ServSure account")
         if not branch_user:
             existing_email = db.query(UserModel).filter(UserModel.email.ilike(branch.email)).first()
             if existing_email:
-                raise HTTPException(status_code=409, detail="This email already belongs to another Servora account")
+                raise HTTPException(status_code=409, detail="This email already belongs to another ServSure account")
             branch_user = UserModel(
                 id=branch.id,
                 name=branch.manager_name,
@@ -643,9 +643,9 @@ def begin_franchise_password_setup(payload: CompanyPasswordSetup, db: Session = 
         send_brevo_email(
             branch_user.email,
             branch_user.name,
-            "Your Servora franchise verification code",
-            f"Your Servora verification code is {otp}. It expires in 10 minutes. If you did not request this, ignore this email.",
-            f"<p>Your Servora verification code is:</p><p style=\"font-size:28px;font-weight:700;letter-spacing:6px\">{otp}</p><p>This code expires in 10 minutes.</p>",
+            "Your ServSure franchise verification code",
+            f"Your ServSure verification code is {otp}. It expires in 10 minutes. If you did not request this, ignore this email.",
+            f"<p>Your ServSure verification code is:</p><p style=\"font-size:28px;font-weight:700;letter-spacing:6px\">{otp}</p><p>This code expires in 10 minutes.</p>",
         )
         db.commit()
     except Exception:
@@ -683,9 +683,9 @@ def verify_franchise_setup_otp(payload: CompanyOtpVerify, db: Session = Depends(
         send_brevo_email(
             branch_user.email,
             branch_user.name,
-            "Your Servora franchise password is set",
+            "Your ServSure franchise password is set",
             f"Hello {branch_user.name},\n\nYour password for the {branch.branch_name} franchise portal, associated with {company_name}, has been set. You can now sign in with your registered email and password:\n{portal_url}",
-            f"<p>Hello {html.escape(branch_user.name)},</p><p>Your password for the <strong>{html.escape(branch.branch_name)}</strong> franchise portal, associated with <strong>{html.escape(company_name)}</strong>, has been set.</p><p><a href=\"{html.escape(portal_url, quote=True)}\">Open the Servora franchise portal</a></p>",
+            f"<p>Hello {html.escape(branch_user.name)},</p><p>Your password for the <strong>{html.escape(branch.branch_name)}</strong> franchise portal, associated with <strong>{html.escape(company_name)}</strong>, has been set.</p><p><a href=\"{html.escape(portal_url, quote=True)}\">Open the ServSure franchise portal</a></p>",
         )
         confirmation_email_sent = True
     except Exception:
