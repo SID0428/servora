@@ -361,9 +361,12 @@ async function initGoogleOAuth() {
     configuredGoogleClientId = cfg.google_client_id || "";
 
     const btnContainer = byId("googleBtnContainer");
-    const customBtn = byId("googleCustomBtn");
+    const authSection = byId("googleAuthSection");
+    const divider = byId("loginAuthDivider");
 
     if (configuredGoogleClientId && window.google?.accounts?.id && btnContainer) {
+      authSection?.classList.remove("hidden");
+      divider?.classList.remove("hidden");
       window.google.accounts.id.initialize({
         client_id: configuredGoogleClientId,
         callback: (resp) => {
@@ -377,22 +380,13 @@ async function initGoogleOAuth() {
         width: 320,
         text: "continue_with",
       });
-      customBtn?.classList.add("hidden");
-    } else if (customBtn) {
-      // Fallback custom button when GIS button isn't active or clientId is pending
-      customBtn.classList.remove("hidden");
-      customBtn.onclick = () => {
-        if (!configuredGoogleClientId) {
-          alert("Google Sign-In is configured on the backend. Please provide GOOGLE_CLIENT_ID in your backend environment variables to connect your Google Cloud Console project.");
-        } else if (window.google?.accounts?.id) {
-          window.google.accounts.id.prompt();
-        }
-      };
+    } else {
+      authSection?.classList.add("hidden");
+      divider?.classList.add("hidden");
     }
   } catch {
-    // If backend isn't ready yet, leave fallback available
-    const customBtn = byId("googleCustomBtn");
-    if (customBtn) customBtn.classList.remove("hidden");
+    byId("googleAuthSection")?.classList.add("hidden");
+    byId("loginAuthDivider")?.classList.add("hidden");
   }
 }
 
