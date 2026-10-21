@@ -20,4 +20,7 @@ class Settings:
         ).split(",") if origin.strip()
     ]
 
+    # Google OAuth Client ID for GIS authentication
+    GOOGLE_CLIENT_ID: str = os.getenv("GOOGLE_CLIENT_ID", "")
+
 settings = Settings()

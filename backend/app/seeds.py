@@ -7,7 +7,7 @@ from app.db.models import (
     CompanyBranchModel, BranchTechnicianModel, JobCardModel, ServiceFeedbackModel,
     SparePartModel, FranchiseInventoryModel, InventoryTransactionModel,
     WarrantyClaimModel, AMCPlanModel, AMCSubscriptionModel,
-    EstimateModel, EscalationModel, NotificationLogModel
+    EstimateModel, EscalationModel, NotificationLogModel, AuthOtpModel
 )
 
 def seed_database(db: Session):

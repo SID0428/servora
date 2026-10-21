@@ -30,6 +30,27 @@ class CustomerRegistration(BaseModel):
     password: str = Field(min_length=10, max_length=128)
     address: Optional[str] = Field(default=None, max_length=512)
 
+class CustomerRegistrationRequestOtp(BaseModel):
+    name: str = Field(min_length=2, max_length=128)
+    email: str = Field(min_length=5, max_length=128, pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+    phone: str = Field(min_length=7, max_length=32)
+    password: str = Field(min_length=10, max_length=128)
+    address: Optional[str] = Field(default=None, max_length=512)
+
+class CustomerRegistrationVerifyOtp(BaseModel):
+    email: str = Field(min_length=5, max_length=128, pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+    otp: str = Field(min_length=6, max_length=6)
+
+class CustomerLoginRequestOtp(BaseModel):
+    email: str = Field(min_length=5, max_length=128, pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+class CustomerLoginVerifyOtp(BaseModel):
+    email: str = Field(min_length=5, max_length=128, pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+    otp: str = Field(min_length=6, max_length=6)
+
+class GoogleAuthPayload(BaseModel):
+    credential: str = Field(min_length=10)
+
 class CompanyCreate(BaseModel):
     name: str = Field(min_length=2, max_length=128)
     email: str

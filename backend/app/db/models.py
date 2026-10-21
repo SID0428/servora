@@ -21,6 +21,17 @@ class UserSessionModel(Base):
     user_id = Column(String(64), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     expires_at = Column(DateTime, nullable=False, index=True)
 
+class AuthOtpModel(Base):
+    __tablename__ = "auth_otps"
+
+    id = Column(String(64), primary_key=True, index=True)
+    email = Column(String(128), nullable=False, index=True)
+    otp_hash = Column(String(64), nullable=False)
+    purpose = Column(String(32), nullable=False)  # "signup", "login"
+    payload_json = Column(Text, nullable=True)     # Pending user registration data
+    expires_at = Column(DateTime, nullable=False, index=True)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+
 class CompanyOnboardingModel(Base):
     __tablename__ = "company_onboarding"
 
