@@ -27,6 +27,7 @@ from app.schemas import (
     CompanyOtpVerify,
     CompanyPasswordSetup,
     FranchiseTechnicianCreate,
+    FranchiseTechnicianUpdate,
     TechnicianCredentialsEmail,
 )
 from app.security import get_authenticated_user
@@ -228,6 +229,53 @@ def resend_technician_setup_link(
         logger.exception("Failed to resend a technician setup link")
         raise HTTPException(status_code=500, detail="Could not resend the technician setup link. Check the backend service logs for details.") from exc
     return {"status": "sent", "email": user.email, "message": "Technician setup link sent"}
+
+
+@router.put("/technicians/{technician_id}")
+def update_franchise_technician(
+    technician_id: str,
+    payload: FranchiseTechnicianUpdate,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    _, branch = require_franchise(request, db)
+    profile = db.query(BranchTechnicianModel).filter_by(
+        technician_id=technician_id,
+        branch_id=branch.id,
+    ).first()
+    if not profile:
+        raise HTTPException(status_code=404, detail="Technician not found in this franchise")
+
+    technician = db.query(TechnicianModel).filter_by(id=technician_id).first()
+    user = db.query(UserModel).filter_by(id=technician_id, role="technician").first()
+    if not technician or not user:
+        raise HTTPException(status_code=404, detail="Technician account not found")
+
+    onboarding = db.query(TechnicianOnboardingModel).filter_by(technician_id=technician_id).first()
+
+    name = payload.name.strip()
+    title = payload.title.strip()
+    mobile = payload.mobile.strip()
+    address = payload.address.strip()
+    pincode = payload.pincode.strip()
+
+    technician.name = name
+    technician.title = title
+    technician.phone = mobile
+
+    user.name = name
+    user.phone = mobile
+    user.address = f"{address}, {pincode}"
+
+    profile.address = address
+    profile.pincode = pincode
+
+    db.commit()
+    db.refresh(technician)
+    db.refresh(user)
+    db.refresh(profile)
+
+    return technician_payload(technician, profile, user, onboarding)
 
 
 @router.get("/customers")

@@ -1020,15 +1020,16 @@ function renderFranchiseTechnicians() {
   if ($("activityContent")) $("activityContent").innerHTML = `<div class="section-empty">Technicians and their contact details are visible only to your franchise.</div>`;
   if ($("bottomTitle")) $("bottomTitle").textContent = "Franchise technicians";
   if ($("bottomSubtitle")) $("bottomSubtitle").textContent = "Technician accounts registered by this franchise.";
-  if ($("requestHead")) $("requestHead").innerHTML = ["Technician", "Title or specialty", "Email", "Mobile number", "Address", "Pincode", "Portal access"].map((label) => `<th>${safe(label)}</th>`).join("");
+  if ($("requestHead")) $("requestHead").innerHTML = ["Technician", "Title or specialty", "Email", "Mobile number", "Address", "Pincode", "Portal access", "Actions"].map((label) => `<th>${safe(label)}</th>`).join("");
   const query = $("requestSearch") ? $("requestSearch").value.trim().toLowerCase() : "";
   const filtered = technicians.filter((technician) => [technician.name, technician.title, technician.email, technician.mobile, technician.address, technician.pincode].join(" ").toLowerCase().includes(query));
   if ($("requestRows")) $("requestRows").innerHTML = filtered.length ? filtered.map((technician) => {
     const date = technician.password_set_at ? new Intl.DateTimeFormat("en-IN", { dateStyle: "medium", timeStyle: "short" }).format(new Date(technician.password_set_at)) : "";
     const status = technician.password_set ? `Password set · ${date}` : "Password not set";
     const access = technician.password_set ? `<span class="status-pill completed">Active</span>` : `<button class="table-action" data-resend-technician="${safe(technician.id)}">Resend setup link →</button>`;
-    return `<tr><td><strong>${safe(technician.name)}</strong><small class="company-password-state ${technician.password_set ? "is-set" : "is-pending"}">${safe(status)}</small></td><td>${safe(technician.title)}</td><td>${safe(technician.email)}</td><td>${safe(technician.mobile)}</td><td>${safe(technician.address)}</td><td>${safe(technician.pincode)}</td><td>${access}</td></tr>`;
-  }).join("") : `<tr><td class="empty-row" colspan="7">${query ? "No technicians match your search." : "No technicians yet. Add your first technician to get started."}</td></tr>`;
+    const actions = `<button class="table-action font-semibold text-blue-600 hover:text-blue-800" data-edit-technician="${safe(technician.id)}">✏️ Edit Details</button>`;
+    return `<tr><td><strong>${safe(technician.name)}</strong><small class="company-password-state ${technician.password_set ? "is-set" : "is-pending"}">${safe(status)}</small></td><td>${safe(technician.title)}</td><td>${safe(technician.email)}</td><td>${safe(technician.mobile)}</td><td>${safe(technician.address)}</td><td>${safe(technician.pincode)}</td><td>${access}</td><td>${actions}</td></tr>`;
+  }).join("") : `<tr><td class="empty-row" colspan="8">${query ? "No technicians match your search." : "No technicians yet. Add your first technician to get started."}</td></tr>`;
   if ($("requestCount")) $("requestCount").textContent = `${filtered.length} technician${filtered.length === 1 ? "" : "s"} shown`;
   if ($("requestSearch")) $("requestSearch").placeholder = "Search technicians";
   if ($("resourceGrid")) $("resourceGrid").innerHTML = "";
@@ -1041,6 +1042,19 @@ function renderFranchiseTechnicians() {
       showToast(`Technician setup link sent to ${technician.email}.`);
     } catch (error) { showToast(error.message, "error"); }
     finally { button.disabled = false; button.textContent = "Resend setup link →"; }
+  }));
+  document.querySelectorAll("[data-edit-technician]").forEach((button) => button.addEventListener("click", () => {
+    const technician = technicians.find((item) => item.id === button.dataset.editTechnician);
+    if (!technician) return;
+    if ($("editTechId")) $("editTechId").value = technician.id;
+    if ($("editTechName")) $("editTechName").value = technician.name || "";
+    if ($("editTechTitle")) $("editTechTitle").value = technician.title || "";
+    if ($("editTechEmail")) $("editTechEmail").value = technician.email || "";
+    if ($("editTechMobile")) $("editTechMobile").value = technician.mobile || "";
+    if ($("editTechAddress")) $("editTechAddress").value = technician.address || "";
+    if ($("editTechPincode")) $("editTechPincode").value = technician.pincode || "";
+    if ($("editTechnicianFormMessage")) $("editTechnicianFormMessage").textContent = "";
+    $("editTechnicianDialog")?.showModal();
   }));
 }
 function renderCompanies() {
@@ -4244,6 +4258,8 @@ function initEvents() {
   $("cancelBranch")?.addEventListener("click", () => $("branchDialog")?.close());
   $("closeTechnicianDialog")?.addEventListener("click", () => $("technicianDialog")?.close());
   $("cancelTechnician")?.addEventListener("click", () => $("technicianDialog")?.close());
+  $("closeEditTechnicianDialog")?.addEventListener("click", () => $("editTechnicianDialog")?.close());
+  $("cancelEditTechnician")?.addEventListener("click", () => $("editTechnicianDialog")?.close());
   $("closeTechMap")?.addEventListener("click", () => { stopTechMapAnimation(); $("techMapDialog")?.close(); });
   $("techMapDialog")?.addEventListener("close", () => stopTechMapAnimation());
   $("closeCompanyDetail")?.addEventListener("click", () => $("companyDetailModal")?.close());
@@ -4352,6 +4368,45 @@ function initEvents() {
     finally { if (submit) submit.disabled = false; }
   });
 
+  $("editTechnicianForm")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const submit = form.querySelector('[type="submit"]');
+    const msg = $("editTechnicianFormMessage");
+    const techId = $("editTechId")?.value;
+    if (!techId) return;
+
+    if (submit) submit.disabled = true;
+    if (msg) msg.textContent = "Saving technician details…";
+
+    const payload = {
+      name: $("editTechName")?.value.trim(),
+      title: $("editTechTitle")?.value.trim(),
+      mobile: $("editTechMobile")?.value.trim(),
+      address: $("editTechAddress")?.value.trim(),
+      pincode: $("editTechPincode")?.value.trim(),
+    };
+
+    try {
+      const updated = await franchiseApi(`/technicians/${encodeURIComponent(techId)}`, {
+        method: "PUT",
+        body: JSON.stringify(payload)
+      });
+      const idx = technicians.findIndex((t) => t.id === techId);
+      if (idx !== -1) {
+        technicians[idx] = { ...technicians[idx], ...updated };
+      }
+      localStorage.setItem("servora_cache_techs", JSON.stringify(technicians));
+      $("editTechnicianDialog")?.close();
+      renderFranchiseTechnicians();
+      showToast(`Technician ${updated.name || "details"} updated successfully.`);
+    } catch (error) {
+      if (msg) msg.textContent = error.message;
+    } finally {
+      if (submit) submit.disabled = false;
+    }
+  });
+
   // Digital Job Card Modal Events (Phase 1)
   $("closeOpsJobCard")?.addEventListener("click", () => $("opsJobCardDialog")?.close());
   $("cancelOpsJcBtn")?.addEventListener("click", () => $("opsJobCardDialog")?.close());
@@ -4395,6 +4450,10 @@ window.openOpsProfileModal = function() {
   if ($("editOpsPhone")) $("editOpsPhone").value = (displayPhone === "+91 98765 43210" && !user?.phone) ? "" : displayPhone;
   if ($("editOpsAddress")) $("editOpsAddress").value = user?.address || "";
   if ($("editOpsMessage")) $("editOpsMessage").textContent = "";
+
+  const isTechnician = displayRole === "technician" || role === "technician";
+  if ($("openEditOpsProfileBtn")) $("openEditOpsProfileBtn").style.display = isTechnician ? "none" : "";
+  if ($("opsProfileEditForm")) $("opsProfileEditForm").style.display = isTechnician ? "none" : "";
 
   if ($("opsProfileViewMode")) $("opsProfileViewMode").classList.remove("hidden");
   if ($("opsProfileEditForm")) $("opsProfileEditForm").classList.add("hidden");

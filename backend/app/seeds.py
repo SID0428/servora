@@ -132,18 +132,9 @@ def seed_database(db: Session):
         with engine.begin() as connection:
             connection.execute(text("ALTER TABLE job_cards ADD COLUMN is_warranty_covered BOOLEAN DEFAULT 0"))
 
-    # 1. Seed Users if not present
-    if not db.query(UserModel).first():
+    # 1. Seed Operational Users if not present
+    if not db.query(UserModel).filter(UserModel.role != "customer").first():
         users = [
-            UserModel(
-                id="customer_1",
-                name="Shreyansh Bansal",
-                email="shreyansh@servora.com",
-                phone="+91 98765 43210",
-                role="customer",
-                avatar="https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=250&q=80",
-                address="12, Sector 4, Greater Noida, UP - 201310"
-            ),
             UserModel(
                 id="tech_1",
                 name="Rahul Sharma",
@@ -238,129 +229,27 @@ def seed_database(db: Session):
         db.add(bt)
         db.commit()
 
-    # 3. Seed Appliances
-    if not db.query(ApplianceModel).first():
-        apps = [
-            ApplianceModel(
-                id="app_1",
-                user_id="customer_1",
-                company_id="company_1",
-                brand="Crompton",
-                category="Air Conditioner",
-                model_no="GL-5292",
-                registered_on="12 Jun 2024",
-                warranty_status="Under Warranty",
-                warranty_start_date="12 Jun 2024",
-                warranty_end_date="12 Jun 2026",
-                amc_active=False,
-                serial_no="CR-AC-2024-8841",
-                icon="air-vent"
-            ),
-            ApplianceModel(
-                id="app_2",
-                user_id="customer_1",
-                brand="LG",
-                category="Refrigerator",
-                model_no="GL-382",
-                registered_on="03 Feb 2023",
-                warranty_status="AMC Active",
-                warranty_start_date="03 Feb 2023",
-                warranty_end_date="03 Feb 2024",
-                amc_active=True,
-                amc_plan_name="Gold Comprehensive",
-                amc_end_date="03 Feb 2026",
-                serial_no="LG-REF-9921",
-                icon="refrigerator"
-            ),
-            ApplianceModel(
-                id="app_3",
-                user_id="customer_1",
-                brand="Samsung",
-                category="Microwave Oven",
-                model_no="MC-288",
-                registered_on="15 Nov 2022",
-                warranty_status="Out of Warranty",
-                warranty_start_date="15 Nov 2022",
-                warranty_end_date="15 Nov 2023",
-                amc_active=False,
-                serial_no="SAM-MW-4412",
-                icon="microwave"
-            )
-        ]
-        db.add_all(apps)
-        db.commit()
+    # Clean up any legacy dummy customer and dummy service requests added previously
+    try:
+        dummy_reqs = db.query(ServiceRequestModel).filter(
+            (ServiceRequestModel.customer_id == "customer_1") | (ServiceRequestModel.id == "SR-7845")
+        ).all()
+        dummy_req_ids = [r.id for r in dummy_reqs]
+        if dummy_req_ids:
+            db.query(JobCardModel).filter(JobCardModel.request_id.in_(dummy_req_ids)).delete(synchronize_session=False)
+            db.query(EstimateModel).filter(EstimateModel.request_id.in_(dummy_req_ids)).delete(synchronize_session=False)
+            db.query(EscalationModel).filter(EscalationModel.request_id.in_(dummy_req_ids)).delete(synchronize_session=False)
+            db.query(NotificationLogModel).filter(NotificationLogModel.reference_id.in_(dummy_req_ids)).delete(synchronize_session=False)
+            db.query(ServiceRequestModel).filter(ServiceRequestModel.id.in_(dummy_req_ids)).delete(synchronize_session=False)
 
-    # 4. Seed Service Request SR-7845
-    if not db.query(ServiceRequestModel).first():
-        timeline_data = [
-            {
-                "id": "step_1",
-                "title": "Request Created",
-                "timestamp": "21 Jun 2025, 10:24 AM",
-                "description": "Service ticket registered via Servora app",
-                "state": "completed"
-            },
-            {
-                "id": "step_2",
-                "title": "Technician Assigned",
-                "timestamp": "21 Jun 2025, 11:02 AM",
-                "description": "Assigned to Rahul Sharma (Authorized Specialist)",
-                "state": "completed"
-            },
-            {
-                "id": "step_3",
-                "title": "Technician on the Way",
-                "timestamp": "21 Jun 2025, 03:45 PM",
-                "description": "Live tracking available. ETA 15 mins",
-                "state": "current"
-            },
-            {
-                "id": "step_4",
-                "title": "Service In Progress",
-                "timestamp": None,
-                "description": "Inspection, diagnosis & repair with genuine spare parts",
-                "state": "pending"
-            },
-            {
-                "id": "step_5",
-                "title": "Completed",
-                "timestamp": None,
-                "description": "Job card signed and closed with digital invoice",
-                "state": "pending"
-            }
-        ]
-        
-        req = ServiceRequestModel(
-            id="SR-7845",
-            customer_id="customer_1",
-            customer_name="Shreyansh Bansal",
-            customer_phone="+91 98765 43210",
-            customer_address="12, Sector 4, Greater Noida",
-            appliance_id="app_1",
-            appliance_name="Crompton AC",
-            brand="Crompton",
-            model_no="GL-5292",
-            issue="AC cooling issue / Low cooling in high ambient temperature",
-            description="AC blower is running but cooling is insufficient. Strange rattling sound from indoor unit.",
-            priority="High",
-            status="Technician on the Way",
-            status_badge="In Progress",
-            created_at="21 Jun 2025, 10:24 AM",
-            appointment_date="21 Jun 2025",
-            appointment_slot="4:00 PM - 6:00 PM",
-            technician_id="tech_1",
-            branch_id="branch_1",
-            company_id="company_1",
-            pincode="201310",
-            latitude=28.4744,
-            longitude=77.5040,
-            verification_otp="8492",
-            timeline_json=json.dumps(timeline_data)
-        )
-        db.add(req)
+        db.query(ApplianceModel).filter(ApplianceModel.user_id == "customer_1").delete(synchronize_session=False)
+        db.query(NotificationLogModel).filter(NotificationLogModel.user_id == "customer_1").delete(synchronize_session=False)
+        db.query(UserModel).filter(UserModel.id == "customer_1").delete(synchronize_session=False)
         db.commit()
+    except Exception as cleanup_err:
+        db.rollback()
 
-    # 5. Seed Spare Parts Catalog (Phase 2 FR-INV-001)
+    # 3. Seed Spare Parts Catalog (Phase 2 FR-INV-001)
     if not db.query(SparePartModel).first():
         parts = [
             SparePartModel(

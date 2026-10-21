@@ -55,6 +55,14 @@ class FranchiseTechnicianCreate(BaseModel):
     address: str = Field(min_length=5, max_length=512)
     pincode: str = Field(min_length=6, max_length=10)
 
+class FranchiseTechnicianUpdate(BaseModel):
+    name: str = Field(min_length=2, max_length=128)
+    title: str = Field(min_length=2, max_length=128)
+    mobile: str = Field(min_length=7, max_length=32)
+    address: str = Field(min_length=5, max_length=512)
+    pincode: str = Field(min_length=6, max_length=10)
+    email: Optional[str] = None
+
 class TechnicianCredentialsEmail(BaseModel):
     technician_id: str
 
