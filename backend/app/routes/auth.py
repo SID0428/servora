@@ -551,9 +551,10 @@ def update_user_profile(payload: UserProfileUpdate, request: Request, db: Sessio
             raise HTTPException(status_code=409, detail="An account with this email already exists")
         user.email = payload.email.strip().lower()
     user.name = payload.name.strip()
-    user.phone = payload.phone.strip()
+    if payload.phone is not None:
+        user.phone = payload.phone.strip()
     if payload.address is not None:
-        user.address = payload.address.strip()
+        user.address = payload.address.strip() or None
     if user.role == "technician":
         tech = db.query(TechnicianModel).filter(TechnicianModel.id == user.id).first()
         if not tech:
@@ -563,10 +564,16 @@ def update_user_profile(payload: UserProfileUpdate, request: Request, db: Sessio
             tech.phone = user.phone
     db.commit()
     db.refresh(user)
+    payload_data = user_payload(user, db)
     return {
         "status": "success",
         "message": "Profile updated successfully",
-        "user": user_payload(user, db),
+        "user": payload_data,
+        "id": user.id,
+        "name": user.name,
+        "email": user.email,
+        "phone": user.phone,
+        "address": user.address,
     }
 
 @router.get("/demo-users")

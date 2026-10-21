@@ -1342,6 +1342,7 @@ window.openEditProfileModal = function () {
     if ($("editProfileName")) $("editProfileName").value = currentUser.name || "";
     if ($("editProfilePhone")) $("editProfilePhone").value = currentUser.phone || "";
     if ($("editProfileEmail")) $("editProfileEmail").value = currentUser.email || "";
+    if ($("editProfileAddress")) $("editProfileAddress").value = currentUser.address || "";
   }
   if ($("editProfileMessage")) $("editProfileMessage").textContent = "";
   openDialog("editProfileDialog");
@@ -1354,21 +1355,36 @@ async function submitProfileEdit(event) {
   button.textContent = "Saving…";
   if ($("editProfileMessage")) $("editProfileMessage").textContent = "";
 
+  const name = ($("editProfileName")?.value || "").trim();
+  const phone = ($("editProfilePhone")?.value || "").trim();
+  const email = ($("editProfileEmail")?.value || "").trim();
+  const address = $("editProfileAddress") ? $("editProfileAddress").value.trim() : null;
+
+  if (!name) {
+    if ($("editProfileMessage")) $("editProfileMessage").textContent = "Please enter your full name.";
+    button.disabled = false;
+    button.textContent = "Save Changes";
+    return;
+  }
+
   try {
     const updated = await readApiJson("/api/auth/profile", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        name: $("editProfileName").value.trim(),
-        phone: $("editProfilePhone").value.trim(),
-        email: $("editProfileEmail").value.trim() || null,
+        name,
+        phone,
+        email: email || null,
+        address: address || null,
       }),
     });
     closeDialog("editProfileDialog");
-    if (currentUser) {
-      currentUser.name = updated.name;
-      currentUser.phone = updated.phone;
-      if (updated.email) currentUser.email = updated.email;
+    const user = updated.user || updated;
+    if (currentUser && user) {
+      currentUser.name = user.name || name;
+      currentUser.phone = user.phone !== undefined ? user.phone : phone;
+      if (user.email) currentUser.email = user.email;
+      if (user.address !== undefined) currentUser.address = user.address;
       localStorage.setItem("servora_user", JSON.stringify(currentUser));
       localStorage.setItem("servora_user_customer", JSON.stringify(currentUser));
       setProfile(currentUser);
@@ -1418,6 +1434,16 @@ window.openAddApplianceModal = function () {
 
 window.openAddressModal = function () {
   if ($("addressMessage")) $("addressMessage").textContent = "";
+  if (currentUser?.address) {
+    const addr = currentUser.address;
+    const pinMatch = addr.match(/\b(\d{6})\b/);
+    if (pinMatch && $("addrPincode") && !$("addrPincode").value) {
+      $("addrPincode").value = pinMatch[1];
+    }
+    if ($("addrStreetArea") && !$("addrStreetArea").value) {
+      $("addrStreetArea").value = addr;
+    }
+  }
   openDialog("addressDialog");
 };
 
@@ -2503,6 +2529,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     $("userAvatarHeader").addEventListener("click", () =>
       switchTab("profile")
     );
+  }
+  if ($("headerProfileBtn")) {
+    $("headerProfileBtn").addEventListener("click", () => switchTab("profile"));
   }
 
   // Notification modal
