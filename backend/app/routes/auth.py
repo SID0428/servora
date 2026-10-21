@@ -26,24 +26,46 @@ from app.db.models import (
 from app.db.session import get_db
 from app.email_service import send_brevo_email
 from app.schemas import (
+    AccessTogglePayload,
+    ChangePasswordPayload,
     CustomerAddressUpdate,
     CustomerLoginRequestOtp,
     CustomerLoginVerifyOtp,
     CustomerRegistration,
     CustomerRegistrationRequestOtp,
     CustomerRegistrationVerifyOtp,
+    ForgotPasswordRequestOtp,
+    ForgotPasswordReset,
     GoogleAuthPayload,
     LoginRequest,
     UserProfileUpdate,
 )
-from app.security import create_user_session, get_authenticated_user, revoke_user_session
+from app.security import (
+    create_user_session,
+    get_authenticated_user,
+    revoke_all_user_sessions,
+    revoke_user_session,
+    validate_user_active_and_hierarchy,
+)
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 
 def send_otp_email(email: str, name: str, otp: str, purpose: str) -> None:
-    purpose_label = "account creation" if purpose == "signup" else "sign in"
-    subject = f"{otp} is your ServSure verification code"
+    if purpose == "forgot_password":
+        purpose_label = "password reset"
+        header_title = "Reset your account password"
+        lead_text = "Use the verification code below to reset your ServSure account password."
+    elif purpose == "signup":
+        purpose_label = "account creation"
+        header_title = "Verify your email address"
+        lead_text = f"Use the verification code below to complete your {purpose_label}."
+    else:
+        purpose_label = "sign in"
+        header_title = "Verify your email address"
+        lead_text = f"Use the verification code below to complete your {purpose_label}."
+
+    subject = f"{otp} is your ServSure {purpose_label} verification code"
     text_content = (
         f"Hello {name},\n\n"
         f"Your ServSure verification code for {purpose_label} is: {otp}\n\n"
@@ -55,9 +77,9 @@ def send_otp_email(email: str, name: str, otp: str, purpose: str) -> None:
       <div style="margin-bottom:24px">
         <span style="font-size:24px;font-weight:800;color:#0b2545;letter-spacing:-0.5px">s<span style="color:#0ea5e9">.</span> servsure</span>
       </div>
-      <h2 style="font-size:20px;font-weight:700;color:#0f172a;margin:0 0 12px">Verify your email address</h2>
+      <h2 style="font-size:20px;font-weight:700;color:#0f172a;margin:0 0 12px">{header_title}</h2>
       <p style="font-size:14px;color:#475569;line-height:1.6;margin:0 0 20px">
-        Use the verification code below to complete your {purpose_label}. This code is valid for <strong>10 minutes</strong>.
+        {lead_text} This code is valid for <strong>10 minutes</strong>.
       </p>
       <div style="background:#f8fafc;border:1px dashed #cbd5e1;border-radius:8px;padding:18px 24px;text-align:center;margin:0 0 24px">
         <span style="font-family:monospace;font-size:32px;font-weight:800;letter-spacing:6px;color:#0284c7">{otp}</span>
@@ -107,6 +129,7 @@ def user_payload(user: UserModel, db: Session = None) -> dict:
         "role": "franchise" if user.role == "branch" else user.role,
         "avatar": user.avatar,
         "address": user.address,
+        "is_active": getattr(user, "is_active", True),
     }
     if db is not None:
         if user.role in ("branch", "franchise"):
@@ -259,6 +282,8 @@ def request_login_otp(payload: CustomerLoginRequestOtp, db: Session = Depends(ge
     if user.role != "customer":
         raise HTTPException(status_code=403, detail="Email OTP sign in is only available for customer accounts. Please sign in via the operational staff portal.")
 
+    validate_user_active_and_hierarchy(user, db)
+
     # Invalidate previous login OTPs
     db.query(AuthOtpModel).filter(
         AuthOtpModel.email == email,
@@ -304,6 +329,8 @@ def verify_login_otp(payload: CustomerLoginVerifyOtp, response: Response, db: Se
         db.delete(record)
         db.commit()
         raise HTTPException(status_code=404, detail="Account not found.")
+
+    validate_user_active_and_hierarchy(user, db)
 
     db.delete(record)
     session_token = create_user_session(user, db)
@@ -354,6 +381,7 @@ def google_auth(payload: GoogleAuthPayload, response: Response, db: Session = De
             password_hash=None,
             avatar=picture,
             address=None,
+            is_active=True,
         )
         db.add(user)
         try:
@@ -367,6 +395,7 @@ def google_auth(payload: GoogleAuthPayload, response: Response, db: Session = De
                 status_code=403,
                 detail="This email belongs to an operational staff account. Please use the appropriate staff portal."
             )
+        validate_user_active_and_hierarchy(user, db)
         if picture and not user.avatar:
             user.avatar = picture
 
@@ -445,6 +474,8 @@ def login(payload: LoginRequest, response: Response, db: Session = Depends(get_d
     expected_role = {"franchise": "branch"}.get(payload.role, payload.role)
     if expected_role and user.role != expected_role:
         raise HTTPException(status_code=403, detail="This account cannot access the selected portal")
+
+    validate_user_active_and_hierarchy(user, db)
 
     # Seed accounts accept the demo password; provisioned accounts use PBKDF2 hashes.
     password_ok = False
@@ -527,10 +558,13 @@ def update_user_address(payload: CustomerAddressUpdate, request: Request, db: Se
 def update_user_profile(payload: UserProfileUpdate, request: Request, db: Session = Depends(get_db)):
     user = get_authenticated_user(request, db)
     if payload.email and payload.email.strip().lower() != user.email.lower():
-        existing = db.query(UserModel).filter(UserModel.email.ilike(payload.email.strip().lower())).first()
+        if user.role not in ("admin", "company"):
+            raise HTTPException(status_code=403, detail="Email address for this account can only be changed by your administrator.")
+        new_email = payload.email.strip().lower()
+        existing = db.query(UserModel).filter(UserModel.email.ilike(new_email)).first()
         if existing and existing.id != user.id:
             raise HTTPException(status_code=409, detail="An account with this email already exists")
-        user.email = payload.email.strip().lower()
+        user.email = new_email
     user.name = payload.name.strip()
     if payload.phone is not None:
         user.phone = payload.phone.strip()
@@ -556,6 +590,127 @@ def update_user_profile(payload: UserProfileUpdate, request: Request, db: Sessio
         "phone": user.phone,
         "address": user.address,
     }
+
+
+@router.post("/forgot-password/request-otp")
+def request_forgot_password_otp(payload: ForgotPasswordRequestOtp, db: Session = Depends(get_db)):
+    email = payload.email.strip().lower()
+    user = db.query(UserModel).filter(UserModel.email.ilike(email)).first()
+    if not user and email.endswith("@servsure.com"):
+        alt_email = email.replace("@servsure.com", "@servora.com")
+        user = db.query(UserModel).filter(UserModel.email.ilike(alt_email)).first()
+    elif not user and email.endswith("@servora.com"):
+        alt_email = email.replace("@servora.com", "@servsure.com")
+        user = db.query(UserModel).filter(UserModel.email.ilike(alt_email)).first()
+
+    if not user:
+        raise HTTPException(status_code=404, detail="No account found with this email address. Please check your spelling.")
+
+    if payload.role:
+        expected_role = {"franchise": "branch"}.get(payload.role, payload.role)
+        if expected_role and user.role != expected_role:
+            raise HTTPException(status_code=403, detail="This account does not belong to the selected portal.")
+
+    # Reject if account or parent entity is suspended
+    validate_user_active_and_hierarchy(user, db)
+
+    # Invalidate previous forgot_password OTPs
+    db.query(AuthOtpModel).filter(
+        AuthOtpModel.email == email,
+        AuthOtpModel.purpose == "forgot_password"
+    ).delete(synchronize_session=False)
+
+    otp = f"{secrets.randbelow(900000) + 100000}"
+    record = AuthOtpModel(
+        id=f"otp_{uuid4().hex[:16]}",
+        email=email,
+        otp_hash=hashlib.sha256(otp.encode()).hexdigest(),
+        purpose="forgot_password",
+        expires_at=datetime.utcnow() + timedelta(minutes=10),
+        created_at=datetime.utcnow(),
+    )
+    db.add(record)
+    db.commit()
+
+    send_otp_email(email=email, name=user.name, otp=otp, purpose="forgot_password")
+    return {"status": "success", "message": f"A 6-digit verification code has been sent to {email}"}
+
+
+@router.post("/forgot-password/reset")
+def reset_forgot_password(payload: ForgotPasswordReset, db: Session = Depends(get_db)):
+    email = payload.email.strip().lower()
+    submitted_hash = hashlib.sha256(payload.otp.strip().encode()).hexdigest()
+
+    user = db.query(UserModel).filter(UserModel.email.ilike(email)).first()
+    if not user and email.endswith("@servsure.com"):
+        alt_email = email.replace("@servsure.com", "@servora.com")
+        user = db.query(UserModel).filter(UserModel.email.ilike(alt_email)).first()
+    elif not user and email.endswith("@servora.com"):
+        alt_email = email.replace("@servora.com", "@servsure.com")
+        user = db.query(UserModel).filter(UserModel.email.ilike(alt_email)).first()
+
+    if not user:
+        raise HTTPException(status_code=404, detail="No account found with this email.")
+
+    validate_user_active_and_hierarchy(user, db)
+
+    record = db.query(AuthOtpModel).filter(
+        AuthOtpModel.email == email,
+        AuthOtpModel.purpose == "forgot_password",
+        AuthOtpModel.expires_at > datetime.utcnow()
+    ).order_by(AuthOtpModel.created_at.desc()).first()
+
+    if not record or not hmac.compare_digest(record.otp_hash, submitted_hash):
+        raise HTTPException(status_code=400, detail="Invalid or expired verification code. Please check your code or request a new one.")
+
+    user.password_hash = make_password_hash(payload.new_password)
+
+    # If user had an onboarding invite pending, finalize onboarding
+    if user.role == "company":
+        onboarding = db.query(CompanyOnboardingModel).filter_by(company_id=user.id).first()
+        if onboarding:
+            onboarding.password_set_at = datetime.utcnow()
+    elif user.role in ("branch", "franchise"):
+        onboarding = db.query(BranchOnboardingModel).filter_by(branch_id=user.id).first()
+        if onboarding:
+            onboarding.password_set_at = datetime.utcnow()
+    elif user.role == "technician":
+        onboarding = db.query(TechnicianOnboardingModel).filter_by(technician_id=user.id).first()
+        if onboarding:
+            onboarding.password_set_at = datetime.utcnow()
+
+    # Revoke old active sessions
+    revoke_all_user_sessions(user.id, db)
+    db.delete(record)
+    db.commit()
+
+    return {"status": "success", "message": "Password reset successfully! You can now sign in with your new password."}
+
+
+@router.post("/change-password")
+def change_password(payload: ChangePasswordPayload, request: Request, db: Session = Depends(get_db)):
+    user = get_authenticated_user(request, db)
+
+    # Verify current password
+    password_ok = False
+    if user.password_hash and user.password_hash.startswith("pbkdf2_sha256$"):
+        try:
+            _, rounds, salt, expected = user.password_hash.split("$", 3)
+            actual = hashlib.pbkdf2_hmac("sha256", payload.current_password.encode(), bytes.fromhex(salt), int(rounds)).hex()
+            password_ok = hmac.compare_digest(actual, expected)
+        except (ValueError, TypeError):
+            password_ok = False
+    elif user.password_hash:
+        password_ok = hmac.compare_digest(user.password_hash, payload.current_password)
+    else:
+        password_ok = hmac.compare_digest(payload.current_password, os.getenv("DEMO_PASSWORD", "password123"))
+
+    if not password_ok:
+        raise HTTPException(status_code=400, detail="Current password is incorrect.")
+
+    user.password_hash = make_password_hash(payload.new_password)
+    db.commit()
+    return {"status": "success", "message": "Password updated successfully!"}
 
 @router.get("/demo-users")
 def get_demo_users(db: Session = Depends(get_db)):

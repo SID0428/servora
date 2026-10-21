@@ -19,8 +19,8 @@ from app.db.models import (
 )
 from app.db.session import get_db
 from app.email_service import send_brevo_email
-from app.schemas import BranchCredentialsEmail, CompanyBranchCreate, CompanyOtpVerify, CompanyPasswordSetup
-from app.security import get_authenticated_user
+from app.schemas import AccessTogglePayload, BranchCredentialsEmail, CompanyBranchCreate, CompanyOtpVerify, CompanyPasswordSetup
+from app.security import get_authenticated_user, revoke_all_user_sessions
 
 router = APIRouter(prefix="/api/company", tags=["company portal"])
 onboarding_router = APIRouter(prefix="/api/onboarding/franchise", tags=["franchise onboarding"])
@@ -44,7 +44,7 @@ def require_company(request: Request, db: Session) -> UserModel:
     return user
 
 
-def branch_payload(branch: CompanyBranchModel, onboarding: BranchOnboardingModel | None = None) -> dict:
+def branch_payload(branch: CompanyBranchModel, onboarding: BranchOnboardingModel | None = None, branch_user: UserModel | None = None) -> dict:
     return {
         "id": branch.id,
         "branch_name": branch.branch_name,
@@ -53,6 +53,7 @@ def branch_payload(branch: CompanyBranchModel, onboarding: BranchOnboardingModel
         "mobile": branch.mobile,
         "address": branch.address,
         "pincode": branch.pincode,
+        "is_active": getattr(branch_user, "is_active", True) if branch_user else True,
         "password_set": bool(onboarding and onboarding.password_set_at),
         "password_set_at": onboarding.password_set_at.isoformat() if onboarding and onboarding.password_set_at else None,
         "created_at": branch.created_at.isoformat(),
@@ -99,7 +100,51 @@ def list_company_branches(request: Request, db: Session = Depends(get_db)):
         .all()
     )
     onboarding = {item.branch_id: item for item in db.query(BranchOnboardingModel).all()}
-    return [branch_payload(branch, onboarding.get(branch.id)) for branch in branches]
+    branch_users_by_id = {u.id: u for u in db.query(UserModel).filter(UserModel.role == "branch").all()}
+    branch_users_by_email = {u.email.lower(): u for u in db.query(UserModel).filter(UserModel.role == "branch").all()}
+    return [
+        branch_payload(
+            branch,
+            onboarding.get(branch.id),
+            branch_users_by_id.get(branch.id) or branch_users_by_email.get(branch.email.lower())
+        )
+        for branch in branches
+    ]
+
+
+@router.put("/branches/{branch_id}/access")
+def toggle_branch_access(branch_id: str, payload: AccessTogglePayload, request: Request, db: Session = Depends(get_db)):
+    company = require_company(request, db)
+    branch = db.query(CompanyBranchModel).filter(
+        CompanyBranchModel.id == branch_id,
+        CompanyBranchModel.company_id == company.id
+    ).first()
+    if not branch:
+        raise HTTPException(status_code=404, detail="Franchise branch not found")
+
+    branch_user = db.query(UserModel).filter(
+        (UserModel.id == branch.id) | (UserModel.email == branch.email)
+    ).first()
+    if branch_user:
+        branch_user.is_active = payload.is_active
+
+    if not payload.is_active:
+        if branch_user:
+            revoke_all_user_sessions(branch_user.id, db)
+        revoke_all_user_sessions(branch.id, db)
+        tech_links = db.query(BranchTechnicianModel).filter(BranchTechnicianModel.branch_id == branch.id).all()
+        for bt in tech_links:
+            revoke_all_user_sessions(bt.technician_id, db)
+
+    db.commit()
+    if branch_user:
+        db.refresh(branch_user)
+    onboarding = db.query(BranchOnboardingModel).filter_by(branch_id=branch.id).first()
+    return {
+        "status": "success",
+        "message": f"Franchise branch access {'enabled' if payload.is_active else 'disabled'} successfully",
+        "branch": branch_payload(branch, onboarding, branch_user)
+    }
 
 
 @router.get("/branches/{branch_id}")

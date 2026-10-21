@@ -2604,6 +2604,74 @@ document.addEventListener("DOMContentLoaded", async () => {
     $("cancelEditProfile").addEventListener("click", () => closeDialog("editProfileDialog"));
   }
 
+  // Customer in-dashboard Change Password
+  if ($("toggleCustChangePassBtn")) {
+    $("toggleCustChangePassBtn").addEventListener("click", () => {
+      const form = $("custChangePassForm");
+      const chevron = $("custChangePassChevron");
+      const isHidden = form.classList.toggle("hidden");
+      if (chevron) chevron.textContent = isHidden ? "▼" : "▲";
+      if (!isHidden) {
+        if ($("custCurrentPass")) $("custCurrentPass").value = "";
+        if ($("custNewPass")) $("custNewPass").value = "";
+        if ($("custConfirmPass")) $("custConfirmPass").value = "";
+        const msg = $("custChangePassMsg");
+        if (msg) msg.textContent = "";
+        $("custCurrentPass")?.focus();
+      }
+    });
+  }
+
+  if ($("submitCustChangePassBtn")) {
+    $("submitCustChangePassBtn").addEventListener("click", async () => {
+      const current_password = $("custCurrentPass")?.value;
+      const new_password = $("custNewPass")?.value;
+      const confirm_password = $("custConfirmPass")?.value;
+      const msg = $("custChangePassMsg");
+      const btn = $("submitCustChangePassBtn");
+
+      if (!current_password) {
+        if (msg) { msg.className = "min-h-4 text-xs text-rose-600"; msg.textContent = "Please enter your current password."; }
+        return;
+      }
+      if (!new_password || new_password.length < 8) {
+        if (msg) { msg.className = "min-h-4 text-xs text-rose-600"; msg.textContent = "New password must be at least 8 characters long."; }
+        return;
+      }
+      if (new_password !== confirm_password) {
+        if (msg) { msg.className = "min-h-4 text-xs text-rose-600"; msg.textContent = "New passwords do not match."; }
+        return;
+      }
+
+      btn.disabled = true;
+      btn.textContent = "Updating…";
+      if (msg) { msg.className = "min-h-4 text-xs text-blue-600"; msg.textContent = "Updating password…"; }
+
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/auth/change-password`, {
+          method: "POST",
+          headers: jsonHeaders(),
+          credentials: "include",
+          body: JSON.stringify({ current_password, new_password })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.detail || "Failed to update password.");
+
+        if (msg) { msg.className = "min-h-4 text-xs text-emerald-600 font-semibold"; msg.textContent = "Password updated successfully!"; }
+        showToast("Password updated successfully!");
+        setTimeout(() => {
+          $("custChangePassForm")?.classList.add("hidden");
+          if ($("custChangePassChevron")) $("custChangePassChevron").textContent = "▼";
+        }, 1200);
+      } catch (err) {
+        if (msg) { msg.className = "min-h-4 text-xs text-rose-600"; msg.textContent = err.message; }
+      } finally {
+        btn.disabled = false;
+        btn.textContent = "Update Password";
+      }
+    });
+  }
+
   // Live map dialog close
   if ($("closeLiveMap")) {
     $("closeLiveMap").addEventListener("click", () => closeDialog("liveTrackingMapDialog"));

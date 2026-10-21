@@ -19,3 +19,11 @@
 .otp-meta button:disabled{color:#94a3b8;cursor:not-allowed;text-decoration:none}
 .otp-step-card{background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:18px;margin-bottom:16px;text-align:center}
 .otp-step-icon{width:44px;height:44px;background:#e0f2fe;color:#0284c7;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 12px auto;font-size:20px}
+
+/* Universal Forgot Password Dialog */
+.forgot-modal{width:min(92vw,440px);border:none;border-radius:20px;padding:0;box-shadow:0 25px 50px -12px rgba(15,23,42,0.25);background:#ffffff;overflow:hidden}
+.forgot-modal::backdrop{background:rgba(15,23,42,0.6);backdrop-filter:blur(4px)}
+.forgot-modal-inner{padding:28px 24px}
+.forgot-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px}
+.forgot-close{background:none;border:none;font-size:18px;color:#94a3b8;cursor:pointer;padding:4px 8px;border-radius:8px;line-height:1}
+.forgot-close:hover{background:#f1f5f9;color:#1e293b}

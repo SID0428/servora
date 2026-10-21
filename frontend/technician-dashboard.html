@@ -295,6 +295,32 @@
           <span>Profile details are managed by your franchise branch. Contact your branch manager to update your name, title, or contact info.</span>
         </div>
 
+        <!-- Change Password Accordion -->
+        <div class="pt-2 border-t border-slate-100">
+          <button type="button" id="toggleOpsChangePassBtn" class="w-full py-2 px-3 text-left font-bold text-xs text-slate-700 hover:text-blue-600 bg-slate-50 hover:bg-blue-50/60 rounded-xl transition flex items-center justify-between">
+            <span>🔑 Change Password</span>
+            <span id="opsChangePassChevron" class="text-slate-400">▼</span>
+          </button>
+          <form id="opsChangePassForm" class="hidden mt-2 p-3 bg-slate-50 rounded-xl space-y-2.5 border border-slate-100">
+            <label class="block font-semibold text-slate-700 text-[11px]">
+              Current Password <span class="text-rose-500">*</span>
+              <input id="opsCurrentPass" type="password" required class="mt-1 w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20">
+            </label>
+            <label class="block font-semibold text-slate-700 text-[11px]">
+              New Password (min 8 chars) <span class="text-rose-500">*</span>
+              <input id="opsNewPass" type="password" minlength="8" required class="mt-1 w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20">
+            </label>
+            <label class="block font-semibold text-slate-700 text-[11px]">
+              Confirm New Password <span class="text-rose-500">*</span>
+              <input id="opsConfirmPass" type="password" minlength="8" required class="mt-1 w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20">
+            </label>
+            <p id="opsChangePassMsg" class="min-h-4 text-[11px] text-rose-600" role="status"></p>
+            <div class="flex justify-end gap-2 pt-1">
+              <button id="submitOpsChangePassBtn" type="submit" class="rounded-lg bg-blue-600 hover:bg-blue-700 px-3 py-1.5 font-bold text-white text-xs transition shadow-xs">Update Password</button>
+            </div>
+          </form>
+        </div>
+
         <div class="pt-2 flex items-center justify-end">
           <button type="button" id="opsModalSignOutBtn" class="py-2 px-3 text-rose-600 hover:bg-rose-50 font-bold text-xs rounded-xl transition">
             ↪ Sign out

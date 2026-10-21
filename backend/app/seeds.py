@@ -20,6 +20,9 @@ def seed_database(db: Session):
     if "password_hash" not in user_columns:
         with engine.begin() as connection:
             connection.execute(text("ALTER TABLE users ADD COLUMN password_hash VARCHAR(255) NULL"))
+    if "is_active" not in user_columns:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE users ADD COLUMN is_active BOOLEAN NOT NULL DEFAULT 1"))
 
     appliance_columns = {column["name"] for column in inspect(engine).get_columns("appliances")}
     if "company_id" not in appliance_columns:
@@ -145,24 +148,6 @@ def seed_database(db: Session):
                 address="Sector 18, Noida"
             ),
             UserModel(
-                id="branch_1",
-                name="Amit Sharma",
-                email="amit.noida@crompton-service.com",
-                phone="+91 99887 76655",
-                role="branch",
-                avatar="https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=250&q=80",
-                address="Noida Branch, Sector 63, Noida"
-            ),
-            UserModel(
-                id="company_1",
-                name="Riya Patel",
-                email="riya.patel@crompton.com",
-                phone="+91 98222 33445",
-                role="company",
-                avatar="https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&w=250&q=80",
-                address="Crompton Corporate HQ, Mumbai"
-            ),
-            UserModel(
                 id="admin_1",
                 name="Vikramaditya Rao",
                 email="admin@servsure.com",
@@ -204,32 +189,7 @@ def seed_database(db: Session):
         db.add_all(techs)
         db.commit()
 
-    # 2.5 Seed Branch & Technician assignment
-    if not db.query(CompanyBranchModel).first():
-        branch = CompanyBranchModel(
-            id="branch_1",
-            company_id="company_1",
-            branch_name="Noida Sector 63 Branch",
-            manager_name="Amit Sharma",
-            email="amit.noida@crompton-service.com",
-            mobile="+91 99887 76655",
-            address="A-44, Sector 63, Noida, Uttar Pradesh",
-            pincode="201310"
-        )
-        db.add(branch)
-        db.commit()
-
-    if not db.query(BranchTechnicianModel).first():
-        bt = BranchTechnicianModel(
-            technician_id="tech_1",
-            branch_id="branch_1",
-            address="Sector 18, Noida",
-            pincode="201310"
-        )
-        db.add(bt)
-        db.commit()
-
-    # Clean up any legacy dummy customer and dummy service requests added previously
+    # Clean up any legacy dummy customer, dummy service requests, and dummy company (Riya Patel)
     try:
         dummy_reqs = db.query(ServiceRequestModel).filter(
             (ServiceRequestModel.customer_id == "customer_1") | (ServiceRequestModel.id == "SR-7845")
@@ -245,6 +205,18 @@ def seed_database(db: Session):
         db.query(ApplianceModel).filter(ApplianceModel.user_id == "customer_1").delete(synchronize_session=False)
         db.query(NotificationLogModel).filter(NotificationLogModel.user_id == "customer_1").delete(synchronize_session=False)
         db.query(UserModel).filter(UserModel.id == "customer_1").delete(synchronize_session=False)
+
+        # Remove Riya Patel dummy company & associated branch
+        db.query(BranchTechnicianModel).filter(BranchTechnicianModel.branch_id == "branch_1").delete(synchronize_session=False)
+        db.query(CompanyBranchModel).filter(
+            (CompanyBranchModel.company_id == "company_1") | (CompanyBranchModel.id == "branch_1")
+        ).delete(synchronize_session=False)
+        db.query(UserModel).filter(
+            (UserModel.id == "company_1") | (UserModel.email == "riya.patel@crompton.com")
+        ).delete(synchronize_session=False)
+        db.query(UserModel).filter(
+            (UserModel.id == "branch_1") | (UserModel.email == "amit.noida@crompton-service.com")
+        ).delete(synchronize_session=False)
         db.commit()
     except Exception as cleanup_err:
         db.rollback()

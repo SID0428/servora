@@ -523,10 +523,238 @@ document.addEventListener("DOMContentLoaded", () => {
     byId("togglePassword").setAttribute("aria-label", visible ? "Hide password" : "Show password");
   });
 
-  // Forgot password placeholder
+  // Universal 2-step OTP Forgot Password Modal
+  function openForgotPasswordModal() {
+    let modal = byId("forgotPasswordModal");
+    if (!modal) {
+      modal = document.createElement("dialog");
+      modal.id = "forgotPasswordModal";
+      modal.className = "forgot-modal";
+      modal.innerHTML = `
+        <div class="forgot-modal-inner">
+          <div class="forgot-header">
+            <div style="display:flex;align-items:center;gap:8px">
+              <span class="brand-mark" style="width:28px;height:28px;font-size:18px">s<span>.</span></span>
+              <strong style="font-family:'Manrope',sans-serif;font-size:16px;color:#1e293b">Reset Password</strong>
+            </div>
+            <button type="button" class="forgot-close" id="closeForgotModal" aria-label="Close">✕</button>
+          </div>
+
+          <!-- Step 1: Request OTP -->
+          <div id="forgotStep1">
+            <p style="font-size:13px;color:#64748b;margin:0 0 16px;line-height:1.5">
+              Enter your registered email address. We'll send a 6-digit verification code to reset your password.
+            </p>
+            <form id="forgotStep1Form" class="login-form">
+              <label for="forgotEmail">Registered email address</label>
+              <input id="forgotEmail" type="email" placeholder="name@example.com" required autocomplete="email">
+              <div style="margin-top:16px">
+                <button type="submit" id="forgotSendBtn" class="submit-button" style="width:100%">
+                  <span>Send verification code</span>
+                  <span aria-hidden="true">→</span>
+                </button>
+              </div>
+              <p id="forgotStep1Msg" class="form-message" style="margin-top:12px" aria-live="polite"></p>
+            </form>
+          </div>
+
+          <!-- Step 2: Verify OTP & Set New Password -->
+          <div id="forgotStep2" class="hidden">
+            <div class="otp-step-card">
+              <div class="otp-step-icon">🔒</div>
+              <div style="font-size:14px;font-weight:700;color:#0f172a;margin-bottom:4px">Verify code & new password</div>
+              <p style="font-size:12px;color:#64748b;margin:0">
+                Code sent to <strong id="forgotDisplayEmail" style="color:#0284c7"></strong>
+              </p>
+            </div>
+            <form id="forgotStep2Form" class="login-form">
+              <label for="forgotCode">6-digit verification code</label>
+              <input id="forgotCode" type="text" inputmode="numeric" maxlength="6" placeholder="• • • • • •" class="otp-input" required autocomplete="one-time-code">
+              
+              <div style="margin-top:12px">
+                <label for="forgotNewPass">New password</label>
+                <input id="forgotNewPass" type="password" minlength="8" placeholder="At least 8 characters" required autocomplete="new-password">
+              </div>
+
+              <div style="margin-top:12px">
+                <label for="forgotConfirmPass">Confirm new password</label>
+                <input id="forgotConfirmPass" type="password" minlength="8" placeholder="Repeat new password" required autocomplete="new-password">
+              </div>
+
+              <div class="otp-meta">
+                <button type="button" id="forgotResendBtn">Resend code (<span id="forgotResendTimer">30</span>s)</button>
+                <a href="#" id="forgotBackToEmail">← Change email</a>
+              </div>
+
+              <div style="margin-top:16px">
+                <button type="submit" id="forgotSubmitBtn" class="submit-button" style="width:100%">
+                  <span>Reset password & sign in</span>
+                  <span aria-hidden="true">→</span>
+                </button>
+              </div>
+              <p id="forgotStep2Msg" class="form-message" style="margin-top:12px" aria-live="polite"></p>
+            </form>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(modal);
+
+      byId("closeForgotModal")?.addEventListener("click", () => modal.close());
+
+      let forgotCountdown = null;
+      let activeForgotEmail = "";
+
+      function startForgotTimer(seconds = 30) {
+        const resendBtn = byId("forgotResendBtn");
+        const timerSpan = byId("forgotResendTimer");
+        if (!resendBtn || !timerSpan) return;
+        resendBtn.disabled = true;
+        let remaining = seconds;
+        timerSpan.textContent = remaining;
+        if (forgotCountdown) clearInterval(forgotCountdown);
+        forgotCountdown = setInterval(() => {
+          remaining -= 1;
+          if (remaining <= 0) {
+            clearInterval(forgotCountdown);
+            resendBtn.disabled = false;
+            resendBtn.textContent = "Resend code";
+          } else {
+            timerSpan.textContent = remaining;
+            resendBtn.innerHTML = `Resend code (<span id="forgotResendTimer">${remaining}</span>s)`;
+          }
+        }, 1000);
+      }
+
+      byId("forgotBackToEmail")?.addEventListener("click", (e) => {
+        e.preventDefault();
+        byId("forgotStep2").classList.add("hidden");
+        byId("forgotStep1").classList.remove("hidden");
+        byId("forgotEmail").focus();
+      });
+
+      byId("forgotResendBtn")?.addEventListener("click", async () => {
+        if (!activeForgotEmail) return;
+        const resendBtn = byId("forgotResendBtn");
+        resendBtn.disabled = true;
+        resendBtn.textContent = "Sending…";
+        try {
+          const res = await fetch(`${API_BASE_URL}/api/auth/forgot-password/request-otp`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ email: activeForgotEmail, role }),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(data.detail || "Unable to resend code.");
+          startForgotTimer(30);
+          setMessage("A fresh verification code was sent to your email.", true, "forgotStep2Msg");
+        } catch (err) {
+          setMessage(err.message, false, "forgotStep2Msg");
+          resendBtn.disabled = false;
+          resendBtn.textContent = "Resend code";
+        }
+      });
+
+      byId("forgotStep1Form")?.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const email = byId("forgotEmail").value.trim().toLowerCase();
+        const btn = byId("forgotSendBtn");
+        btn.disabled = true;
+        btn.innerHTML = "<span>Sending code…</span><span aria-hidden=\"true\">→</span>";
+        setMessage("", false, "forgotStep1Msg");
+
+        try {
+          const res = await fetch(`${API_BASE_URL}/api/auth/forgot-password/request-otp`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ email, role }),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(data.detail || "Unable to send reset code.");
+
+          activeForgotEmail = email;
+          byId("forgotStep1").classList.add("hidden");
+          byId("forgotStep2").classList.remove("hidden");
+          byId("forgotDisplayEmail").textContent = email;
+          byId("forgotCode").value = "";
+          byId("forgotNewPass").value = "";
+          byId("forgotConfirmPass").value = "";
+          startForgotTimer(30);
+          setMessage("Verification code sent! Please check your inbox.", true, "forgotStep2Msg");
+          byId("forgotCode").focus();
+        } catch (err) {
+          setMessage(err.message, false, "forgotStep1Msg");
+        } finally {
+          btn.disabled = false;
+          btn.innerHTML = "<span>Send verification code</span><span aria-hidden=\"true\">→</span>";
+        }
+      });
+
+      byId("forgotStep2Form")?.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const otp = byId("forgotCode").value.trim();
+        const new_password = byId("forgotNewPass").value;
+        const confirm_password = byId("forgotConfirmPass").value;
+        const btn = byId("forgotSubmitBtn");
+
+        if (new_password !== confirm_password) {
+          setMessage("Passwords do not match. Please re-enter.", false, "forgotStep2Msg");
+          return;
+        }
+        if (new_password.length < 8) {
+          setMessage("Password must be at least 8 characters long.", false, "forgotStep2Msg");
+          return;
+        }
+
+        btn.disabled = true;
+        btn.innerHTML = "<span>Resetting password…</span><span aria-hidden=\"true\">→</span>";
+        setMessage("", false, "forgotStep2Msg");
+
+        try {
+          const res = await fetch(`${API_BASE_URL}/api/auth/forgot-password/reset`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ email: activeForgotEmail, otp, new_password }),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(data.detail || "Password reset failed.");
+
+          setMessage("Password reset successfully! Redirecting to login…", true, "forgotStep2Msg");
+          setTimeout(() => {
+            modal.close();
+            const identifierInput = byId("identifier");
+            if (identifierInput) {
+              identifierInput.value = activeForgotEmail;
+            }
+            const passInput = byId("password");
+            if (passInput) {
+              passInput.value = "";
+              passInput.focus();
+            }
+            setMessage("Password updated! Please sign in with your new password.", true, "formMessage");
+          }, 1200);
+        } catch (err) {
+          setMessage(err.message, false, "forgotStep2Msg");
+        } finally {
+          btn.disabled = false;
+          btn.innerHTML = "<span>Reset password & sign in</span><span aria-hidden=\"true\">→</span>";
+        }
+      });
+    }
+
+    const existingIdent = (byId("identifier")?.value || "").trim();
+    if (existingIdent && existingIdent.includes("@") && byId("forgotEmail")) {
+      byId("forgotEmail").value = existingIdent;
+    }
+    byId("forgotStep1")?.classList.remove("hidden");
+    byId("forgotStep2")?.classList.add("hidden");
+    setMessage("", false, "forgotStep1Msg");
+    setMessage("", false, "forgotStep2Msg");
+    modal.showModal();
+  }
+
   byId("forgotLink")?.addEventListener("click", (event) => {
     event.preventDefault();
-    setMessage("For password assistance, contact your organization administrator or ServSure support.");
+    openForgotPasswordModal();
   });
 
   checkBackend();

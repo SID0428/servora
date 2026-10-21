@@ -15,8 +15,8 @@ from app.db.models import (
     TechnicianModel, BranchTechnicianModel, ApplianceModel, ServiceRequestModel
 )
 from app.db.session import get_db
-from app.schemas import CompanyCreate, CompanyCredentialsEmail, CompanyOtpVerify, CompanyPasswordSetup
-from app.security import get_authenticated_user
+from app.schemas import AccessTogglePayload, CompanyCreate, CompanyCredentialsEmail, CompanyOtpVerify, CompanyPasswordSetup
+from app.security import get_authenticated_user, revoke_all_user_sessions
 from app.email_service import send_brevo_email
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
@@ -44,6 +44,7 @@ def company_payload(user: UserModel, onboarding: CompanyOnboardingModel | None =
     return {
         "id": user.id, "name": user.name, "email": user.email, "phone": user.phone,
         "address": user.address, "role": user.role,
+        "is_active": getattr(user, "is_active", True),
         "password_set": bool(onboarding and onboarding.password_set_at),
         "password_set_at": f"{onboarding.password_set_at.isoformat()}Z" if onboarding and onboarding.password_set_at else None,
     }
@@ -74,6 +75,38 @@ def list_companies(request: Request, db: Session = Depends(get_db)):
     rows = db.query(UserModel).filter(UserModel.role == "company").order_by(UserModel.name).all()
     onboarding = {item.company_id: item for item in db.query(CompanyOnboardingModel).all()}
     return [company_payload(user, onboarding.get(user.id)) for user in rows]
+
+
+@router.put("/companies/{company_id}/access")
+def toggle_company_access(company_id: str, payload: AccessTogglePayload, request: Request, db: Session = Depends(get_db)):
+    require_admin(request, db)
+    company = db.query(UserModel).filter(UserModel.id == company_id, UserModel.role == "company").first()
+    if not company:
+        raise HTTPException(status_code=404, detail="Company not found")
+
+    company.is_active = payload.is_active
+
+    # If disabling company, immediately revoke active sessions for company, its branches, and technicians
+    if not payload.is_active:
+        revoke_all_user_sessions(company.id, db)
+        branches = db.query(CompanyBranchModel).filter(CompanyBranchModel.company_id == company.id).all()
+        for b in branches:
+            revoke_all_user_sessions(b.id, db)
+            b_user = db.query(UserModel).filter((UserModel.id == b.id) | (UserModel.email == b.email)).first()
+            if b_user:
+                revoke_all_user_sessions(b_user.id, db)
+            tech_links = db.query(BranchTechnicianModel).filter(BranchTechnicianModel.branch_id == b.id).all()
+            for bt in tech_links:
+                revoke_all_user_sessions(bt.technician_id, db)
+
+    db.commit()
+    db.refresh(company)
+    onboarding = db.query(CompanyOnboardingModel).filter_by(company_id=company.id).first()
+    return {
+        "status": "success",
+        "message": f"Company access {'enabled' if payload.is_active else 'disabled'} successfully",
+        "company": company_payload(company, onboarding)
+    }
 
 
 @router.get("/companies/{company_id}")

@@ -24,13 +24,14 @@ from app.db.models import (
 from app.db.session import get_db
 from app.email_service import send_brevo_email
 from app.schemas import (
+    AccessTogglePayload,
     CompanyOtpVerify,
     CompanyPasswordSetup,
     FranchiseTechnicianCreate,
     FranchiseTechnicianUpdate,
     TechnicianCredentialsEmail,
 )
-from app.security import get_authenticated_user
+from app.security import get_authenticated_user, revoke_all_user_sessions
 
 router = APIRouter(prefix="/api/franchise", tags=["franchise portal"])
 onboarding_router = APIRouter(prefix="/api/onboarding/technician", tags=["technician onboarding"])
@@ -77,6 +78,7 @@ def technician_payload(
         "mobile": technician.phone,
         "address": profile.address,
         "pincode": profile.pincode,
+        "is_active": getattr(user, "is_active", True),
         "password_set": bool(onboarding and onboarding.password_set_at),
         "password_set_at": onboarding.password_set_at.isoformat() if onboarding and onboarding.password_set_at else None,
         "created_at": profile.created_at.isoformat(),
@@ -135,6 +137,36 @@ def list_franchise_technicians(request: Request, db: Session = Depends(get_db)):
         .all()
     )
     return [technician_payload(tech, profile, user, onboarding) for profile, tech, user, onboarding in rows]
+
+
+@router.put("/technicians/{technician_id}/access")
+def toggle_technician_access(technician_id: str, payload: AccessTogglePayload, request: Request, db: Session = Depends(get_db)):
+    _, branch = require_franchise(request, db)
+    link = db.query(BranchTechnicianModel).filter(
+        BranchTechnicianModel.technician_id == technician_id,
+        BranchTechnicianModel.branch_id == branch.id
+    ).first()
+    if not link:
+        raise HTTPException(status_code=404, detail="Technician not found in your franchise branch")
+
+    tech_user = db.query(UserModel).filter(UserModel.id == technician_id).first()
+    if not tech_user:
+        raise HTTPException(status_code=404, detail="Technician account not found")
+
+    tech_user.is_active = payload.is_active
+    if not payload.is_active:
+        revoke_all_user_sessions(tech_user.id, db)
+
+    db.commit()
+    db.refresh(tech_user)
+
+    technician = db.query(TechnicianModel).filter(TechnicianModel.id == technician_id).first()
+    onboarding = db.query(TechnicianOnboardingModel).filter_by(technician_id=technician_id).first()
+    return {
+        "status": "success",
+        "message": f"Technician access {'enabled' if payload.is_active else 'disabled'} successfully",
+        "technician": technician_payload(technician, link, tech_user, onboarding)
+    }
 
 
 @router.post("/technicians", status_code=201)

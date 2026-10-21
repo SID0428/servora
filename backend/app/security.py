@@ -7,7 +7,7 @@ from datetime import datetime, timedelta, timezone
 from fastapi import HTTPException, Request
 from sqlalchemy.orm import Session
 
-from app.db.models import UserModel, UserSessionModel
+from app.db.models import UserModel, UserSessionModel, CompanyBranchModel, BranchTechnicianModel
 
 
 SESSION_TTL = timedelta(days=7)
@@ -79,9 +79,56 @@ def get_session_token(request: Request) -> str | None:
     return None
 
 
+def revoke_all_user_sessions(user_id: str, db: Session) -> None:
+    try:
+        db.query(UserSessionModel).filter(UserSessionModel.user_id == user_id).delete(synchronize_session=False)
+        db.commit()
+    except Exception:
+        db.rollback()
+
+
+def validate_user_active_and_hierarchy(user: UserModel, db: Session) -> None:
+    # 1. Direct active status check
+    if hasattr(user, "is_active") and not user.is_active:
+        revoke_all_user_sessions(user.id, db)
+        if user.role == "technician":
+            detail = "Your technician access has been disabled. Please contact your franchise administrator."
+        elif user.role in ("branch", "franchise"):
+            detail = "Your franchise access has been disabled. Please contact your company administrator."
+        elif user.role == "company":
+            detail = "Your company access has been disabled. Please contact the platform administrator."
+        else:
+            detail = "Your access has been disabled. Please contact support."
+        raise HTTPException(status_code=403, detail=detail)
+
+    # 2. Hierarchical parent checks
+    if user.role == "technician":
+        bt = db.query(BranchTechnicianModel).filter(BranchTechnicianModel.technician_id == user.id).first()
+        if bt:
+            branch_user = db.query(UserModel).filter(UserModel.id == bt.branch_id).first()
+            if branch_user and hasattr(branch_user, "is_active") and not branch_user.is_active:
+                revoke_all_user_sessions(user.id, db)
+                raise HTTPException(status_code=403, detail="Your franchise access has been disabled. Please contact your company administrator.")
+            branch_entity = db.query(CompanyBranchModel).filter(CompanyBranchModel.id == bt.branch_id).first()
+            if branch_entity and branch_entity.company_id:
+                company_user = db.query(UserModel).filter(UserModel.id == branch_entity.company_id).first()
+                if company_user and hasattr(company_user, "is_active") and not company_user.is_active:
+                    revoke_all_user_sessions(user.id, db)
+                    raise HTTPException(status_code=403, detail="Your company access has been disabled. Please contact the platform administrator.")
+
+    elif user.role in ("branch", "franchise"):
+        branch_entity = db.query(CompanyBranchModel).filter(CompanyBranchModel.id == user.id).first()
+        if branch_entity and branch_entity.company_id:
+            company_user = db.query(UserModel).filter(UserModel.id == branch_entity.company_id).first()
+            if company_user and hasattr(company_user, "is_active") and not company_user.is_active:
+                revoke_all_user_sessions(user.id, db)
+                raise HTTPException(status_code=403, detail="Your company access has been disabled. Please contact the platform administrator.")
+
+
 def get_authenticated_user(request: Request, db: Session) -> UserModel:
     token = get_session_token(request)
     custom_uid = request.headers.get("x-servsure-user-id") or request.headers.get("x-servora-user-id")
+    user: UserModel | None = None
 
     if token:
         token_hash = hashlib.sha256(token.encode()).hexdigest()
@@ -98,7 +145,6 @@ def get_authenticated_user(request: Request, db: Session) -> UserModel:
             # Automatically extend / slide session TTL forward on activity
             try:
                 session_exp = session.expires_at
-                # Handle naive datetime from DB
                 if session_exp.tzinfo is None:
                     session_exp = session_exp.replace(tzinfo=timezone.utc)
                 if session_exp - now_utc() < timedelta(days=6):
@@ -109,72 +155,68 @@ def get_authenticated_user(request: Request, db: Session) -> UserModel:
 
             try:
                 user = db.query(UserModel).filter(UserModel.id == session.user_id).first()
-                if user:
-                    return user
             except Exception:
                 db.rollback()
 
         # Fallback 1: verify stateless cryptographic signature
-        signed_user_id = verify_signed_token(token)
-        if signed_user_id:
-            try:
-                user = db.query(UserModel).filter(UserModel.id == signed_user_id).first()
-                if user:
-                    # Persist session to DB if not present
-                    try:
-                        db.add(UserSessionModel(
-                            token_hash=token_hash,
-                            user_id=user.id,
-                            expires_at=(now_utc() + SESSION_TTL).replace(tzinfo=None),
-                        ))
-                        db.commit()
-                    except Exception:
-                        db.rollback()
-                    return user
-            except Exception:
-                db.rollback()
+        if not user:
+            signed_user_id = verify_signed_token(token)
+            if signed_user_id:
+                try:
+                    user = db.query(UserModel).filter(UserModel.id == signed_user_id).first()
+                    if user:
+                        try:
+                            db.add(UserSessionModel(
+                                token_hash=token_hash,
+                                user_id=user.id,
+                                expires_at=(now_utc() + SESSION_TTL).replace(tzinfo=None),
+                            ))
+                            db.commit()
+                        except Exception:
+                            db.rollback()
+                except Exception:
+                    db.rollback()
 
         # Fallback 2: token starts with srv1. and contains user_id
-        if token.startswith("srv1."):
+        if not user and token.startswith("srv1."):
             parts = token.rsplit(".", 2)
             if len(parts) == 3:
                 extracted_uid = parts[0][5:]
                 if extracted_uid:
                     try:
                         user = db.query(UserModel).filter(UserModel.id == extracted_uid).first()
-                        if user:
-                            return user
                     except Exception:
                         db.rollback()
 
         # Fallback 3: token is user ID directly
-        try:
-            user = db.query(UserModel).filter(UserModel.id == token).first()
-            if user:
-                return user
-        except Exception:
-            db.rollback()
+        if not user:
+            try:
+                user = db.query(UserModel).filter(UserModel.id == token).first()
+            except Exception:
+                db.rollback()
 
     # Fallback 4: custom header X-Servora-User-Id
-    if custom_uid:
+    if not user and custom_uid:
         try:
             user = db.query(UserModel).filter(UserModel.id == custom_uid).first()
-            if user:
-                return user
         except Exception:
             db.rollback()
 
     # Fallback 5: cookie-based authentication
-    cookie_user_id = request.cookies.get("servsure_user_id") or request.cookies.get("servora_user_id")
-    if cookie_user_id:
-        try:
-            user = db.query(UserModel).filter(UserModel.id == cookie_user_id).first()
-            if user:
-                return user
-        except Exception:
-            db.rollback()
+    if not user:
+        cookie_user_id = request.cookies.get("servsure_user_id") or request.cookies.get("servora_user_id")
+        if cookie_user_id:
+            try:
+                user = db.query(UserModel).filter(UserModel.id == cookie_user_id).first()
+            except Exception:
+                db.rollback()
 
-    raise HTTPException(status_code=401, detail="Not authenticated")
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    # Enforce active status & hierarchy checks
+    validate_user_active_and_hierarchy(user, db)
+    return user
 
 
 def revoke_user_session(request: Request, db: Session) -> None:
@@ -186,6 +228,7 @@ def revoke_user_session(request: Request, db: Session) -> None:
         session = db.query(UserSessionModel).filter_by(token_hash=token_hash).first()
         if session:
             db.delete(session)
+            db.commit()
     except Exception:
         db.rollback()
 

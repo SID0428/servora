@@ -17,6 +17,23 @@ class UserBase(BaseModel):
     role: str
     avatar: Optional[str] = None
     address: Optional[str] = None
+    is_active: bool = True
+
+class AccessTogglePayload(BaseModel):
+    is_active: bool
+
+class ForgotPasswordRequestOtp(BaseModel):
+    email: str = Field(min_length=5, max_length=128, pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+    role: Optional[str] = None
+
+class ForgotPasswordReset(BaseModel):
+    email: str = Field(min_length=5, max_length=128, pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+    otp: str = Field(min_length=6, max_length=6)
+    new_password: str = Field(min_length=8, max_length=128)
+
+class ChangePasswordPayload(BaseModel):
+    current_password: str = Field(min_length=1, max_length=128)
+    new_password: str = Field(min_length=8, max_length=128)
 
 class LoginRequest(BaseModel):
     identifier: str

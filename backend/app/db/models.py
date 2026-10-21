@@ -13,6 +13,7 @@ class UserModel(Base):
     password_hash = Column(String(255), nullable=True)
     avatar = Column(Text, nullable=True)
     address = Column(Text, nullable=True)
+    is_active = Column(Boolean, default=True, nullable=False)
 
 class UserSessionModel(Base):
     __tablename__ = "user_sessions"

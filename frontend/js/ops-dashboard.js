@@ -647,25 +647,58 @@ function renderCompanyBranches() {
   if ($("activityContent")) $("activityContent").innerHTML = `<div class="section-empty">Branch records are visible only to your company account.</div>`;
   if ($("bottomTitle")) $("bottomTitle").textContent = "Company branches";
   if ($("bottomSubtitle")) $("bottomSubtitle").textContent = "Branch contacts registered by your company.";
-  if ($("requestHead")) $("requestHead").innerHTML = ["Branch", "Franchise owner or manager", "Email", "Mobile number", "Address", "Pincode", "Portal access", "Action"].map((name) => `<th>${safe(name)}</th>`).join("");
+  if ($("requestHead")) $("requestHead").innerHTML = ["Branch", "Franchise owner or manager", "Email", "Mobile number", "Address", "Access Status", "Actions"].map((name) => `<th>${safe(name)}</th>`).join("");
   const query = $("requestSearch") ? $("requestSearch").value.trim().toLowerCase() : "";
   const filtered = branches.filter((branch) => [branch.branch_name, branch.manager_name, branch.email, branch.mobile, branch.address, branch.pincode].join(" ").toLowerCase().includes(query));
   if ($("requestRows")) $("requestRows").innerHTML = filtered.length ? filtered.map((branch) => {
-    const status = branch.password_set ? `Password set · ${new Intl.DateTimeFormat("en-IN", { dateStyle: "medium", timeStyle: "short" }).format(new Date(branch.password_set_at))}` : "Password not set";
-    const access = branch.password_set ? `<span class="status-pill completed">Active</span>` : `<button class="table-action font-semibold text-amber-600" data-resend-franchise="${safe(branch.id)}">Resend setup link →</button>`;
-    const action = `<button type="button" class="table-action font-bold text-blue-600 hover:text-blue-800 flex items-center gap-1" data-view-branch="${safe(branch.id)}">View Details →</button>`;
-    return `<tr class="hover:bg-slate-50/80 cursor-pointer" data-branch-row="${safe(branch.id)}">
+    const isAccessActive = branch.is_active !== false;
+    const accessPill = isAccessActive ? `<span class="status-pill completed">Active</span>` : `<span class="status-pill cancelled">Access Suspended</span>`;
+    const toggleBtn = isAccessActive
+      ? `<button type="button" class="table-action text-rose-600 hover:bg-rose-50 font-semibold" data-toggle-branch-access="${safe(branch.id)}" data-next-active="false">🚫 Disable Access</button>`
+      : `<button type="button" class="table-action text-emerald-600 hover:bg-emerald-50 font-semibold" data-toggle-branch-access="${safe(branch.id)}" data-next-active="true">✅ Enable Access</button>`;
+    const action = `<div class="flex items-center gap-1.5"><button type="button" class="table-action font-bold text-blue-600 hover:text-blue-800 flex items-center gap-1" data-view-branch="${safe(branch.id)}">View Details →</button>${toggleBtn}</div>`;
+
+    return `<tr class="hover:bg-slate-50/80 cursor-pointer ${isAccessActive ? '' : 'opacity-70 bg-slate-50'}" data-branch-row="${safe(branch.id)}">
       <td><button type="button" class="font-bold text-slate-900 hover:text-blue-600 text-left" data-view-branch="${safe(branch.id)}">${safe(branch.branch_name)}</button></td>
-      <td>${safe(branch.manager_name)}<small class="company-password-state ${branch.password_set ? "is-set" : "is-pending"}">${safe(status)}</small></td>
+      <td>${safe(branch.manager_name)}</td>
       <td>${safe(branch.email)}</td>
       <td>${safe(branch.mobile)}</td>
       <td>${safe(branch.address)}<small class="block text-slate-400 font-mono">PIN: ${safe(branch.pincode)}</small></td>
-      <td>${access}</td>
+      <td>${accessPill}</td>
       <td>${action}</td>
     </tr>`;
-  }).join("") : `<tr><td class="empty-row" colspan="8">${query ? "No branches match your search." : "No branches yet. Add your first branch to get started."}</td></tr>`;
+  }).join("") : `<tr><td class="empty-row" colspan="7">${query ? "No branches match your search." : "No branches yet. Add your first branch to get started."}</td></tr>`;
   if ($("requestCount")) $("requestCount").textContent = `${filtered.length} branch${filtered.length === 1 ? "" : "es"} shown`;
   if ($("resourceGrid")) $("resourceGrid").innerHTML = "";
+
+  document.querySelectorAll("[data-toggle-branch-access]").forEach((button) => button.addEventListener("click", async (e) => {
+    e.stopPropagation();
+    const branchId = button.dataset.toggleBranchAccess;
+    const enable = button.dataset.nextActive === "true";
+    const branch = branches.find((item) => item.id === branchId);
+    const branchName = branch ? branch.branch_name : "this franchise branch";
+    const actionText = enable ? "enable access for" : "disable access for";
+    const note = enable ? "" : " This will immediately terminate all active sessions for this franchise and its technicians.";
+    if (!window.confirm(`Are you sure you want to ${actionText} ${branchName}?${note}`)) return;
+
+    button.disabled = true;
+    try {
+      const res = await companyApi(`/branches/${encodeURIComponent(branchId)}/access`, {
+        method: "PUT",
+        body: JSON.stringify({ is_active: enable })
+      });
+      showToast(res.message || `Franchise access ${enable ? "enabled" : "disabled"} successfully.`);
+      if (res.branch) {
+        const idx = branches.findIndex((b) => b.id === branchId);
+        if (idx !== -1) branches[idx] = { ...branches[idx], ...res.branch };
+      }
+      renderCompanyBranches();
+    } catch (err) {
+      showToast(err.message, "error");
+      button.disabled = false;
+    }
+  }));
+
   document.querySelectorAll("[data-resend-franchise]").forEach((button) => button.addEventListener("click", async (e) => {
     e.stopPropagation();
     const branch = branches.find((item) => item.id === button.dataset.resendFranchise);
@@ -1023,19 +1056,56 @@ function renderFranchiseTechnicians() {
   if ($("activityContent")) $("activityContent").innerHTML = `<div class="section-empty">Technicians and their contact details are visible only to your franchise.</div>`;
   if ($("bottomTitle")) $("bottomTitle").textContent = "Franchise technicians";
   if ($("bottomSubtitle")) $("bottomSubtitle").textContent = "Technician accounts registered by this franchise.";
-  if ($("requestHead")) $("requestHead").innerHTML = ["Technician", "Title or specialty", "Email", "Mobile number", "Address", "Pincode", "Portal access", "Actions"].map((label) => `<th>${safe(label)}</th>`).join("");
+  if ($("requestHead")) $("requestHead").innerHTML = ["Technician", "Title or specialty", "Email", "Mobile number", "Address", "Access Status", "Actions"].map((label) => `<th>${safe(label)}</th>`).join("");
   const query = $("requestSearch") ? $("requestSearch").value.trim().toLowerCase() : "";
   const filtered = technicians.filter((technician) => [technician.name, technician.title, technician.email, technician.mobile, technician.address, technician.pincode].join(" ").toLowerCase().includes(query));
   if ($("requestRows")) $("requestRows").innerHTML = filtered.length ? filtered.map((technician) => {
-    const date = technician.password_set_at ? new Intl.DateTimeFormat("en-IN", { dateStyle: "medium", timeStyle: "short" }).format(new Date(technician.password_set_at)) : "";
-    const status = technician.password_set ? `Password set · ${date}` : "Password not set";
-    const access = technician.password_set ? `<span class="status-pill completed">Active</span>` : `<button class="table-action" data-resend-technician="${safe(technician.id)}">Resend setup link →</button>`;
-    const actions = `<button class="table-action font-semibold text-blue-600 hover:text-blue-800" data-edit-technician="${safe(technician.id)}">✏️ Edit Details</button>`;
-    return `<tr><td><strong>${safe(technician.name)}</strong><small class="company-password-state ${technician.password_set ? "is-set" : "is-pending"}">${safe(status)}</small></td><td>${safe(technician.title)}</td><td>${safe(technician.email)}</td><td>${safe(technician.mobile)}</td><td>${safe(technician.address)}</td><td>${safe(technician.pincode)}</td><td>${access}</td><td>${actions}</td></tr>`;
-  }).join("") : `<tr><td class="empty-row" colspan="8">${query ? "No technicians match your search." : "No technicians yet. Add your first technician to get started."}</td></tr>`;
+    const isAccessActive = technician.is_active !== false;
+    const accessPill = isAccessActive ? `<span class="status-pill completed">Active</span>` : `<span class="status-pill cancelled">Access Suspended</span>`;
+    const toggleBtn = isAccessActive
+      ? `<button class="table-action text-rose-600 hover:bg-rose-50 font-semibold" data-toggle-tech-access="${safe(technician.id)}" data-next-active="false">🚫 Disable Access</button>`
+      : `<button class="table-action text-emerald-600 hover:bg-emerald-50 font-semibold" data-toggle-tech-access="${safe(technician.id)}" data-next-active="true">✅ Enable Access</button>`;
+    const actions = `<div class="flex items-center gap-1.5"><button class="table-action font-semibold text-blue-600 hover:text-blue-800" data-edit-technician="${safe(technician.id)}">✏️ Edit</button>${toggleBtn}</div>`;
+    return `<tr class="${isAccessActive ? '' : 'opacity-70 bg-slate-50'}">
+      <td><strong>${safe(technician.name)}</strong></td>
+      <td>${safe(technician.title)}</td>
+      <td>${safe(technician.email)}</td>
+      <td>${safe(technician.mobile)}</td>
+      <td>${safe(technician.address)}<small class="block text-slate-400 font-mono">PIN: ${safe(technician.pincode)}</small></td>
+      <td>${accessPill}</td>
+      <td>${actions}</td>
+    </tr>`;
+  }).join("") : `<tr><td class="empty-row" colspan="7">${query ? "No technicians match your search." : "No technicians yet. Add your first technician to get started."}</td></tr>`;
   if ($("requestCount")) $("requestCount").textContent = `${filtered.length} technician${filtered.length === 1 ? "" : "s"} shown`;
   if ($("requestSearch")) $("requestSearch").placeholder = "Search technicians";
   if ($("resourceGrid")) $("resourceGrid").innerHTML = "";
+
+  document.querySelectorAll("[data-toggle-tech-access]").forEach((button) => button.addEventListener("click", async () => {
+    const techId = button.dataset.toggleTechAccess;
+    const enable = button.dataset.nextActive === "true";
+    const technician = technicians.find((item) => item.id === techId);
+    const techName = technician ? technician.name : "this technician";
+    const actionText = enable ? "enable access for" : "disable access for";
+    const note = enable ? "" : " This will immediately terminate all active sessions for this technician.";
+    if (!window.confirm(`Are you sure you want to ${actionText} ${techName}?${note}`)) return;
+
+    button.disabled = true;
+    try {
+      const res = await franchiseApi(`/technicians/${encodeURIComponent(techId)}/access`, {
+        method: "PUT",
+        body: JSON.stringify({ is_active: enable })
+      });
+      showToast(res.message || `Technician access ${enable ? "enabled" : "disabled"} successfully.`);
+      if (res.technician) {
+        const idx = technicians.findIndex((t) => t.id === techId);
+        if (idx !== -1) technicians[idx] = { ...technicians[idx], ...res.technician };
+      }
+      renderFranchiseTechnicians();
+    } catch (err) {
+      showToast(err.message, "error");
+      button.disabled = false;
+    }
+  }));
   document.querySelectorAll("[data-resend-technician]").forEach((button) => button.addEventListener("click", async () => {
     const technician = technicians.find((item) => item.id === button.dataset.resendTechnician);
     if (!technician) return;
@@ -1073,19 +1143,50 @@ function renderCompanies() {
   if ($("activityContent")) $("activityContent").innerHTML = `<div class="section-empty">Click on any company row or "View Details →" to inspect its branches, technicians, registered appliances, and active tickets.</div>`;
   if ($("bottomTitle")) $("bottomTitle").textContent = "Company directory";
   if ($("bottomSubtitle")) $("bottomSubtitle").textContent = "Company portal accounts registered on ServSure.";
-  if ($("requestHead")) $("requestHead").innerHTML = ["Company", "Administrator email", "Phone", "Portal", "Details", "Action"].map((name) => `<th>${name}</th>`).join("");
+  if ($("requestHead")) $("requestHead").innerHTML = ["Company", "Administrator email", "Phone", "Access Status", "Details", "Action"].map((name) => `<th>${name}</th>`).join("");
   $("requestRows").innerHTML = companies.length ? companies.map((company) => {
-    const passwordDate = company.password_set_at ? new Intl.DateTimeFormat("en-IN", { dateStyle: "medium", timeStyle: "short" }).format(new Date(company.password_set_at)) : "Not set yet";
-    const setupStatus = company.password_set ? `Password set · ${passwordDate}` : "Password not set";
-    return `<tr class="cursor-pointer hover:bg-blue-50/40 transition" onclick="viewCompanyDetails('${safe(company.id)}')">
-      <td><div class="customer-cell"><span class="customer-avatar">${safe(company.name.split(/\s+/).map((part) => part[0]).slice(0, 2).join(""))}</span><span class="customer-name">${safe(company.name)}<small>${safe(company.id)}</small><small class="company-password-state ${company.password_set ? "is-set" : "is-pending"}">${safe(setupStatus)}</small></span></div></td>
+    const isAccessActive = company.is_active !== false;
+    const accessPill = isAccessActive ? `<span class="status-pill completed">Active</span>` : `<span class="status-pill cancelled">Access Suspended</span>`;
+    const toggleBtn = isAccessActive
+      ? `<button class="table-action text-rose-600 hover:bg-rose-50 font-semibold" onclick="event.stopPropagation();" data-toggle-company-access="${safe(company.id)}" data-next-active="false">🚫 Disable Access</button>`
+      : `<button class="table-action text-emerald-600 hover:bg-emerald-50 font-semibold" onclick="event.stopPropagation();" data-toggle-company-access="${safe(company.id)}" data-next-active="true">✅ Enable Access</button>`;
+
+    return `<tr class="cursor-pointer hover:bg-blue-50/40 transition ${isAccessActive ? '' : 'opacity-70 bg-slate-50'}" onclick="viewCompanyDetails('${safe(company.id)}')">
+      <td><div class="customer-cell"><span class="customer-avatar">${safe(company.name.split(/\s+/).map((part) => part[0]).slice(0, 2).join(""))}</span><span class="customer-name">${safe(company.name)}<small>${safe(company.id)}</small></span></div></td>
       <td>${safe(company.email)}</td>
       <td>${safe(company.phone)}</td>
-      <td><span class="status-pill completed">Company portal</span></td>
+      <td>${accessPill}</td>
       <td><button class="table-action px-2.5 py-1 rounded bg-blue-50 text-blue-700 hover:bg-blue-100 font-semibold text-xs" onclick="event.stopPropagation(); viewCompanyDetails('${safe(company.id)}')">View Details →</button></td>
-      <td>${company.password_set ? `<span class="status-pill completed">Active</span>` : `<button class="table-action" onclick="event.stopPropagation();" data-send-credentials="${safe(company.id)}">Resend setup link →</button>`}</td>
+      <td>${toggleBtn}</td>
     </tr>`;
   }).join("") : `<tr><td class="empty-row" colspan="6">No companies yet. Add your first company to get started.</td></tr>`;
+
+  document.querySelectorAll("[data-toggle-company-access]").forEach((button) => button.addEventListener("click", async () => {
+    const companyId = button.dataset.toggleCompanyAccess;
+    const enable = button.dataset.nextActive === "true";
+    const company = companies.find((item) => item.id === companyId);
+    const companyName = company ? company.name : "this company";
+    const actionText = enable ? "enable access for" : "disable access for";
+    const note = enable ? "" : " This will immediately terminate all active sessions for this company, its branches, and technicians.";
+    if (!window.confirm(`Are you sure you want to ${actionText} ${companyName}?${note}`)) return;
+
+    button.disabled = true;
+    try {
+      const res = await adminApi(`/companies/${encodeURIComponent(companyId)}/access`, {
+        method: "PUT",
+        body: JSON.stringify({ is_active: enable })
+      });
+      showToast(res.message || `Company access ${enable ? "enabled" : "disabled"} successfully.`);
+      if (res.company) {
+        const idx = companies.findIndex((c) => c.id === companyId);
+        if (idx !== -1) companies[idx] = { ...companies[idx], ...res.company };
+      }
+      renderCompanies();
+    } catch (err) {
+      showToast(err.message, "error");
+      button.disabled = false;
+    }
+  }));
 
   document.querySelectorAll("[data-send-credentials]").forEach((button) => button.addEventListener("click", async () => {
     const company = companies.find((item) => item.id === button.dataset.sendCredentials);
@@ -4291,6 +4392,69 @@ function initEvents() {
     $("logoutBtn")?.click();
   });
 
+  // Change Password Accordion in Ops Profile Modal
+  $("toggleOpsChangePassBtn")?.addEventListener("click", () => {
+    const form = $("opsChangePassForm");
+    const chev = $("opsChangePassChevron");
+    if (!form) return;
+    const isHidden = form.classList.toggle("hidden");
+    if (chev) chev.textContent = isHidden ? "▼" : "▲";
+    if (!isHidden) {
+      form.reset();
+      if ($("opsChangePassMsg")) $("opsChangePassMsg").textContent = "";
+      $("opsCurrentPass")?.focus();
+    }
+  });
+
+  $("opsChangePassForm")?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const current_password = $("opsCurrentPass")?.value;
+    const new_password = $("opsNewPass")?.value;
+    const confirm_password = $("opsConfirmPass")?.value;
+    const msg = $("opsChangePassMsg");
+    const btn = $("submitOpsChangePassBtn");
+
+    if (!current_password) {
+      if (msg) { msg.className = "min-h-4 text-[11px] text-rose-600 font-semibold"; msg.textContent = "Please enter your current password."; }
+      return;
+    }
+    if (!new_password || new_password.length < 8) {
+      if (msg) { msg.className = "min-h-4 text-[11px] text-rose-600 font-semibold"; msg.textContent = "New password must be at least 8 characters long."; }
+      return;
+    }
+    if (new_password !== confirm_password) {
+      if (msg) { msg.className = "min-h-4 text-[11px] text-rose-600 font-semibold"; msg.textContent = "New passwords do not match."; }
+      return;
+    }
+
+    if (btn) btn.disabled = true;
+    if (msg) { msg.className = "min-h-4 text-[11px] text-blue-600 font-semibold"; msg.textContent = "Updating password…"; }
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/auth/change-password`, {
+        method: "POST",
+        headers: jsonHeaders(),
+        credentials: "include",
+        body: JSON.stringify({ current_password, new_password })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(extractErrorMessage(data, "Failed to update password."));
+
+      if (msg) { msg.className = "min-h-4 text-[11px] text-emerald-600 font-semibold"; msg.textContent = "Password updated successfully!"; }
+      showToast("Password updated successfully!");
+      $("opsChangePassForm")?.reset();
+      setTimeout(() => {
+        $("opsChangePassForm")?.classList.add("hidden");
+        if ($("opsChangePassChevron")) $("opsChangePassChevron").textContent = "▼";
+        if (msg) msg.textContent = "";
+      }, 1400);
+    } catch (err) {
+      if (msg) { msg.className = "min-h-4 text-[11px] text-rose-600 font-semibold"; msg.textContent = extractErrorMessage(err.message, "Failed to update password."); }
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  });
+
   $("opsProfileEditForm")?.addEventListener("submit", async (e) => {
     e.preventDefault();
     const btn = $("saveOpsEditBtn");
@@ -4303,18 +4467,23 @@ function initEvents() {
     const name = $("editOpsName")?.value.trim();
     const phone = $("editOpsPhone")?.value.trim();
     const address = $("editOpsAddress")?.value.trim();
+    const payload = { name, phone, address };
+    const canEditEmail = (user?.role === "admin" || user?.role === "company" || role === "admin" || role === "company");
+    if (canEditEmail && $("editOpsEmail")) {
+      payload.email = $("editOpsEmail").value.trim().toLowerCase();
+    }
     try {
       const res = await fetch(`${API_BASE_URL}/api/auth/profile`, {
         method: "PUT",
         credentials: "include",
         headers: jsonHeaders(),
-        body: JSON.stringify({ name, phone, address })
+        body: JSON.stringify(payload)
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         throw new Error(extractErrorMessage(data, "Failed to update profile"));
       }
-      user = { ...user, name: data.name, phone: data.phone, address: data.address };
+      user = { ...user, name: data.name, phone: data.phone, address: data.address, email: data.email || user.email };
       const roleKey = (user.role === "branch" || user.role === "franchise") ? "franchise" : user.role;
       localStorage.setItem("servsure_user", JSON.stringify(user));
       localStorage.setItem(`servsure_user_${roleKey}`, JSON.stringify(user));
@@ -4323,6 +4492,7 @@ function initEvents() {
       setProfile();
 
       if ($("opsProfileNameText")) $("opsProfileNameText").textContent = user.name;
+      if ($("opsProfileEmailText")) $("opsProfileEmailText").textContent = user.email;
       if ($("opsProfilePhoneText")) $("opsProfilePhoneText").textContent = user.phone;
       if ($("opsProfileAddressText")) $("opsProfileAddressText").textContent = user.address || "Not provided";
       if ($("opsProfileAvatar")) $("opsProfileAvatar").textContent = user.name.split(/\s+/).map((p) => p[0]).slice(0, 2).join("").toUpperCase();
@@ -4504,10 +4674,24 @@ function populateOpsProfileModal() {
     $("opsProfileBranchRow").classList.add("hidden");
   }
 
+  const canEditEmail = (role === "admin" || role === "company" || displayRole === "admin" || displayRole === "company");
+  if ($("editOpsEmailWrap")) $("editOpsEmailWrap").style.display = canEditEmail ? "" : "none";
+  if ($("editOpsEmail")) {
+    $("editOpsEmail").value = displayEmail;
+    $("editOpsEmail").disabled = !canEditEmail;
+  }
+
   if ($("editOpsName")) $("editOpsName").value = displayName;
   if ($("editOpsPhone")) $("editOpsPhone").value = (displayPhone === "+91 98765 43210" && !user?.phone) ? "" : displayPhone;
   if ($("editOpsAddress")) $("editOpsAddress").value = user?.address || "";
   if ($("editOpsMessage")) $("editOpsMessage").textContent = "";
+
+  if ($("opsChangePassForm")) {
+    $("opsChangePassForm").reset();
+    $("opsChangePassForm").classList.add("hidden");
+  }
+  if ($("opsChangePassChevron")) $("opsChangePassChevron").textContent = "▼";
+  if ($("opsChangePassMsg")) $("opsChangePassMsg").textContent = "";
 
   const isTechnician = displayRole === "technician" || role === "technician";
   if ($("openEditOpsProfileBtn")) $("openEditOpsProfileBtn").style.display = isTechnician ? "none" : "";
