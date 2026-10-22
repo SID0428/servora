@@ -210,7 +210,7 @@ class ServiceRequestDetail(BaseModel):
     appointment_slot: str
     technician: Optional[TechnicianBase] = None
     timeline: List[TimelineStep] = Field(default_factory=list)
-    verification_otp: str
+    verification_otp: Optional[str] = None
     start_otp: Optional[str] = None
     completion_otp: Optional[str] = None
     previous_technician_id: Optional[str] = None

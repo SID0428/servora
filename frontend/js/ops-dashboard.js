@@ -2978,7 +2978,7 @@ function renderAdminBranches() {
         <tr>
           <td>
             <strong class="text-slate-900 block font-bold">${safe(b.branch_name || b.name)}</strong>
-            <small class="text-slate-500">👤 Manager: ${safe(b.manager_name || "—")}</small>
+            <small class="text-slate-500">👤 Manager: ${safe((b.manager_name && b.manager_name !== "—") ? b.manager_name : "Not assigned")}</small>
           </td>
           <td>
             <span class="inline-flex items-center gap-1 font-semibold text-slate-800">🏢 ${safe(b.company_name || "ServSure Partner")}</span>
@@ -2992,8 +2992,12 @@ function renderAdminBranches() {
             <small class="text-blue-600 font-mono font-semibold">PIN: ${safe(b.pincode || "—")}</small>
           </td>
           <td>
-            <span class="block font-medium text-slate-800 text-xs">👨‍🔧 ${b.total_techs || 0} technicians</span>
-            <small class="text-slate-500">⚡ ${b.ongoing_jobs || 0} ongoing / ${b.total_jobs || 0} total</small>
+            <span class="block font-medium ${b.total_techs ? 'text-slate-800' : 'text-slate-400'} text-xs">
+              ${b.total_techs ? `👨‍🔧 ${b.total_techs} technician${b.total_techs > 1 ? 's' : ''}` : '👤 No technicians'}
+            </span>
+            <small class="${b.total_jobs ? 'text-slate-500' : 'text-slate-400'}">
+              ${b.total_jobs ? `⚡ ${b.ongoing_jobs || 0} ongoing / ${b.total_jobs} total` : '⚡ No active workload'}
+            </small>
           </td>
           <td>
             <span class="status-pill ${b.is_active ? 'completed' : 'pending'}">${b.is_active ? 'Active' : 'Disabled'}</span>
@@ -4287,9 +4291,7 @@ window.viewRequestDetails = async function(requestId) {
     }
   }
 
-  // Security OTP Handshake
-  if ($("ticketModalStartOtp")) $("ticketModalStartOtp").textContent = req.start_otp || req.verification_otp || "••••";
-  if ($("ticketModalCompOtp")) $("ticketModalCompOtp").textContent = req.completion_otp || "••••";
+
 
   // Digital Job Card & Financial Settlement Card
   const jc = req.job_card || req.previous_job_card;

@@ -92,7 +92,7 @@ def format_feedback(fb: ServiceFeedbackModel) -> ServiceFeedbackResponse:
         created_at=fb.created_at
     )
 
-def format_request_detail(req: ServiceRequestModel, db: Session) -> ServiceRequestDetail:
+def format_request_detail(req: ServiceRequestModel, db: Session, user: Optional[UserModel] = None) -> ServiceRequestDetail:
     tech = None
     if req.technician_id:
         tech_model = db.query(TechnicianModel).filter(TechnicianModel.id == req.technician_id).first()
@@ -139,8 +139,15 @@ def format_request_detail(req: ServiceRequestModel, db: Session) -> ServiceReque
         except Exception:
             previous_job_card = None
 
-    start_otp_val = getattr(req, "start_otp", None) or req.verification_otp
-    completion_otp_val = getattr(req, "completion_otp", None)
+    # Confidential OTPs: strictly accessible only to the customer who created/owns this service request.
+    # Field Technicians, Franchise Hubs, Brand Companies, and Admins must never receive OTPs in advance.
+    is_authorized_customer = False
+    if user and user.role == "customer" and user.id == req.customer_id:
+        is_authorized_customer = True
+
+    start_otp_val = (getattr(req, "start_otp", None) or req.verification_otp) if is_authorized_customer else None
+    completion_otp_val = getattr(req, "completion_otp", None) if is_authorized_customer else None
+    verification_otp_val = req.verification_otp if is_authorized_customer else None
     payment_status_val = getattr(req, "payment_status", None) or ("Paid" if req.status == "Completed" else "Pending")
 
     current_jc = db.query(JobCardModel).filter(JobCardModel.request_id == req.id).first()
@@ -175,7 +182,7 @@ def format_request_detail(req: ServiceRequestModel, db: Session) -> ServiceReque
         appointment_slot=req.appointment_slot,
         technician=tech,
         timeline=timeline,
-        verification_otp=req.verification_otp,
+        verification_otp=verification_otp_val,
         start_otp=start_otp_val,
         completion_otp=completion_otp_val,
         previous_technician_id=getattr(req, "previous_technician_id", None),
@@ -242,7 +249,7 @@ def list_requests(request: Request, db: Session = Depends(get_db)):
         else:
             query = query.filter(ServiceRequestModel.branch_id == user_id)
     reqs = query.order_by(ServiceRequestModel.created_at.desc()).all()
-    return [format_request_detail(r, db) for r in reqs]
+    return [format_request_detail(r, db, user=user) for r in reqs]
 
 @router.get("/{request_id}", response_model=ServiceRequestDetail)
 def get_request(request_id: str, request: Request, db: Session = Depends(get_db)):
@@ -278,7 +285,7 @@ def get_request(request_id: str, request: Request, db: Session = Depends(get_db)
         ).first()
         if req.technician_id != (technician.id if technician else user_id):
             raise HTTPException(status_code=403, detail="Not allowed to view this service request")
-    return format_request_detail(req, db)
+    return format_request_detail(req, db, user=user)
 
 @router.post("", response_model=ServiceRequestDetail)
 def create_request(payload: ServiceBookingCreate, request: Request, db: Session = Depends(get_db)):
@@ -436,7 +443,7 @@ def create_request(payload: ServiceBookingCreate, request: Request, db: Session 
     # Dispatched email confirmation via Notification Gateway (SRS 6.16)
     notify_booking_created(new_req, db)
 
-    return format_request_detail(new_req, db)
+    return format_request_detail(new_req, db, user=user)
 
 @router.post("/{request_id}/assign", response_model=ServiceRequestDetail)
 def assign_technician(request_id: str, payload: FranchiseAssignPayload, request: Request, db: Session = Depends(get_db)):
@@ -510,7 +517,7 @@ def assign_technician(request_id: str, payload: FranchiseAssignPayload, request:
     # Dispatched technician assignment and start OTP via Notification Gateway (SRS 6.16)
     notify_technician_assigned(req, tech, db)
 
-    return format_request_detail(req, db)
+    return format_request_detail(req, db, user=user)
 
 @router.post("/{request_id}/action", response_model=ServiceRequestDetail)
 def technician_action(request_id: str, payload: TechnicianActionPayload, request: Request, db: Session = Depends(get_db)):
@@ -614,7 +621,7 @@ def technician_action(request_id: str, payload: TechnicianActionPayload, request
     req.timeline_json = json.dumps(timeline)
     db.commit()
     db.refresh(req)
-    return format_request_detail(req, db)
+    return format_request_detail(req, db, user=user)
 
 @router.post("/{request_id}/location", response_model=ServiceRequestDetail)
 def update_technician_location(request_id: str, payload: TechnicianLocationPayload, db: Session = Depends(get_db)):
@@ -1119,5 +1126,5 @@ def reopen_ticket(request_id: str, payload: TicketReopenPayload, request: Reques
 
     db.commit()
     db.refresh(req)
-    return format_request_detail(req, db)
+    return format_request_detail(req, db, user=user)
 

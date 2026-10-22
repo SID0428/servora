@@ -50,30 +50,7 @@ USERS: Dict[str, User] = {
     )
 }
 
-TECHNICIANS: Dict[str, Technician] = {
-    "tech_1": Technician(
-        id="tech_1",
-        name="Rahul Sharma",
-        title="Crompton Authorized Technician",
-        company_branch="Noida Sector 63 Branch",
-        rating=4.9,
-        total_jobs=124,
-        phone="+91 98111 22334",
-        avatar="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=250&q=80",
-        is_verified=True
-    ),
-    "tech_2": Technician(
-        id="tech_2",
-        name="Suresh Kumar",
-        title="LG Certified Senior Technician",
-        company_branch="Greater Noida East Branch",
-        rating=4.8,
-        total_jobs=98,
-        phone="+91 98234 56789",
-        avatar="https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=250&q=80",
-        is_verified=True
-    )
-}
+TECHNICIANS: Dict[str, Technician] = {}
 
 APPLIANCES: Dict[str, List[Appliance]] = {
     "customer_1": [

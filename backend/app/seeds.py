@@ -159,25 +159,9 @@ def seed_database(db: Session):
         db.add_all(users)
         db.commit()
 
-    # 2. Seed Technicians
-    if not db.query(TechnicianModel).first():
-        techs = [
-            TechnicianModel(
-                id="tech_2",
-                name="Suresh Kumar",
-                title="LG Certified Senior Technician",
-                company_branch="Greater Noida East Branch",
-                rating=4.8,
-                total_jobs=98,
-                phone="+91 98234 56789",
-                avatar="https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=250&q=80",
-                is_verified=True
-            )
-        ]
-        db.add_all(techs)
-        db.commit()
+    # 2. Technicians: Do not seed dummy technicians. Technicians are onboarded by franchise branches.
 
-    # Clean up any legacy dummy customer, dummy service requests, dummy technician (Rahul Sharma), and dummy company (Riya Patel)
+    # Clean up any legacy dummy customer, dummy service requests, dummy technicians (Rahul Sharma, Suresh Kumar), and dummy company (Riya Patel)
     try:
         dummy_reqs = db.query(ServiceRequestModel).filter(
             (ServiceRequestModel.customer_id == "customer_1") | (ServiceRequestModel.id == "SR-7845")
@@ -194,14 +178,18 @@ def seed_database(db: Session):
         db.query(NotificationLogModel).filter(NotificationLogModel.user_id == "customer_1").delete(synchronize_session=False)
         db.query(UserModel).filter(UserModel.id == "customer_1").delete(synchronize_session=False)
 
-        # Remove Rahul Sharma dummy technician
+        # Remove Rahul Sharma and Suresh Kumar dummy technicians
         db.query(TechnicianModel).filter(
-            (TechnicianModel.id == "tech_1") | (TechnicianModel.name == "Rahul Sharma")
+            (TechnicianModel.id.in_(["tech_1", "tech_2"])) | 
+            (TechnicianModel.name.in_(["Rahul Sharma", "Suresh Kumar"]))
         ).delete(synchronize_session=False)
-        db.query(BranchTechnicianModel).filter(BranchTechnicianModel.technician_id == "tech_1").delete(synchronize_session=False)
+        db.query(BranchTechnicianModel).filter(BranchTechnicianModel.technician_id.in_(["tech_1", "tech_2"])).delete(synchronize_session=False)
         db.query(UserModel).filter(
-            (UserModel.id == "tech_1") | (UserModel.email == "rahul.sharma@crompton-service.com")
+            (UserModel.id.in_(["tech_1", "tech_2"])) | 
+            (UserModel.email.in_(["rahul.sharma@crompton-service.com", "tech2@servora.com", "suresh.kumar@servsure.com"]))
         ).delete(synchronize_session=False)
+        db.query(UserSessionModel).filter(UserSessionModel.user_id.in_(["tech_1", "tech_2"])).delete(synchronize_session=False)
+        db.query(CompanyBranchModel).filter(CompanyBranchModel.branch_name == "Greater Noida East Branch").delete(synchronize_session=False)
 
         # Remove Riya Patel dummy company & associated branch
         db.query(BranchTechnicianModel).filter(BranchTechnicianModel.branch_id == "branch_1").delete(synchronize_session=False)

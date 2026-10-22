@@ -4,8 +4,8 @@ PRODUCTION-GRADE TECHNICAL ARCHITECTURE & DEVELOPER ONBOARDING MANUAL
 ================================================================================
 File: documentation.txt
 Platform: ServSure (formerly Servora)
-Version: 1.1.2 (Production Release - Admin Inspection & Inventory Management)
-Last Updated: October 22, 2026 (18:25 IST)
+Version: 1.1.3 (Production Release - Confidential OTP Security & Zero-Dummy Technicians)
+Last Updated: October 22, 2026 (18:50 IST)
 Repository: https://github.com/SID0428/servora.git
 
 Welcome to ServSure! This manual is the definitive, authoritative reference
@@ -860,6 +860,16 @@ were identified between the initial rough draft documentation and the actual cod
      Franchise branches can requisition parts (`/api/inventory/part-requests`). Upon Company dispatch,
      warehouse stock decrements, franchise stock increments, dual audit transactions are recorded,
      and Sent (Company) and Received (Franchise) history is maintained in real-time.
+
+9. Discrepancy: Confidential Customer Authorization OTPs & Zero-Dummy Technician Policy
+   - Initial Draft / Early Iteration: Start OTP and Completion OTP were visible in ticket modals
+     across Admin, Company, and Franchise dashboards, which breached the security purpose of doorstep verification.
+   - Reality in Code: Start OTP (`start_otp` / `verification_otp`) and Completion OTP (`completion_otp`)
+     are confidential authorization secrets strictly visible ONLY to the customer who created/owns the service request.
+     All backend endpoints (`format_request_detail`) enforce this access control and redact OTPs to `null` for all
+     non-customer callers (Admin, Company, Franchise, Field Technician). Furthermore, the dummy technician
+     `tech_2` ("Suresh Kumar") was completely purged from seeds, databases, and mock fixtures; technician rosters
+     are populated strictly via dynamic franchise branch onboarding.
 
 ================================================================================
 End of Documentation

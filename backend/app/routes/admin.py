@@ -249,7 +249,6 @@ def get_company_details(company_id: str, request: Request, db: Session = Depends
                 "technician_id": s.technician_id,
                 "technician_name": tech_map.get(s.technician_id, "Unassigned"),
                 "pincode": s.pincode,
-                "verification_otp": s.verification_otp,
             }
             for s in services
         ]
@@ -272,12 +271,30 @@ def list_directory(role: str, request: Request, db: Session = Depends(get_db)):
         for b in branches:
             company = companies_by_id.get(b.company_id)
             b_user = branch_users_by_id.get(b.id) or branch_users_by_email.get(b.email.lower())
-            tech_count = db.query(BranchTechnicianModel).filter(BranchTechnicianModel.branch_id == b.id).count()
-            jobs_count = db.query(ServiceRequestModel).filter(ServiceRequestModel.branch_id == b.id).count()
-            ongoing_jobs = db.query(ServiceRequestModel).filter(
-                ServiceRequestModel.branch_id == b.id,
-                ServiceRequestModel.status_badge != "Completed"
-            ).count()
+            
+            branch_ids = [b.id]
+            if b_user and b_user.id != b.id:
+                branch_ids.append(b_user.id)
+
+            tech_links = db.query(BranchTechnicianModel).filter(BranchTechnicianModel.branch_id.in_(branch_ids)).all()
+            linked_tech_ids = [tl.technician_id for tl in tech_links]
+            named_tech_ids = [
+                t.id for t in db.query(TechnicianModel).filter(
+                    TechnicianModel.company_branch.ilike(b.branch_name.strip())
+                ).all()
+            ] if b.branch_name else []
+            assigned_tech_ids = list(set(linked_tech_ids + named_tech_ids))
+            tech_count = len(assigned_tech_ids)
+
+            job_filters = [ServiceRequestModel.branch_id.in_(branch_ids)]
+            if assigned_tech_ids:
+                job_filters.append(ServiceRequestModel.technician_id.in_(assigned_tech_ids))
+            if b.pincode and len(b.pincode.strip()) == 6:
+                job_filters.append(ServiceRequestModel.pincode == b.pincode.strip())
+
+            jobs_query = db.query(ServiceRequestModel).filter(or_(*job_filters))
+            jobs_count = jobs_query.count()
+            ongoing_jobs = jobs_query.filter(ServiceRequestModel.status_badge != "Completed").count()
 
             result.append({
                 "id": b.id,
