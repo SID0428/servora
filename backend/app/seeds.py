@@ -179,6 +179,12 @@ def seed_database(db: Session):
         db.query(UserModel).filter(UserModel.id == "customer_1").delete(synchronize_session=False)
 
         # Remove Rahul Sharma and Suresh Kumar dummy technicians
+        db.query(ServiceRequestModel).filter(ServiceRequestModel.technician_id.in_(["tech_1", "tech_2"])).update(
+            {"technician_id": None}, synchronize_session=False
+        )
+        db.query(JobCardModel).filter(JobCardModel.technician_id.in_(["tech_1", "tech_2"])).update(
+            {"technician_id": ""}, synchronize_session=False
+        )
         db.query(TechnicianModel).filter(
             (TechnicianModel.id.in_(["tech_1", "tech_2"])) | 
             (TechnicianModel.name.in_(["Rahul Sharma", "Suresh Kumar"]))

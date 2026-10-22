@@ -318,7 +318,24 @@ def list_directory(role: str, request: Request, db: Session = Depends(get_db)):
         return result
 
     elif role == "technician":
-        techs = db.query(TechnicianModel).order_by(TechnicianModel.name).all()
+        try:
+            db.query(BranchTechnicianModel).filter(BranchTechnicianModel.technician_id.in_(["tech_1", "tech_2"])).delete(synchronize_session=False)
+            db.query(TechnicianModel).filter(
+                (TechnicianModel.id.in_(["tech_1", "tech_2"])) | 
+                (TechnicianModel.name.in_(["Rahul Sharma", "Suresh Kumar"]))
+            ).delete(synchronize_session=False)
+            db.query(UserModel).filter(
+                (UserModel.id.in_(["tech_1", "tech_2"])) | 
+                (UserModel.email.in_(["rahul.sharma@crompton-service.com", "tech2@servora.com", "suresh.kumar@servsure.com"]))
+            ).delete(synchronize_session=False)
+            db.commit()
+        except Exception:
+            db.rollback()
+
+        techs = db.query(TechnicianModel).filter(
+            ~TechnicianModel.id.in_(["tech_1", "tech_2"]),
+            ~TechnicianModel.name.in_(["Rahul Sharma", "Suresh Kumar"])
+        ).order_by(TechnicianModel.name).all()
         bt_links = {l.technician_id: l for l in db.query(BranchTechnicianModel).all()}
         branches_by_id = {b.id: b for b in db.query(CompanyBranchModel).all()}
         companies_by_id = {u.id: u for u in db.query(UserModel).filter(UserModel.role == "company").all()}
@@ -504,7 +521,7 @@ def get_admin_customer_details(customer_id: str, request: Request, db: Session =
 def get_admin_technician_details(technician_id: str, request: Request, db: Session = Depends(get_db)):
     require_admin(request, db)
     t = db.query(TechnicianModel).filter(TechnicianModel.id == technician_id).first()
-    if not t:
+    if not t or technician_id in ("tech_1", "tech_2") or (t.name in ("Rahul Sharma", "Suresh Kumar")):
         raise HTTPException(status_code=404, detail="Technician not found")
 
     link = db.query(BranchTechnicianModel).filter(BranchTechnicianModel.technician_id == t.id).first()

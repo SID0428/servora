@@ -1423,7 +1423,16 @@ async function generalApi(path, options = {}) {
 }
 async function loadFranchiseTechnicians() {
   try {
-    technicians = await franchiseApi("/technicians");
+    const raw = await franchiseApi("/technicians");
+    technicians = Array.isArray(raw)
+      ? raw.filter((item) => {
+          const nameLower = (item.name || "").toLowerCase().trim();
+          const idLower = (item.id || "").toLowerCase().trim();
+          if (idLower === "tech_1" || idLower === "tech_2") return false;
+          if (nameLower === "rahul sharma" || nameLower === "suresh kumar") return false;
+          return true;
+        })
+      : [];
   } catch (error) {
     technicians = [];
     showToast(`Technicians could not load: ${error.message}`, "error");
@@ -1447,7 +1456,16 @@ async function loadCompanyTechnicians() {
     if (!branches || branches.length === 0) {
       try { branches = await companyApi("/branches"); } catch (_) {}
     }
-    companyTechnicians = await companyApi("/technicians");
+    const raw = await companyApi("/technicians");
+    companyTechnicians = Array.isArray(raw)
+      ? raw.filter((item) => {
+          const nameLower = (item.name || "").toLowerCase().trim();
+          const idLower = (item.id || "").toLowerCase().trim();
+          if (idLower === "tech_1" || idLower === "tech_2") return false;
+          if (nameLower === "rahul sharma" || nameLower === "suresh kumar") return false;
+          return true;
+        })
+      : [];
     renderCompanyTechnicians();
   } catch (error) {
     companyTechnicians = [];
@@ -2865,7 +2883,20 @@ async function loadAdminPageData(page) {
   if (page === "Escalations") { await loadEscalationsData(); return; }
   const roles = { Branches: "branch", Technicians: "technician", Customers: "customer" };
   try {
-    if (roles[page]) directoryRows = await adminApi(`/directory/${roles[page]}`);
+    if (roles[page]) {
+      const data = await adminApi(`/directory/${roles[page]}`);
+      directoryRows = Array.isArray(data)
+        ? data.filter((item) => {
+            if (roles[page] === "technician") {
+              const nameLower = (item.name || "").toLowerCase().trim();
+              const idLower = (item.id || "").toLowerCase().trim();
+              if (idLower === "tech_1" || idLower === "tech_2") return false;
+              if (nameLower === "rahul sharma" || nameLower === "suresh kumar") return false;
+            }
+            return true;
+          })
+        : [];
+    }
     if (page === "Companies") companies = await adminApi("/companies");
   } catch (error) {
     directoryRows = [];
@@ -3027,12 +3058,21 @@ function renderAdminTechnicians() {
   $("tableTitle").textContent = "Technicians";
   $("tableSubtitle").textContent = "Certified field technicians deployed across franchise service centers.";
   $("sidePanelTitle").textContent = "Technician workforce";
-  $("healthContent").innerHTML = `<div class="section-empty"><strong>${directoryRows.length}</strong> certified technicians</div>`;
+
+  const validTechs = directoryRows.filter((item) => {
+    const nameLower = (item.name || "").toLowerCase().trim();
+    const idLower = (item.id || "").toLowerCase().trim();
+    if (idLower === "tech_1" || idLower === "tech_2") return false;
+    if (nameLower === "rahul sharma" || nameLower === "suresh kumar") return false;
+    return true;
+  });
+
+  $("healthContent").innerHTML = `<div class="section-empty"><strong>${validTechs.length}</strong> certified technicians</div>`;
   $("activityContent").innerHTML = `<div class="section-empty">Field engineers handle doorstep diagnostic, repairs, and digital job card sign-offs.</div>`;
   $("requestHead").innerHTML = ["Technician & Specialty", "Assigned Branch", "Parent Company", "Contact", "Rating & Jobs", "Status", "Action"].map((label) => `<th>${label}</th>`).join("");
 
   const query = ($("requestSearch")?.value || "").trim().toLowerCase();
-  const filtered = directoryRows.filter((item) =>
+  const filtered = validTechs.filter((item) =>
     [item.name, item.title, item.branch_name, item.company_name, item.email, item.phone, item.address]
       .join(" ")
       .toLowerCase()
@@ -3070,9 +3110,11 @@ function renderAdminTechnicians() {
           </td>
         </tr>
       `).join("")
-    : `<tr><td class="empty-row" colspan="7">No technicians match your search.</td></tr>`;
+    : (validTechs.length === 0
+        ? `<tr><td class="empty-row" colspan="7">No technicians onboarded yet. Certified technicians will appear here once added by franchise branches.</td></tr>`
+        : `<tr><td class="empty-row" colspan="7">No technicians match your search.</td></tr>`);
 
-  $("requestCount").textContent = `${filtered.length} technicians shown`;
+  $("requestCount").textContent = `${filtered.length} technician${filtered.length === 1 ? '' : 's'} shown`;
   $("resourceGrid").innerHTML = "";
   $("bottomTitle").textContent = "Technician directory";
   $("bottomSubtitle").textContent = "Field workforce records";

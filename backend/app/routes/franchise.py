@@ -131,8 +131,11 @@ def list_franchise_technicians(request: Request, db: Session = Depends(get_db)):
         db.query(BranchTechnicianModel, TechnicianModel, UserModel, TechnicianOnboardingModel)
         .join(TechnicianModel, TechnicianModel.id == BranchTechnicianModel.technician_id)
         .join(UserModel, UserModel.id == TechnicianModel.id)
-        .outerjoin(TechnicianOnboardingModel, TechnicianOnboardingModel.technician_id == UserModel.id)
-        .filter(BranchTechnicianModel.branch_id == branch.id)
+        .filter(
+            BranchTechnicianModel.branch_id == branch.id,
+            ~TechnicianModel.id.in_(["tech_1", "tech_2"]),
+            ~TechnicianModel.name.in_(["Rahul Sharma", "Suresh Kumar"])
+        )
         .order_by(TechnicianModel.name)
         .all()
     )

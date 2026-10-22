@@ -592,7 +592,13 @@ def list_company_technicians(
         return []
 
     tech_ids = [l.technician_id for l in links]
-    tech_models = {t.id: t for t in db.query(TechnicianModel).filter(TechnicianModel.id.in_(tech_ids)).all()}
+    tech_models = {
+        t.id: t for t in db.query(TechnicianModel).filter(
+            TechnicianModel.id.in_(tech_ids),
+            ~TechnicianModel.id.in_(["tech_1", "tech_2"]),
+            ~TechnicianModel.name.in_(["Rahul Sharma", "Suresh Kumar"])
+        ).all()
+    }
     user_models = {u.id: u for u in db.query(UserModel).filter(UserModel.id.in_(tech_ids)).all()}
     onboarding_models = {o.technician_id: o for o in db.query(TechnicianOnboardingModel).filter(TechnicianOnboardingModel.technician_id.in_(tech_ids)).all()}
 
