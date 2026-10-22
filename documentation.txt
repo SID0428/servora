@@ -570,6 +570,12 @@ Request Headers:
 - `PUT /api/company/branches/{branch_id}/access`
   - Body: `{ "is_active": false }`
   - Deactivates branch and revokes all technician sessions under it.
+- `GET /api/company/technicians`:
+  - Query parameters: `?branch_id=<branch_id>&search=<query>`
+  - Returns all technicians deployed across the company's franchise network, including their assigned branch name, branch manager, specialty, contact details, rating, and ongoing/completed jobs.
+- `PUT /api/company/technicians/{technician_id}/access`:
+  - Body: `{ "is_active": false }`
+  - Toggles technician portal access and revokes active sessions on deactivation.
 
 5.4. Franchise Partner Hub (`/api/franchise`)
 ---------------------------------------------

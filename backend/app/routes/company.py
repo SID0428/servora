@@ -7,6 +7,7 @@ import secrets
 from datetime import datetime, timedelta
 from uuid import uuid4
 
+from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
@@ -15,7 +16,7 @@ from app.db.models import (
     ApplianceModel, BranchOnboardingModel, CompanyBranchModel, UserModel,
     BranchTechnicianModel, TechnicianModel, FranchiseInventoryModel,
     SparePartModel, InventoryTransactionModel, ServiceRequestModel, WarrantyClaimModel,
-    JobCardModel
+    JobCardModel, TechnicianOnboardingModel
 )
 from app.db.session import get_db
 from app.email_service import send_brevo_email
@@ -557,6 +558,135 @@ def get_company_customer_details(customer_id: str, request: Request, db: Session
         "products": products_list,
         "ongoing_services": ongoing,
         "completed_services": completed
+    }
+
+
+@router.get("/technicians")
+def list_company_technicians(
+    branch_id: Optional[str] = None,
+    search: Optional[str] = None,
+    request: Request = None,
+    db: Session = Depends(get_db)
+):
+    company = require_company(request, db)
+    branches = db.query(CompanyBranchModel).filter(
+        or_(
+            CompanyBranchModel.company_id == company.id,
+            CompanyBranchModel.company_id == company.name,
+            CompanyBranchModel.company_id == company.email
+        )
+    ).all()
+    branch_map = {b.id: b for b in branches}
+    if not branch_map:
+        return []
+
+    branch_ids = list(branch_map.keys())
+    if branch_id and branch_id.lower() != "all":
+        if branch_id in branch_map:
+            branch_ids = [branch_id]
+        else:
+            return []
+
+    links = db.query(BranchTechnicianModel).filter(BranchTechnicianModel.branch_id.in_(branch_ids)).all()
+    if not links:
+        return []
+
+    tech_ids = [l.technician_id for l in links]
+    tech_models = {t.id: t for t in db.query(TechnicianModel).filter(TechnicianModel.id.in_(tech_ids)).all()}
+    user_models = {u.id: u for u in db.query(UserModel).filter(UserModel.id.in_(tech_ids)).all()}
+    onboarding_models = {o.technician_id: o for o in db.query(TechnicianOnboardingModel).filter(TechnicianOnboardingModel.technician_id.in_(tech_ids)).all()}
+
+    results = []
+    for link in links:
+        t = tech_models.get(link.technician_id)
+        u = user_models.get(link.technician_id)
+        b = branch_map.get(link.branch_id)
+        o = onboarding_models.get(link.technician_id)
+
+        completed_jobs = db.query(ServiceRequestModel).filter(
+            ServiceRequestModel.technician_id == link.technician_id,
+            ServiceRequestModel.status == "Completed"
+        ).count()
+        active_jobs = db.query(ServiceRequestModel).filter(
+            ServiceRequestModel.technician_id == link.technician_id,
+            ServiceRequestModel.status.in_(["Assigned", "In Progress", "Dispatched", "On Site", "Pending Parts"])
+        ).count()
+
+        name = t.name if t else (u.name if u else "Technician")
+        email = u.email if u else ""
+        phone = t.phone if t else (u.phone if u else "")
+        title = t.title if t else "Field Service Engineer"
+        b_name = b.branch_name if b else "Unknown Branch"
+
+        if search:
+            s = search.lower().strip()
+            combined = f"{name} {email} {phone} {title} {b_name} {link.address or ''} {link.pincode or ''}".lower()
+            if s not in combined:
+                continue
+
+        results.append({
+            "id": link.technician_id,
+            "name": name,
+            "title": title,
+            "email": email,
+            "phone": phone,
+            "mobile": phone,
+            "branch_id": b.id if b else link.branch_id,
+            "branch_name": b_name,
+            "branch_manager": b.manager_name if b else "",
+            "branch_address": b.address if b else "",
+            "address": link.address or (b.address if b else ""),
+            "pincode": link.pincode or (b.pincode if b else ""),
+            "rating": round(t.rating or 4.9, 1) if t else 4.9,
+            "total_jobs": completed_jobs if completed_jobs > 0 else (t.total_jobs or 0 if t else 0),
+            "active_jobs": active_jobs,
+            "is_active": getattr(u, "is_active", True) if u else True,
+            "status": "Active / Field Ready" if (getattr(u, "is_active", True) if u else True) else "Access Suspended",
+            "password_set": bool(o and o.password_set_at),
+            "created_at": link.created_at.strftime("%d %b %Y") if getattr(link, "created_at", None) else "",
+            "avatar": (t.avatar if t else None) or (name[:2].upper() if name else "TC")
+        })
+
+    results.sort(key=lambda x: x["name"].lower())
+    return results
+
+
+@router.put("/technicians/{technician_id}/access")
+def toggle_company_technician_access(
+    technician_id: str,
+    payload: AccessTogglePayload,
+    request: Request,
+    db: Session = Depends(get_db)
+):
+    company = require_company(request, db)
+    branches = db.query(CompanyBranchModel.id).filter(
+        or_(
+            CompanyBranchModel.company_id == company.id,
+            CompanyBranchModel.company_id == company.name,
+            CompanyBranchModel.company_id == company.email
+        )
+    ).all()
+    branch_ids = [b[0] for b in branches]
+    link = db.query(BranchTechnicianModel).filter(
+        BranchTechnicianModel.technician_id == technician_id,
+        BranchTechnicianModel.branch_id.in_(branch_ids)
+    ).first()
+    if not link:
+        raise HTTPException(status_code=404, detail="Technician does not belong to any branch in your company network")
+
+    tech_user = db.query(UserModel).filter(UserModel.id == technician_id).first()
+    if not tech_user:
+        raise HTTPException(status_code=404, detail="Technician account not found")
+
+    tech_user.is_active = payload.is_active
+    if not payload.is_active:
+        revoke_all_user_sessions(tech_user.id, db)
+    db.commit()
+    return {
+        "status": "success",
+        "message": f"Technician access {'enabled' if payload.is_active else 'disabled'} successfully.",
+        "technician_id": technician_id,
+        "is_active": tech_user.is_active
     }
 
 

@@ -94,6 +94,7 @@ let companySparesCatalog = [];
 let companyPartRequests = [];
 let franchisePartRequests = [];
 let allCatalogParts = [];
+let companyTechnicians = [];
 let companyInventorySubTab = "stock"; // "stock" or "requests"
 let franchiseInventorySubTab = "stock"; // "stock" or "requests"
 let user = initialUser;
@@ -205,6 +206,7 @@ function renderPage(page) {
   setHidden("addBranchButton", !(role === "company" && page === "Branches"));
   setHidden("addTechnicianButton", !(role === "franchise" && page === "Technicians"));
   setHidden("companyInlineAdd", !admin || page !== "Companies");
+  setHidden("companyTechBranchFilter", !(role === "company" && page === "Technicians"));
   setHidden("exportButton", page === "System settings" || page === "Companies" || page === "Settings");
 
   // Admin routes
@@ -216,6 +218,7 @@ function renderPage(page) {
 
   // Company routes
   if (role === "company" && page === "Branches") { renderCompanyBranches(); return; }
+  if (role === "company" && page === "Technicians") { renderCompanyTechnicians(); return; }
   if (role === "company" && page === "Customers") { renderCompanyCustomers(); return; }
   if (role === "company" && page === "Warranty Claims") { renderCompanyWarrantyClaims(); return; }
   if (role === "company" && (page === "Inventory & Spares" || page === "Spares Catalog")) { renderCompanyInventoryAndSpares(); return; }
@@ -1436,6 +1439,216 @@ async function loadCompanyBranches() {
     showToast(`Branches could not load: ${error.message}`, "error");
   }
 }
+
+async function loadCompanyTechnicians() {
+  try {
+    if (!branches || branches.length === 0) {
+      try { branches = await companyApi("/branches"); } catch (_) {}
+    }
+    companyTechnicians = await companyApi("/technicians");
+    renderCompanyTechnicians();
+  } catch (error) {
+    companyTechnicians = [];
+    renderCompanyTechnicians();
+    if ($("requestRows")) {
+      $("requestRows").innerHTML = `<tr><td class="empty-row" colspan="8">${safe(error.message)}. Try again after confirming your company session.</td></tr>`;
+    }
+    if ($("requestCount")) $("requestCount").textContent = "Could not load technicians";
+    showToast(`Technicians could not load: ${error.message}`, "error");
+  }
+}
+
+function renderCompanyTechnicians() {
+  if ($("crumbTitle")) $("crumbTitle").textContent = "Technicians";
+  setHidden("addCompanyButton", true);
+  setHidden("addBranchButton", true);
+  setHidden("addTechnicianButton", true);
+  setHidden("companyInlineAdd", true);
+  setHidden("exportButton", false);
+  setHidden("pageContent", false);
+  setHidden("metricGrid", true);
+
+  if ($("tableTitle")) $("tableTitle").textContent = "Franchise Technicians Network";
+  if ($("tableSubtitle")) $("tableSubtitle").textContent = "All field service engineers and certified technicians deployed across your franchise branches.";
+  if ($("sidePanelTitle")) $("sidePanelTitle").textContent = "Technician directory";
+  if ($("healthContent")) $("healthContent").innerHTML = `<div class="section-empty"><strong>${companyTechnicians.length}</strong> active technicians in network</div>`;
+  if ($("activityContent")) $("activityContent").innerHTML = `<div class="section-empty">Technicians are managed directly through authorized franchise branches.</div>`;
+  if ($("bottomTitle")) $("bottomTitle").textContent = "Technician network";
+  if ($("bottomSubtitle")) $("bottomSubtitle").textContent = "Field personnel credentials, assigned branch, and live rating.";
+
+  // Populate Branch Filter Dropdown
+  const branchFilterEl = $("companyTechBranchFilter");
+  if (branchFilterEl) {
+    setHidden("companyTechBranchFilter", false);
+    const currentVal = branchFilterEl.value || "all";
+    const branchOptions = (branches || []).map(b => `<option value="${safe(b.id)}">🏢 ${safe(b.branch_name)}</option>`).join("");
+    branchFilterEl.innerHTML = `<option value="all">🏢 All Branches (${companyTechnicians.length})</option>${branchOptions}`;
+    if ((branches || []).some(b => b.id === currentVal)) {
+      branchFilterEl.value = currentVal;
+    } else {
+      branchFilterEl.value = "all";
+    }
+  }
+
+  // Populate Status Filter Dropdown
+  const statusFilterEl = $("statusFilter");
+  if (statusFilterEl) {
+    setHidden("statusFilter", false);
+    if (!statusFilterEl.dataset.techStatusInit) {
+      statusFilterEl.dataset.techStatusInit = "true";
+      statusFilterEl.innerHTML = `<option value="all">All Status</option><option value="Active">Active</option><option value="Suspended">Access Suspended</option>`;
+      statusFilterEl.value = "all";
+    }
+  }
+
+  if ($("requestSearch")) $("requestSearch").placeholder = "Search by technician, branch, phone, or skill...";
+
+  if ($("requestHead")) {
+    $("requestHead").innerHTML = [
+      "Technician",
+      "Franchise Branch",
+      "Title / Skill",
+      "Contact Details",
+      "Location & Coverage",
+      "Jobs & Rating",
+      "Access Status",
+      "Actions"
+    ].map(name => `<th>${safe(name)}</th>`).join("");
+  }
+
+  const query = $("requestSearch") ? $("requestSearch").value.trim().toLowerCase() : "";
+  const selectedBranch = branchFilterEl ? branchFilterEl.value : "all";
+  const selectedStatus = statusFilterEl ? statusFilterEl.value : "all";
+
+  const filtered = companyTechnicians.filter((t) => {
+    if (selectedBranch !== "all" && t.branch_id !== selectedBranch) return false;
+    if (selectedStatus === "Active" && t.is_active === false) return false;
+    if (selectedStatus === "Suspended" && t.is_active !== false) return false;
+    if (query) {
+      const matchText = [t.name, t.title, t.email, t.phone, t.mobile, t.branch_name, t.branch_manager, t.address, t.pincode].join(" ").toLowerCase();
+      if (!matchText.includes(query)) return false;
+    }
+    return true;
+  });
+
+  if ($("requestRows")) {
+    $("requestRows").innerHTML = filtered.length ? filtered.map((t) => {
+      const isAccessActive = t.is_active !== false;
+      const accessPill = isAccessActive 
+        ? `<span class="status-pill completed">Active</span>` 
+        : `<span class="status-pill cancelled">Access Suspended</span>`;
+      
+      const toggleBtn = isAccessActive
+        ? `<button type="button" class="table-action text-rose-600 hover:bg-rose-50 font-semibold" data-toggle-company-tech-access="${safe(t.id)}" data-next-active="false">🚫 Disable Access</button>`
+        : `<button type="button" class="table-action text-emerald-600 hover:bg-emerald-50 font-semibold" data-toggle-company-tech-access="${safe(t.id)}" data-next-active="true">✅ Enable Access</button>`;
+
+      const actions = `
+        <div class="flex items-center gap-1.5">
+          <button type="button" class="table-action font-bold text-blue-600 hover:text-blue-800 flex items-center gap-1" data-view-branch="${safe(t.branch_id)}">
+            🏢 View Branch
+          </button>
+          ${toggleBtn}
+        </div>
+      `;
+
+      return `
+        <tr class="hover:bg-slate-50/80 ${isAccessActive ? '' : 'opacity-70 bg-slate-50'}">
+          <td>
+            <div class="flex items-center gap-2.5">
+              <span class="w-8 h-8 rounded-full bg-blue-100 text-blue-800 font-bold text-xs flex items-center justify-center shrink-0 border border-blue-200">${safe(t.avatar || "TC")}</span>
+              <div>
+                <strong class="font-bold text-slate-900 block text-xs">${safe(t.name)}</strong>
+                <span class="text-[10px] text-slate-400 font-mono">ID: ${safe(t.id)}</span>
+              </div>
+            </div>
+          </td>
+          <td>
+            <button type="button" class="text-left group" data-view-branch="${safe(t.branch_id)}">
+              <div class="font-bold text-xs text-blue-600 group-hover:text-blue-800 flex items-center gap-1">
+                <span>🏢</span> ${safe(t.branch_name)}
+              </div>
+              <span class="text-[10px] text-slate-400 block">Lead: ${safe(t.branch_manager || "Branch Manager")}</span>
+            </button>
+          </td>
+          <td>
+            <span class="px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 font-semibold text-[11px] block w-fit">
+              ${safe(t.title || "Field Engineer")}
+            </span>
+          </td>
+          <td>
+            <div class="space-y-0.5 text-[11px]">
+              <div class="flex items-center gap-1 text-slate-700 font-medium">
+                <span>✉️</span> <a href="mailto:${safe(t.email)}" class="hover:underline">${safe(t.email)}</a>
+              </div>
+              <div class="flex items-center gap-1 text-slate-600 font-mono">
+                <span>📞</span> <a href="tel:${safe(t.phone || t.mobile)}" class="hover:underline">${safe(t.phone || t.mobile)}</a>
+              </div>
+            </div>
+          </td>
+          <td>
+            <div class="text-[11px] text-slate-600">
+              <span>${safe(t.address || t.branch_address || "—")}</span>
+              <span class="block text-slate-400 font-mono text-[10px]">PIN: ${safe(t.pincode || "—")}</span>
+            </div>
+          </td>
+          <td>
+            <div class="space-y-0.5 text-xs">
+              <div class="flex items-center gap-1 text-amber-600 font-bold text-[11px]">
+                <span>⭐</span> ${t.rating || "5.0"}
+              </div>
+              <div class="text-[10px] text-slate-500">
+                <span class="font-semibold text-slate-800">${t.total_jobs || 0}</span> completed
+                ${t.active_jobs > 0 ? `<span class="ml-1 px-1.5 py-0.2 rounded bg-amber-100 text-amber-800 font-bold">${t.active_jobs} ongoing</span>` : ''}
+              </div>
+            </div>
+          </td>
+          <td>${accessPill}</td>
+          <td>${actions}</td>
+        </tr>
+      `;
+    }).join("") : `<tr><td class="empty-row" colspan="8">${query || selectedBranch !== "all" || selectedStatus !== "all" ? "No technicians match the selected filters." : "No technicians found across your franchise branches."}</td></tr>`;
+  }
+
+  if ($("requestCount")) $("requestCount").textContent = `${filtered.length} technician${filtered.length === 1 ? "" : "s"} shown (of ${companyTechnicians.length} total)`;
+  if ($("resourceGrid")) $("resourceGrid").innerHTML = "";
+
+  // Wire View Branch buttons
+  document.querySelectorAll("[data-view-branch]").forEach((button) => button.addEventListener("click", (e) => {
+    e.stopPropagation();
+    openCompanyBranchDetail(button.dataset.viewBranch);
+  }));
+
+  // Wire Toggle Access buttons
+  document.querySelectorAll("[data-toggle-company-tech-access]").forEach((button) => button.addEventListener("click", async (e) => {
+    e.stopPropagation();
+    const techId = button.dataset.toggleCompanyTechAccess;
+    const enable = button.dataset.nextActive === "true";
+    const tech = companyTechnicians.find(item => item.id === techId);
+    const techName = tech ? tech.name : "this technician";
+    const actionText = enable ? "enable access for" : "disable access for";
+    const note = enable ? "" : " This will immediately terminate all active sessions for this technician.";
+    if (!window.confirm(`Are you sure you want to ${actionText} ${techName}?${note}`)) return;
+
+    button.disabled = true;
+    try {
+      const res = await companyApi(`/technicians/${encodeURIComponent(techId)}/access`, {
+        method: "PUT",
+        body: JSON.stringify({ is_active: enable })
+      });
+      showToast(res.message || `Technician access ${enable ? "enabled" : "disabled"} successfully.`);
+      const idx = companyTechnicians.findIndex(item => item.id === techId);
+      if (idx !== -1) {
+        companyTechnicians[idx].is_active = enable;
+        companyTechnicians[idx].status = enable ? "Active / Field Ready" : "Access Suspended";
+      }
+      renderCompanyTechnicians();
+    } catch (err) {
+      showToast(err.message, "error");
+      button.disabled = false;
+    }
+  }));
+}
+
 async function loadCompanyCustomers() {
   try {
     companyCustomers = await companyApi("/customers");
@@ -2609,6 +2822,7 @@ async function loadWorkspacePageData(page) {
   if (page === "Escalations" || page === "SLA Escalations") { await loadEscalationsData(); return; }
   if (role === "admin") { await loadAdminPageData(page); return; }
   if (role === "company" && page === "Branches") { await loadCompanyBranches(); return; }
+  if (role === "company" && page === "Technicians") { await loadCompanyTechnicians(); return; }
   if (role === "company" && page === "Customers") { await loadCompanyCustomers(); return; }
   if (role === "company" && page === "Warranty Claims") { await loadCompanyWarrantyClaims(); return; }
   if (role === "company" && (page === "Inventory & Spares" || page === "Spares Catalog")) { await loadCompanyInventoryAndSpares(); return; }
@@ -4511,6 +4725,7 @@ function initEvents() {
     const page = $("crumbTitle")?.textContent;
     if (role === "admin" && page === "Companies") renderCompanies();
     else if (role === "company" && page === "Branches") renderCompanyBranches();
+    else if (role === "company" && page === "Technicians") renderCompanyTechnicians();
     else if (role === "company" && page === "Customers") renderCompanyCustomers();
     else if (role === "company" && page === "Warranty Claims") renderCompanyWarrantyClaims();
     else if (role === "company" && page === "Spares Catalog") renderCompanySparesCatalog();
@@ -4522,17 +4737,37 @@ function initEvents() {
     else renderRequests();
   });
 
+  $("companyTechBranchFilter")?.addEventListener("change", () => {
+    if (role === "company" && $("crumbTitle")?.textContent === "Technicians") {
+      renderCompanyTechnicians();
+    }
+  });
+
   $("statusFilter")?.addEventListener("change", () => {
     if (role === "admin" && $("crumbTitle")?.textContent === "Service requests") renderRequestDirectory();
     else if ($("crumbTitle")?.textContent === "Customers") {
       if (role === "company") renderCompanyCustomers();
       else if (role === "franchise") renderFranchiseCustomers();
     }
+    else if (role === "company" && $("crumbTitle")?.textContent === "Technicians") {
+      renderCompanyTechnicians();
+    }
     else renderRequests();
   });
 
   $("exportButton")?.addEventListener("click", () => {
     const page = $("crumbTitle")?.textContent;
+    if (role === "company" && page === "Technicians") {
+      const rows = [
+        ["Technician Name", "ID", "Franchise Branch", "Branch Manager", "Title / Skill", "Email", "Mobile", "Address", "PIN Code", "Rating", "Completed Jobs", "Active Jobs", "Access Status"],
+        ...companyTechnicians.map((t) => [
+          t.name, t.id, t.branch_name, t.branch_manager || "", t.title || "", t.email || "", t.phone || t.mobile || "",
+          t.address || "", t.pincode || "", t.rating || 5.0, t.total_jobs || 0, t.active_jobs || 0, t.is_active !== false ? "Active" : "Access Suspended"
+        ])
+      ];
+      downloadCsv(`servsure-company-technicians.csv`, rows);
+      return;
+    }
     if (role === "company" && page === "Customers") {
       const rows = [
         ["Customer Name", "Customer Email", "Customer Phone", "Service Address", "Category", "Brand", "Model No", "Serial No", "Warranty", "Registered Date"],
