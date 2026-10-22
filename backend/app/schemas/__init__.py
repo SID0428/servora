@@ -369,6 +369,14 @@ class CompanyPartCreatePayload(BaseModel):
     hsn_code: Optional[str] = "8418"
     description: Optional[str] = None
 
+class CompanyPartUpdatePayload(BaseModel):
+    name: str = Field(min_length=2, max_length=128)
+    category: str = Field(min_length=2, max_length=64)
+    brand: Optional[str] = None
+    unit_price: float = Field(ge=0.0)
+    hsn_code: Optional[str] = "8418"
+    description: Optional[str] = None
+
 class CompanyStockUpdatePayload(BaseModel):
     quantity: int = Field(ge=0)
     mode: Optional[str] = "set" # "set" or "add"

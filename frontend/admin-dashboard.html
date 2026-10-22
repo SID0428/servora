@@ -272,5 +272,659 @@
       </form>
     </div>
   </dialog>
+
+  <!-- Service Request Deep-Dive Details Modal for Admin Portal -->
+  <dialog id="ticketDetailModal" class="w-[min(94vw,760px)] rounded-3xl border-0 p-0 shadow-2xl overflow-hidden bg-white">
+    <div class="p-6 sm:p-7 space-y-4 max-h-[90vh] overflow-y-auto">
+      <!-- Modal Header -->
+      <div class="flex items-start justify-between border-b border-slate-100 pb-3.5">
+        <div>
+          <div class="flex items-center gap-2">
+            <span class="text-[10px] font-bold tracking-[.16em] text-blue-600 uppercase">SERVICE REQUEST DETAILS</span>
+            <span id="ticketModalPriority" class="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-slate-100 text-slate-700">Medium</span>
+          </div>
+          <div class="flex items-center gap-3 mt-1">
+            <h3 class="font-display text-xl font-bold text-slate-900" id="ticketModalReqId">SR-7845</h3>
+            <div id="ticketModalStatusWrap"></div>
+          </div>
+          <p class="text-xs text-slate-400 mt-0.5">Created on <span id="ticketModalCreatedAt" class="text-slate-600 font-medium">—</span></p>
+        </div>
+        <button type="button" id="closeTicketDetailModal" class="rounded-xl p-1.5 text-slate-400 hover:bg-slate-100 text-lg leading-none" aria-label="Close">✕</button>
+      </div>
+
+      <!-- Reopen Notice Banner -->
+      <div id="ticketModalReopenBanner" class="hidden rounded-2xl bg-amber-50 border border-amber-200 p-4 space-y-2 text-amber-950">
+        <div class="flex items-start justify-between gap-2">
+          <div class="flex items-center gap-2">
+            <span class="text-base" id="ticketModalReopenIcon">⚠️</span>
+            <strong id="ticketModalReopenTitle" class="text-xs font-bold uppercase tracking-wider text-amber-900">Warranty Revisit Ticket</strong>
+          </div>
+          <span id="ticketModalReopenDate" class="text-[10px] font-semibold text-amber-700 bg-amber-100/80 px-2 py-0.5 rounded-full">Reopened recently</span>
+        </div>
+        <div>
+          <span class="text-[10px] font-bold text-amber-800 uppercase tracking-wider block">Customer's Reported Issue / Reopen Reason:</span>
+          <p id="ticketModalReopenReason" class="text-xs font-medium text-amber-900 mt-0.5 leading-relaxed bg-white/70 p-2.5 rounded-xl border border-amber-200/60">—</p>
+        </div>
+        <div class="flex items-center justify-between text-xs pt-1">
+          <span id="ticketModalPrevTech" class="text-amber-800 font-medium text-[11px]">—</span>
+          <button type="button" id="ticketModalPrevReceiptBtn" class="hidden px-2.5 py-1 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-bold text-[11px] shadow-xs transition">
+            View Previous Receipt 🧾
+          </button>
+        </div>
+      </div>
+
+      <!-- Customer & Appliance 2-Column Grid -->
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+        <!-- Customer & Location Card -->
+        <div class="p-4 rounded-2xl bg-slate-50 border border-slate-100 space-y-2">
+          <span class="text-[10px] font-bold uppercase tracking-wider text-blue-600 block">Customer Information</span>
+          <div>
+            <strong id="ticketModalCustomerName" class="text-sm font-bold text-slate-900 block">—</strong>
+            <a id="ticketModalCustomerPhone" href="#" class="text-xs text-blue-600 font-semibold hover:underline block mt-0.5">📞 —</a>
+          </div>
+          <div>
+            <span class="text-[10px] text-slate-400 block font-medium">Service Address:</span>
+            <p id="ticketModalCustomerAddress" class="text-slate-700 mt-0.5 leading-relaxed font-medium">—</p>
+          </div>
+          <div class="flex items-center gap-2 pt-1">
+            <span id="ticketModalPincode" class="px-2 py-0.5 rounded bg-blue-100/80 text-blue-800 font-mono font-bold text-[11px]">PIN: —</span>
+            <span id="ticketModalGps" class="hidden px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-mono text-[10px] font-semibold">GPS</span>
+          </div>
+        </div>
+
+        <!-- Appliance & Issue Card -->
+        <div class="p-4 rounded-2xl bg-slate-50 border border-slate-100 space-y-2">
+          <span class="text-[10px] font-bold uppercase tracking-wider text-blue-600 block">Appliance & Complaint</span>
+          <div>
+            <strong id="ticketModalAppliance" class="text-sm font-bold text-slate-900 block">—</strong>
+            <span id="ticketModalModelSerial" class="text-[11px] text-slate-500 font-mono block">—</span>
+          </div>
+          <div>
+            <span class="text-[10px] text-slate-400 block font-medium">Reported Problem:</span>
+            <p id="ticketModalIssue" class="text-slate-800 font-bold mt-0.5">—</p>
+          </div>
+          <div>
+            <span class="text-[10px] text-slate-400 block font-medium">Description:</span>
+            <p id="ticketModalDesc" class="text-slate-600 text-[11px] mt-0.5 leading-relaxed">—</p>
+          </div>
+          <div id="ticketModalDefectWrap" class="hidden pt-1">
+            <span class="text-[10px] text-slate-400 block font-medium mb-1">Attached Defect Photo:</span>
+            <img id="ticketModalDefectImg" src="" alt="Defect Photo" class="w-20 h-20 object-cover rounded-xl border border-slate-200 cursor-pointer hover:opacity-90 shadow-xs" title="Click to open full image">
+          </div>
+        </div>
+      </div>
+
+      <!-- Operational Routing & Field Assignment Card -->
+      <div class="p-4 rounded-2xl bg-blue-50/50 border border-blue-100 text-xs grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+          <span class="text-[10px] font-bold uppercase tracking-wider text-blue-600 block mb-1">Routed Franchise</span>
+          <strong id="ticketModalBranchName" class="text-slate-900 font-bold block text-sm">—</strong>
+          <span id="ticketModalBranchPhone" class="text-slate-600 text-[11px] block mt-0.5">—</span>
+          <div class="mt-2 text-slate-600 text-[11px]">
+            <span>Scheduled: </span><strong id="ticketModalAppointment" class="text-slate-800 font-semibold">—</strong>
+          </div>
+        </div>
+        <div class="sm:border-l sm:border-blue-100 sm:pl-4">
+          <span class="text-[10px] font-bold uppercase tracking-wider text-blue-600 block mb-1">Assigned Technician</span>
+          <div class="flex items-center gap-2">
+            <strong id="ticketModalTechName" class="text-slate-900 font-bold block text-sm">—</strong>
+            <span id="ticketModalTechRating" class="text-amber-600 font-bold text-xs">★ 4.9</span>
+          </div>
+          <span id="ticketModalTechTitle" class="text-slate-500 text-[11px] block mt-0.5">—</span>
+          <a id="ticketModalTechPhone" href="#" class="text-blue-600 font-semibold text-[11px] hover:underline block mt-1">📞 —</a>
+        </div>
+      </div>
+
+      <!-- Security Handshake OTPs Card -->
+      <div class="p-3.5 rounded-2xl bg-slate-50 border border-slate-100 text-xs grid grid-cols-2 gap-3">
+        <div class="p-2.5 bg-white rounded-xl border border-slate-100">
+          <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Service Start OTP</span>
+          <strong id="ticketModalStartOtp" class="font-mono text-base font-black text-blue-600 tracking-wider block mt-0.5">••••</strong>
+          <small class="text-[10px] text-slate-400">Doorstep check-in verification</small>
+        </div>
+        <div class="p-2.5 bg-white rounded-xl border border-slate-100">
+          <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Completion OTP</span>
+          <strong id="ticketModalCompOtp" class="font-mono text-base font-black text-emerald-600 tracking-wider block mt-0.5">••••</strong>
+          <small class="text-[10px] text-slate-400">Job closure verification code</small>
+        </div>
+      </div>
+
+      <!-- Digital Job Card & Financial Breakdown -->
+      <div id="ticketModalJobCardWrap" class="hidden p-4 rounded-2xl bg-white border border-slate-200 text-xs space-y-3 shadow-xs">
+        <div class="flex items-center justify-between border-b border-slate-100 pb-2.5">
+          <div>
+            <span class="text-[10px] font-bold uppercase tracking-wider text-emerald-600 block">Digital Job Card & Invoice</span>
+            <strong id="ticketModalJcId" class="font-mono text-xs font-bold text-slate-800">JC-0000</strong>
+          </div>
+          <span class="px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold">✓ PAID & SETTLED</span>
+        </div>
+        <div>
+          <span class="text-[10px] text-slate-400 block font-medium">Work Performed / Technical Summary:</span>
+          <p id="ticketModalJcWork" class="text-slate-800 font-medium text-xs mt-0.5 leading-relaxed bg-slate-50 p-2.5 rounded-xl">—</p>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-xs border border-slate-100 rounded-xl overflow-hidden">
+            <thead class="bg-slate-50 text-[10px] font-bold text-slate-500 uppercase">
+              <tr><th class="p-2">#</th><th class="p-2">Spare Part / Material</th><th class="p-2 text-center">Qty</th><th class="p-2 text-right">Rate</th><th class="p-2 text-right">Amount</th></tr>
+            </thead>
+            <tbody id="ticketModalPartsBody" class="divide-y divide-slate-100"></tbody>
+            <tfoot class="bg-slate-50 border-t border-slate-100">
+              <tr><td colspan="4" class="p-1.5 text-right font-medium text-slate-600">Labor Charges:</td><td id="ticketModalLaborCost" class="p-1.5 text-right font-semibold text-slate-800">₹0.00</td></tr>
+              <tr><td colspan="4" class="p-1.5 text-right font-medium text-slate-600">GST (18%):</td><td id="ticketModalTaxCost" class="p-1.5 text-right font-semibold text-slate-800">₹0.00</td></tr>
+              <tr class="text-sm font-bold bg-emerald-50/60"><td colspan="4" class="p-2 text-right text-emerald-900">Total Settled:</td><td id="ticketModalGrandTotal" class="p-2 text-right text-emerald-900">₹0.00</td></tr>
+            </tfoot>
+          </table>
+        </div>
+        <div class="flex justify-end pt-1">
+          <button type="button" id="ticketModalPrintReceiptBtn" class="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-sm transition flex items-center gap-1.5">
+            <span>🖨️</span> View Official Tax Invoice
+          </button>
+        </div>
+      </div>
+
+      <!-- Lifecycle Progress Timeline -->
+      <div class="p-4 rounded-2xl bg-slate-50 border border-slate-100 text-xs space-y-2.5">
+        <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Service Progress Lifecycle</span>
+        <div id="ticketModalTimeline" class="space-y-1"></div>
+      </div>
+
+      <!-- Modal Bottom Actions -->
+      <div class="flex items-center justify-between pt-2 border-t border-slate-100">
+        <button type="button" id="ticketModalTrackBtn" class="hidden px-4 py-2 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 font-bold text-xs transition flex items-center gap-1.5">
+          <span>🛵</span> Track Technician on Map
+        </button>
+        <button type="button" id="closeTicketDetailModalBtn" class="ml-auto px-5 py-2 rounded-xl bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs transition shadow-sm">
+          Close
+        </button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- Official Payment Receipt Modal for Ops -->
+  <dialog id="opsReceiptDialog" class="w-[min(94vw,680px)] rounded-3xl border-0 p-0 shadow-2xl overflow-hidden bg-white">
+    <div class="p-6 sm:p-8 space-y-5 max-h-[90vh] overflow-y-auto" id="opsReceiptPrintArea">
+      <div class="flex items-start justify-between border-b border-slate-200 pb-4">
+        <div>
+          <div class="flex items-center gap-2">
+            <span class="w-8 h-8 rounded-xl bg-[#0066ff] text-white flex items-center justify-center font-display font-extrabold text-sm">S</span>
+            <span class="font-display font-black text-xl tracking-tight text-slate-900">SERVSURE</span>
+          </div>
+          <p class="text-[11px] text-slate-400 mt-1">Official GST Tax Invoice & Service Receipt</p>
+        </div>
+        <div class="text-right">
+          <span id="opsReceiptInvoiceNo" class="font-mono text-xs font-bold text-slate-800 block">REC-SR-7845</span>
+          <span id="opsReceiptDate" class="text-[11px] text-slate-500 block">19 Oct 2026, 03:30 PM</span>
+          <span id="opsReceiptPaidBadge" class="mt-1 inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold border border-emerald-200">
+            ✓ PAID IN FULL
+          </span>
+        </div>
+      </div>
+      <div class="grid grid-cols-2 gap-4 text-xs">
+        <div>
+          <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Customer Details</span>
+          <strong id="opsReceiptCustName" class="text-sm font-bold text-slate-900 block mt-0.5">—</strong>
+          <span id="opsReceiptCustPhone" class="text-slate-600 block mt-0.5">—</span>
+          <span id="opsReceiptCustAddr" class="text-slate-500 block mt-0.5 text-[11px]">—</span>
+        </div>
+        <div class="text-right">
+          <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Authorized Service Center</span>
+          <strong id="opsReceiptBranchName" class="text-sm font-bold text-slate-900 block mt-0.5">—</strong>
+          <span id="opsReceiptBranchPhone" class="text-slate-600 block mt-0.5">—</span>
+          <span id="opsReceiptBranchAddr" class="text-slate-500 block mt-0.5 text-[11px]">—</span>
+        </div>
+      </div>
+      <div class="p-3 bg-slate-50 rounded-xl border border-slate-100 text-xs space-y-1">
+        <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Appliance Serviced</span>
+        <div class="flex items-center justify-between">
+          <strong id="opsReceiptAppliance" class="text-slate-900 font-semibold">—</strong>
+          <span id="opsReceiptModel" class="font-mono text-slate-500">—</span>
+        </div>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full text-left text-xs border border-slate-200 rounded-xl overflow-hidden">
+          <thead class="bg-slate-50 text-[11px] font-bold text-slate-500 uppercase border-b border-slate-200">
+            <tr>
+              <th class="p-2.5">Item Description</th>
+              <th class="p-2.5 text-center">HSN</th>
+              <th class="p-2.5 text-center">Qty</th>
+              <th class="p-2.5 text-right">Unit Rate</th>
+              <th class="p-2.5 text-right">Total</th>
+            </tr>
+          </thead>
+          <tbody id="opsReceiptItemsBody" class="divide-y divide-slate-100"></tbody>
+          <tfoot class="bg-slate-50 border-t border-slate-200">
+            <tr><td colspan="4" class="p-2 text-right text-slate-600 font-medium">Labor & Service Fee:</td><td id="opsReceiptLabor" class="p-2 text-right font-semibold text-slate-800">₹0.00</td></tr>
+            <tr><td colspan="4" class="p-2 text-right text-slate-600 font-medium">Parts Total:</td><td id="opsReceiptParts" class="p-2 text-right font-semibold text-slate-800">₹0.00</td></tr>
+            <tr><td colspan="4" class="p-2 text-right text-slate-600 font-medium">CGST (9%):</td><td id="opsReceiptCgst" class="p-2 text-right font-semibold text-slate-800">₹0.00</td></tr>
+            <tr><td colspan="4" class="p-2 text-right text-slate-600 font-medium">SGST (9%):</td><td id="opsReceiptSgst" class="p-2 text-right font-semibold text-slate-800">₹0.00</td></tr>
+            <tr class="text-sm font-bold bg-emerald-50 text-emerald-900 border-t border-emerald-200"><td colspan="4" class="p-2.5 text-right">Total Amount Paid:</td><td id="opsReceiptTotal" class="p-2.5 text-right">₹0.00</td></tr>
+          </tfoot>
+        </table>
+      </div>
+      <div class="flex items-center justify-between text-[11px] text-slate-400 border-t border-slate-100 pt-3">
+        <span>Payment Method: <strong id="opsReceiptPaymentMethod" class="text-slate-700 uppercase font-semibold">UPI</strong></span>
+        <span>Transaction Ref: <strong id="opsReceiptTxnRef" class="font-mono text-slate-700">TXN-0000</strong></span>
+      </div>
+      <div class="flex justify-end gap-2 pt-2 border-t border-slate-100">
+        <button type="button" id="closeOpsReceipt" class="px-4 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50">Close</button>
+        <button type="button" id="printOpsReceiptBtn" class="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-xs">🖨️ Print Invoice</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- Branch Deep-Dive Modal for Admin Portal -->
+  <dialog id="branchDetailModal" class="w-[min(96vw,980px)] rounded-3xl border-0 p-0 shadow-2xl overflow-hidden bg-white">
+    <div class="p-6 sm:p-7 space-y-5 max-h-[92vh] overflow-y-auto">
+      <!-- Modal Header -->
+      <div class="flex items-start justify-between border-b border-slate-100 pb-4">
+        <div class="flex items-center gap-4">
+          <div id="branchModalAvatar" class="w-12 h-12 rounded-2xl bg-blue-600 text-white font-bold flex items-center justify-center text-lg shadow-sm">
+            BR
+          </div>
+          <div>
+            <div class="flex items-center gap-2.5">
+              <h3 class="font-display text-xl font-bold text-slate-900" id="branchModalTitle">Branch Details</h3>
+              <span id="branchModalStatusBadge" class="status-pill completed">Active</span>
+            </div>
+            <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500 mt-1">
+              <span id="branchModalManager">👤 Manager: —</span>
+              <span id="branchModalEmail">✉️ —</span>
+              <span id="branchModalMobile">📞 —</span>
+              <span id="branchModalAddress">📍 —</span>
+            </div>
+          </div>
+        </div>
+        <button type="button" id="closeBranchDetailModalBtn" class="rounded-xl p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600 text-lg leading-none transition" aria-label="Close">✕</button>
+      </div>
+
+      <!-- Quick Metrics Summary Grid -->
+      <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+        <div class="p-3 bg-slate-50 rounded-2xl border border-slate-100/80">
+          <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Total Staff</span>
+          <strong id="branchStatStaff" class="text-lg font-bold text-slate-900 mt-0.5 block">0</strong>
+          <span class="text-[10px] text-slate-500">Manager & Techs</span>
+        </div>
+        <div class="p-3 bg-slate-50 rounded-2xl border border-slate-100/80">
+          <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Technicians</span>
+          <strong id="branchStatTechs" class="text-lg font-bold text-blue-600 mt-0.5 block">0</strong>
+          <span class="text-[10px] text-slate-500">Field workforce</span>
+        </div>
+        <div class="p-3 bg-slate-50 rounded-2xl border border-slate-100/80">
+          <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Stock SKUs</span>
+          <strong id="branchStatStockItems" class="text-lg font-bold text-slate-900 mt-0.5 block">0</strong>
+          <span id="branchStatLowStock" class="text-[10px] text-slate-500">0 low stock</span>
+        </div>
+        <div class="p-3 bg-slate-50 rounded-2xl border border-slate-100/80">
+          <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Inventory Qty</span>
+          <strong id="branchStatStockQty" class="text-lg font-bold text-emerald-600 mt-0.5 block">0</strong>
+          <span id="branchStatStockVal" class="text-[10px] text-slate-500 font-mono">₹0.00</span>
+        </div>
+        <div class="p-3 bg-slate-50 rounded-2xl border border-slate-100/80">
+          <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Ongoing Jobs</span>
+          <strong id="branchStatOngoing" class="text-lg font-bold text-amber-600 mt-0.5 block">0</strong>
+          <span class="text-[10px] text-slate-500">In-progress</span>
+        </div>
+        <div class="p-3 bg-slate-50 rounded-2xl border border-slate-100/80">
+          <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Completed</span>
+          <strong id="branchStatCompleted" class="text-lg font-bold text-indigo-600 mt-0.5 block">0</strong>
+          <span class="text-[10px] text-slate-500">Resolved jobs</span>
+        </div>
+      </div>
+
+      <!-- Tab Navigation Bar -->
+      <div class="flex border-b border-slate-200 gap-1 overflow-x-auto text-xs font-semibold" id="branchDetailTabs">
+        <button type="button" class="branch-tab-btn px-4 py-2.5 border-b-2 border-blue-600 text-blue-600 transition flex items-center gap-1.5" data-branch-tab="people">
+          <span>👥</span> People & Designations
+          <span id="tabCountPeople" class="ml-1 px-1.5 py-0.2 rounded-full bg-blue-100 text-blue-800 text-[10px] font-bold">0</span>
+        </button>
+        <button type="button" class="branch-tab-btn px-4 py-2.5 border-b-2 border-transparent text-slate-500 hover:text-slate-800 transition flex items-center gap-1.5" data-branch-tab="stock">
+          <span>📦</span> Stock Items
+          <span id="tabCountStock" class="ml-1 px-1.5 py-0.2 rounded-full bg-slate-100 text-slate-600 text-[10px] font-bold">0</span>
+        </button>
+        <button type="button" class="branch-tab-btn px-4 py-2.5 border-b-2 border-transparent text-slate-500 hover:text-slate-800 transition flex items-center gap-1.5" data-branch-tab="logistics">
+          <span>🚚</span> Sent & Received Logistics
+          <span id="tabCountLogistics" class="ml-1 px-1.5 py-0.2 rounded-full bg-slate-100 text-slate-600 text-[10px] font-bold">0</span>
+        </button>
+        <button type="button" class="branch-tab-btn px-4 py-2.5 border-b-2 border-transparent text-slate-500 hover:text-slate-800 transition flex items-center gap-1.5" data-branch-tab="ongoing">
+          <span>⚡</span> Ongoing Requests
+          <span id="tabCountOngoing" class="ml-1 px-1.5 py-0.2 rounded-full bg-amber-100 text-amber-800 text-[10px] font-bold">0</span>
+        </button>
+        <button type="button" class="branch-tab-btn px-4 py-2.5 border-b-2 border-transparent text-slate-500 hover:text-slate-800 transition flex items-center gap-1.5" data-branch-tab="history">
+          <span>📜</span> Service History
+          <span id="tabCountHistory" class="ml-1 px-1.5 py-0.2 rounded-full bg-slate-100 text-slate-600 text-[10px] font-bold">0</span>
+        </button>
+      </div>
+
+      <!-- Tab Panels Container -->
+      <div id="branchTabPanels" class="min-h-[280px]">
+        <!-- Panel 1: People & Designations -->
+        <div id="branchTabPeople" class="branch-tab-panel space-y-4">
+          <div class="flex items-center justify-between">
+            <h4 class="text-xs font-bold uppercase tracking-wider text-slate-500">Personnel & Staff Working Under This Branch</h4>
+            <span class="text-xs text-slate-400">Designations, credentials & performance</span>
+          </div>
+          <div id="branchPeopleList" class="space-y-3"></div>
+        </div>
+
+        <!-- Panel 2: Total Stock Items -->
+        <div id="branchTabStock" class="branch-tab-panel hidden space-y-4">
+          <div class="flex items-center justify-between">
+            <h4 class="text-xs font-bold uppercase tracking-wider text-slate-500">Warehouse Spare Parts & Inventory Catalog</h4>
+            <span class="text-xs text-slate-400">Available stock, reorder levels & pricing</span>
+          </div>
+          <div class="overflow-x-auto rounded-2xl border border-slate-200">
+            <table class="w-full text-left text-xs">
+              <thead class="bg-slate-50 text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200">
+                <tr>
+                  <th class="p-3">Part Details</th>
+                  <th class="p-3">Category</th>
+                  <th class="p-3">HSN Code</th>
+                  <th class="p-3 text-right">Unit Price</th>
+                  <th class="p-3 text-center">Available Stock</th>
+                  <th class="p-3 text-center">Reorder Level</th>
+                  <th class="p-3">Status</th>
+                </tr>
+              </thead>
+              <tbody id="branchStockRows" class="divide-y divide-slate-100"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Panel 3: Sent & Received Logistics History -->
+        <div id="branchTabLogistics" class="branch-tab-panel hidden space-y-4">
+          <div class="flex items-center justify-between">
+            <h4 class="text-xs font-bold uppercase tracking-wider text-slate-500">Logistics Audit Trail: Stock In & Stock Out</h4>
+            <span class="text-xs text-slate-400">Details of when stock items were sent and received by this branch</span>
+          </div>
+          <div class="overflow-x-auto rounded-2xl border border-slate-200">
+            <table class="w-full text-left text-xs">
+              <thead class="bg-slate-50 text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200">
+                <tr>
+                  <th class="p-3">Timestamp</th>
+                  <th class="p-3">Movement Type</th>
+                  <th class="p-3">Item & Code</th>
+                  <th class="p-3 text-center">Quantity</th>
+                  <th class="p-3">Challan / Ref ID</th>
+                  <th class="p-3">Dispatched / Sent By</th>
+                  <th class="p-3">Notes & Reason</th>
+                </tr>
+              </thead>
+              <tbody id="branchLogisticsRows" class="divide-y divide-slate-100"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Panel 4: Ongoing Requests -->
+        <div id="branchTabOngoing" class="branch-tab-panel hidden space-y-4">
+          <div class="flex items-center justify-between">
+            <h4 class="text-xs font-bold uppercase tracking-wider text-slate-500">Live & Ongoing Service Requests</h4>
+            <span class="text-xs text-slate-400">Customer requests currently handled by this branch</span>
+          </div>
+          <div class="overflow-x-auto rounded-2xl border border-slate-200">
+            <table class="w-full text-left text-xs">
+              <thead class="bg-slate-50 text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200">
+                <tr>
+                  <th class="p-3">Request ID</th>
+                  <th class="p-3">Customer & Location</th>
+                  <th class="p-3">Appliance & Issue</th>
+                  <th class="p-3">Technician</th>
+                  <th class="p-3">Schedule</th>
+                  <th class="p-3">Status</th>
+                  <th class="p-3 text-right">Action</th>
+                </tr>
+              </thead>
+              <tbody id="branchOngoingRows" class="divide-y divide-slate-100"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Panel 5: Completed Service History -->
+        <div id="branchTabHistory" class="branch-tab-panel hidden space-y-4">
+          <div class="flex items-center justify-between">
+            <h4 class="text-xs font-bold uppercase tracking-wider text-slate-500">Resolved Service Request History</h4>
+            <span class="text-xs text-slate-400">Past completed tickets and digital job cards</span>
+          </div>
+          <div class="overflow-x-auto rounded-2xl border border-slate-200">
+            <table class="w-full text-left text-xs">
+              <thead class="bg-slate-50 text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200">
+                <tr>
+                  <th class="p-3">Request ID</th>
+                  <th class="p-3">Customer & Address</th>
+                  <th class="p-3">Appliance & Fault</th>
+                  <th class="p-3">Resolved By</th>
+                  <th class="p-3">Payment</th>
+                  <th class="p-3">Date</th>
+                  <th class="p-3 text-right">Action</th>
+                </tr>
+              </thead>
+              <tbody id="branchHistoryRows" class="divide-y divide-slate-100"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Modal Footer -->
+      <div class="flex items-center justify-between border-t border-slate-100 pt-3">
+        <span class="text-xs text-slate-400">Branch records synchronized with central platform database</span>
+        <button type="button" id="closeBranchDetailModalFooterBtn" class="rounded-xl px-5 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 transition border border-slate-200">
+          Close
+        </button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- Technician Deep-Dive Modal for Admin Portal -->
+  <dialog id="technicianDetailModal" class="w-[min(94vw,760px)] rounded-3xl border-0 p-0 shadow-2xl overflow-hidden bg-white">
+    <div class="p-6 sm:p-7 space-y-5 max-h-[92vh] overflow-y-auto">
+      <!-- Modal Header -->
+      <div class="flex items-start justify-between border-b border-slate-100 pb-4">
+        <div class="flex items-center gap-4">
+          <div id="techModalAvatar" class="w-12 h-12 rounded-2xl bg-gradient-to-br from-indigo-600 to-blue-600 text-white font-bold flex items-center justify-center text-lg shadow-sm">
+            TC
+          </div>
+          <div>
+            <div class="flex items-center gap-2.5">
+              <h3 class="font-display text-xl font-bold text-slate-900" id="techModalName">Technician Name</h3>
+              <span id="techModalStatus" class="status-pill completed">Active / Verified</span>
+            </div>
+            <p class="text-xs text-slate-500 mt-1" id="techModalTitle">Certified Field Service Engineer</p>
+          </div>
+        </div>
+        <button type="button" id="closeTechDetailModal" class="rounded-xl p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600 text-lg leading-none transition" aria-label="Close">✕</button>
+      </div>
+
+      <!-- Quick Stats -->
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div class="p-3 bg-slate-50 rounded-2xl border border-slate-100">
+          <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Rating</span>
+          <strong class="text-lg font-bold text-slate-800" id="techModalRating">⭐ 5.0</strong>
+        </div>
+        <div class="p-3 bg-slate-50 rounded-2xl border border-slate-100">
+          <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Total Jobs</span>
+          <strong class="text-lg font-bold text-blue-600" id="techModalJobs">0</strong>
+        </div>
+        <div class="p-3 bg-slate-50 rounded-2xl border border-slate-100">
+          <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Branch</span>
+          <strong class="text-xs font-bold text-slate-800 block truncate" id="techModalBranch">—</strong>
+        </div>
+        <div class="p-3 bg-slate-50 rounded-2xl border border-slate-100">
+          <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Parent Company</span>
+          <strong class="text-xs font-bold text-slate-800 block truncate" id="techModalCompany">—</strong>
+        </div>
+      </div>
+
+      <!-- Contact & Operations Details -->
+      <div class="p-4 rounded-2xl bg-slate-50 border border-slate-100 space-y-2 text-xs">
+        <span class="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">Contact & Operational Information</span>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-slate-700">
+          <div><span class="text-slate-400">Email:</span> <strong id="techModalEmail" class="text-slate-900 font-semibold">—</strong></div>
+          <div><span class="text-slate-400">Mobile:</span> <strong id="techModalPhone" class="text-slate-900 font-semibold">—</strong></div>
+          <div class="sm:col-span-2"><span class="text-slate-400">Territory / Address:</span> <strong id="techModalAddress" class="text-slate-900 font-semibold">—</strong></div>
+        </div>
+      </div>
+
+      <!-- Assigned Service Requests Table -->
+      <div class="space-y-3">
+        <h4 class="text-xs font-bold uppercase tracking-wider text-slate-500">Assigned Service Tasks & History</h4>
+        <div class="overflow-x-auto rounded-2xl border border-slate-200">
+          <table class="w-full text-left text-xs">
+            <thead class="bg-slate-50 text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200">
+              <tr>
+                <th class="p-3">Ticket ID</th>
+                <th class="p-3">Customer</th>
+                <th class="p-3">Appliance</th>
+                <th class="p-3">Issue</th>
+                <th class="p-3">Status</th>
+                <th class="p-3">Appointment</th>
+              </tr>
+            </thead>
+            <tbody id="techModalServiceRows" class="divide-y divide-slate-100">
+              <tr><td colspan="6" class="p-4 text-center text-slate-400">No service tasks found.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Footer -->
+      <div class="flex items-center justify-between border-t border-slate-100 pt-3">
+        <span class="text-xs text-slate-400">Verified ServSure Field Personnel</span>
+        <button type="button" id="closeTechDetailModalFooterBtn" class="rounded-xl px-5 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 transition border border-slate-200">
+          Close
+        </button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- Customer Deep-Dive Modal for Admin Portal -->
+  <dialog id="customerDetailModal" class="w-[min(96vw,920px)] rounded-3xl border-0 p-0 shadow-2xl overflow-hidden bg-white">
+    <div class="p-6 sm:p-7 space-y-5 max-h-[92vh] overflow-y-auto">
+      <!-- Modal Header -->
+      <div class="flex items-start justify-between border-b border-slate-100 pb-4">
+        <div class="flex items-center gap-4">
+          <div id="custModalAvatar" class="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-600 text-white font-bold flex items-center justify-center text-lg shadow-sm">
+            CU
+          </div>
+          <div>
+            <div class="flex items-center gap-2.5">
+              <h3 class="font-display text-xl font-bold text-slate-900" id="custModalName">Customer Name</h3>
+              <span id="custModalId" class="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-slate-100 text-slate-600">ID: —</span>
+            </div>
+            <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500 mt-1">
+              <span id="custModalPhone">📞 —</span>
+              <span id="custModalEmail">✉️ —</span>
+              <span id="custModalAddress">📍 —</span>
+            </div>
+          </div>
+        </div>
+        <button type="button" id="closeCustDetailModalBtn" class="rounded-xl p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600 text-lg leading-none transition" aria-label="Close">✕</button>
+      </div>
+
+      <!-- Quick Metrics Summary Grid (4 Cards) -->
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div class="p-3 bg-slate-50 rounded-2xl border border-slate-100/80">
+          <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Registered Products</span>
+          <strong id="custStatProducts" class="text-lg font-bold text-slate-900 mt-0.5 block">0</strong>
+          <span class="text-[10px] text-slate-500">Appliances owned</span>
+        </div>
+        <div class="p-3 bg-slate-50 rounded-2xl border border-slate-100/80">
+          <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Under Warranty</span>
+          <strong id="custStatWarranties" class="text-lg font-bold text-emerald-600 mt-0.5 block">0</strong>
+          <span class="text-[10px] text-slate-500">Active coverage</span>
+        </div>
+        <div class="p-3 bg-slate-50 rounded-2xl border border-slate-100/80">
+          <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Ongoing Jobs</span>
+          <strong id="custStatOngoing" class="text-lg font-bold text-amber-600 mt-0.5 block">0</strong>
+          <span class="text-[10px] text-slate-500">In-progress tickets</span>
+        </div>
+        <div class="p-3 bg-slate-50 rounded-2xl border border-slate-100/80">
+          <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Service History</span>
+          <strong id="custStatHistory" class="text-lg font-bold text-blue-600 mt-0.5 block">0</strong>
+          <span class="text-[10px] text-slate-500">Completed repairs</span>
+        </div>
+      </div>
+
+      <!-- Tab Navigation Bar -->
+      <div class="flex border-b border-slate-200 gap-1 overflow-x-auto text-xs font-semibold" id="custDetailTabs">
+        <button type="button" class="cust-tab-btn px-4 py-2.5 border-b-2 border-blue-600 text-blue-600 transition flex items-center gap-1.5" data-cust-tab="products">
+          <span>📦</span> Registered Products & Warranty
+          <span id="tabCountCustProducts" class="ml-1 px-1.5 py-0.2 rounded-full bg-blue-100 text-blue-800 text-[10px] font-bold">0</span>
+        </button>
+        <button type="button" class="cust-tab-btn px-4 py-2.5 border-b-2 border-transparent text-slate-500 hover:text-slate-800 transition flex items-center gap-1.5" data-cust-tab="ongoing">
+          <span>⚡</span> Ongoing Services
+          <span id="tabCountCustOngoing" class="ml-1 px-1.5 py-0.2 rounded-full bg-amber-100 text-amber-800 text-[10px] font-bold">0</span>
+        </button>
+        <button type="button" class="cust-tab-btn px-4 py-2.5 border-b-2 border-transparent text-slate-500 hover:text-slate-800 transition flex items-center gap-1.5" data-cust-tab="history">
+          <span>📜</span> Service History
+          <span id="tabCountCustHistory" class="ml-1 px-1.5 py-0.2 rounded-full bg-slate-100 text-slate-600 text-[10px] font-bold">0</span>
+        </button>
+      </div>
+
+      <!-- Tab Panels Container -->
+      <div id="custTabPanels" class="min-h-[260px]">
+        <!-- Panel 1: Registered Products & Warranty -->
+        <div id="custTabProducts" class="cust-tab-panel space-y-3">
+          <div class="flex items-center justify-between">
+            <h4 class="text-xs font-bold uppercase tracking-wider text-slate-500">Registered Appliances & Brand Coverage</h4>
+            <span class="text-xs text-slate-400">Model specifications, serial numbers & brand warranty status</span>
+          </div>
+          <div id="custProductsList" class="space-y-3"></div>
+        </div>
+
+        <!-- Panel 2: Ongoing Services -->
+        <div id="custTabOngoing" class="cust-tab-panel hidden space-y-3">
+          <div class="flex items-center justify-between">
+            <h4 class="text-xs font-bold uppercase tracking-wider text-slate-500">Live Ongoing Service Tickets</h4>
+            <span class="text-xs text-slate-400">Current service requests being serviced by authorized branches</span>
+          </div>
+          <div class="overflow-x-auto rounded-2xl border border-slate-200">
+            <table class="w-full text-left text-xs">
+              <thead class="bg-slate-50 text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200">
+                <tr>
+                  <th class="p-3">Ticket ID</th>
+                  <th class="p-3">Appliance & Fault</th>
+                  <th class="p-3">Branch & Technician</th>
+                  <th class="p-3">Schedule</th>
+                  <th class="p-3">Status</th>
+                  <th class="p-3 text-right">Action</th>
+                </tr>
+              </thead>
+              <tbody id="custOngoingRows" class="divide-y divide-slate-100"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Panel 3: Service History -->
+        <div id="custTabHistory" class="cust-tab-panel hidden space-y-3">
+          <div class="flex items-center justify-between">
+            <h4 class="text-xs font-bold uppercase tracking-wider text-slate-500">Completed Service & Job Card History</h4>
+            <span class="text-xs text-slate-400">Past resolved issues, digital job cards & payment records</span>
+          </div>
+          <div class="overflow-x-auto rounded-2xl border border-slate-200">
+            <table class="w-full text-left text-xs">
+              <thead class="bg-slate-50 text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200">
+                <tr>
+                  <th class="p-3">Ticket ID</th>
+                  <th class="p-3">Appliance & Complaint</th>
+                  <th class="p-3">Serviced By</th>
+                  <th class="p-3">Payment</th>
+                  <th class="p-3">Completed On</th>
+                  <th class="p-3 text-right">Action</th>
+                </tr>
+              </thead>
+              <tbody id="custHistoryRows" class="divide-y divide-slate-100"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Modal Footer -->
+      <div class="flex items-center justify-between border-t border-slate-100 pt-3">
+        <span class="text-xs text-slate-400">Customer records synchronized across all platform brands</span>
+        <button type="button" id="closeCustDetailModalFooterBtn" class="rounded-xl px-5 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 transition border border-slate-200">
+          Close
+        </button>
+      </div>
+    </div>
+  </dialog>
 </body>
 </html>

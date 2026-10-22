@@ -12,7 +12,8 @@ from sqlalchemy.orm import Session
 
 from app.db.models import (
     CompanyOnboardingModel, UserModel, CompanyBranchModel,
-    TechnicianModel, BranchTechnicianModel, ApplianceModel, ServiceRequestModel
+    TechnicianModel, BranchTechnicianModel, ApplianceModel, ServiceRequestModel,
+    JobCardModel
 )
 from app.db.session import get_db
 from app.schemas import AccessTogglePayload, CompanyCreate, CompanyCredentialsEmail, CompanyOtpVerify, CompanyPasswordSetup
@@ -260,8 +261,289 @@ def list_directory(role: str, request: Request, db: Session = Depends(get_db)):
     require_admin(request, db)
     if role not in {"branch", "technician", "customer"}:
         raise HTTPException(status_code=404, detail="Directory not found")
-    users = db.query(UserModel).filter(UserModel.role == role).order_by(UserModel.name).all()
-    return [company_payload(user) for user in users]
+
+    if role == "branch":
+        branches = db.query(CompanyBranchModel).order_by(CompanyBranchModel.branch_name).all()
+        companies_by_id = {u.id: u for u in db.query(UserModel).filter(UserModel.role == "company").all()}
+        branch_users_by_id = {u.id: u for u in db.query(UserModel).filter(UserModel.role == "branch").all()}
+        branch_users_by_email = {u.email.lower(): u for u in db.query(UserModel).filter(UserModel.role == "branch").all()}
+
+        result = []
+        for b in branches:
+            company = companies_by_id.get(b.company_id)
+            b_user = branch_users_by_id.get(b.id) or branch_users_by_email.get(b.email.lower())
+            tech_count = db.query(BranchTechnicianModel).filter(BranchTechnicianModel.branch_id == b.id).count()
+            jobs_count = db.query(ServiceRequestModel).filter(ServiceRequestModel.branch_id == b.id).count()
+            ongoing_jobs = db.query(ServiceRequestModel).filter(
+                ServiceRequestModel.branch_id == b.id,
+                ServiceRequestModel.status_badge != "Completed"
+            ).count()
+
+            result.append({
+                "id": b.id,
+                "name": b.branch_name,
+                "branch_name": b.branch_name,
+                "manager_name": b.manager_name,
+                "company_id": b.company_id,
+                "company_name": company.name if company else "ServSure Network",
+                "email": b.email,
+                "phone": b.mobile,
+                "mobile": b.mobile,
+                "address": b.address,
+                "pincode": b.pincode,
+                "is_active": b_user.is_active if b_user else True,
+                "total_techs": tech_count,
+                "total_jobs": jobs_count,
+                "ongoing_jobs": ongoing_jobs,
+                "role": "branch",
+                "avatar": b.branch_name[:2].upper()
+            })
+        return result
+
+    elif role == "technician":
+        techs = db.query(TechnicianModel).order_by(TechnicianModel.name).all()
+        bt_links = {l.technician_id: l for l in db.query(BranchTechnicianModel).all()}
+        branches_by_id = {b.id: b for b in db.query(CompanyBranchModel).all()}
+        companies_by_id = {u.id: u for u in db.query(UserModel).filter(UserModel.role == "company").all()}
+        tech_users_by_id = {u.id: u for u in db.query(UserModel).filter(UserModel.role == "technician").all()}
+        tech_users_by_phone = {u.phone: u for u in db.query(UserModel).filter(UserModel.role == "technician").all()}
+
+        result = []
+        for t in techs:
+            link = bt_links.get(t.id)
+            branch = branches_by_id.get(link.branch_id) if link else None
+            company = companies_by_id.get(branch.company_id) if branch else None
+            t_user = tech_users_by_id.get(t.id) or tech_users_by_phone.get(t.phone)
+
+            completed_jobs = db.query(ServiceRequestModel).filter(
+                ServiceRequestModel.technician_id == t.id,
+                ServiceRequestModel.status_badge == "Completed"
+            ).count()
+            active_jobs = db.query(ServiceRequestModel).filter(
+                ServiceRequestModel.technician_id == t.id,
+                ServiceRequestModel.status_badge != "Completed"
+            ).count()
+            total_jobs = completed_jobs + active_jobs
+            if total_jobs == 0 and t.total_jobs:
+                total_jobs = t.total_jobs
+
+            result.append({
+                "id": t.id,
+                "name": t.name,
+                "title": t.title or "Field Service Engineer",
+                "phone": t.phone,
+                "email": t_user.email if t_user else f"{t.name.lower().replace(' ', '.')}@servsure.com",
+                "rating": round(t.rating or 5.0, 1),
+                "total_jobs": total_jobs,
+                "completed_jobs": completed_jobs,
+                "active_jobs": active_jobs,
+                "branch_id": branch.id if branch else None,
+                "branch_name": branch.branch_name if branch else (t.company_branch or "Main Service Center"),
+                "company_id": company.id if company else None,
+                "company_name": company.name if company else "ServSure Certified Partner",
+                "address": (link.address if link else None) or (branch.address if branch else "Field Service Territory"),
+                "pincode": (link.pincode if link else None) or (branch.pincode if branch else ""),
+                "is_active": t_user.is_active if t_user else True,
+                "is_verified": t.is_verified,
+                "role": "technician",
+                "avatar": t.avatar or t.name[:2].upper()
+            })
+        return result
+
+    elif role == "customer":
+        customers = db.query(UserModel).filter(UserModel.role == "customer").order_by(UserModel.name).all()
+        result = []
+        for c in customers:
+            appliances_cnt = db.query(ApplianceModel).filter(ApplianceModel.user_id == c.id).count()
+            total_reqs = db.query(ServiceRequestModel).filter(ServiceRequestModel.customer_id == c.id).count()
+            ongoing_reqs = db.query(ServiceRequestModel).filter(
+                ServiceRequestModel.customer_id == c.id,
+                ServiceRequestModel.status_badge != "Completed"
+            ).count()
+            completed_reqs = db.query(ServiceRequestModel).filter(
+                ServiceRequestModel.customer_id == c.id,
+                ServiceRequestModel.status_badge == "Completed"
+            ).count()
+
+            result.append({
+                "id": c.id,
+                "name": c.name,
+                "email": c.email,
+                "phone": c.phone,
+                "address": c.address or "Address not provided",
+                "appliances_count": appliances_cnt,
+                "total_requests": total_reqs,
+                "ongoing_requests": ongoing_reqs,
+                "completed_requests": completed_reqs,
+                "is_active": c.is_active,
+                "role": "customer",
+                "avatar": c.name[:2].upper()
+            })
+        return result
+
+
+@router.get("/customers/{customer_id}")
+def get_admin_customer_details(customer_id: str, request: Request, db: Session = Depends(get_db)):
+    require_admin(request, db)
+    customer = db.query(UserModel).filter(UserModel.id == customer_id, UserModel.role == "customer").first()
+    if not customer:
+        raise HTTPException(status_code=404, detail="Customer not found")
+
+    appliances = db.query(ApplianceModel).filter(ApplianceModel.user_id == customer.id).order_by(ApplianceModel.registered_on.desc()).all()
+    companies_by_id = {u.id: u for u in db.query(UserModel).filter(UserModel.role == "company").all()}
+
+    products_list = []
+    for a in appliances:
+        comp = companies_by_id.get(a.company_id)
+        is_w_active = (a.warranty_status or "").lower() == "active"
+        products_list.append({
+            "id": a.id,
+            "category": a.category,
+            "brand": a.brand,
+            "company_id": a.company_id,
+            "company_name": comp.name if comp else a.brand,
+            "model_no": a.model_no,
+            "serial_no": a.serial_no or "Not registered",
+            "registered_on": a.registered_on,
+            "warranty_status": a.warranty_status or "Active",
+            "warranty_start_date": a.warranty_start_date or a.registered_on,
+            "warranty_end_date": a.warranty_end_date or "Standard 1-Year",
+            "is_under_warranty": is_w_active,
+            "amc_active": bool(a.amc_active),
+            "amc_plan_name": a.amc_plan_name or "None",
+            "amc_end_date": a.amc_end_date or "—"
+        })
+
+    reqs = db.query(ServiceRequestModel).filter(
+        ServiceRequestModel.customer_id == customer.id
+    ).order_by(ServiceRequestModel.created_at.desc()).all()
+
+    techs_by_id = {t.id: t for t in db.query(TechnicianModel).all()}
+    branches_by_id = {b.id: b for b in db.query(CompanyBranchModel).all()}
+
+    ongoing = []
+    completed = []
+    for r in reqs:
+        t = techs_by_id.get(r.technician_id)
+        b = branches_by_id.get(r.branch_id)
+        comp = companies_by_id.get(r.company_id)
+        jc = db.query(JobCardModel).filter(JobCardModel.request_id == r.id).first()
+        item = {
+            "id": r.id,
+            "appliance_id": r.appliance_id,
+            "appliance_name": r.appliance_name,
+            "brand": r.brand,
+            "model_no": r.model_no,
+            "issue": r.issue,
+            "status": r.status,
+            "status_badge": r.status_badge,
+            "priority": r.priority,
+            "appointment_date": r.appointment_date,
+            "appointment_slot": r.appointment_slot,
+            "technician_id": r.technician_id,
+            "technician_name": t.name if t else "Unassigned",
+            "branch_id": r.branch_id,
+            "branch_name": b.branch_name if b else "Authorized Hub",
+            "company_id": r.company_id,
+            "company_name": comp.name if comp else r.brand,
+            "created_at": r.created_at,
+            "payment_status": r.payment_status or "Pending",
+            "total_amount": jc.total_amount if jc else 0.0
+        }
+        if r.status == "Completed" or r.status_badge == "Completed":
+            completed.append(item)
+        else:
+            ongoing.append(item)
+
+    return {
+        "customer": {
+            "id": customer.id,
+            "name": customer.name,
+            "email": customer.email,
+            "phone": customer.phone,
+            "address": customer.address or "Address not provided",
+            "avatar": customer.name[:2].upper(),
+            "is_active": customer.is_active,
+            "appliances_count": len(products_list),
+            "total_requests": len(reqs),
+            "ongoing_requests": len(ongoing),
+            "completed_requests": len(completed)
+        },
+        "stats": {
+            "total_products": len(products_list),
+            "active_warranties": sum(1 for p in products_list if p.get("is_under_warranty")),
+            "ongoing_services": len(ongoing),
+            "completed_services": len(completed)
+        },
+        "products": products_list,
+        "appliances": products_list,
+        "ongoing_services": ongoing,
+        "completed_services": completed,
+        "requests": ongoing + completed
+    }
+
+
+@router.get("/technicians/{technician_id}")
+def get_admin_technician_details(technician_id: str, request: Request, db: Session = Depends(get_db)):
+    require_admin(request, db)
+    t = db.query(TechnicianModel).filter(TechnicianModel.id == technician_id).first()
+    if not t:
+        raise HTTPException(status_code=404, detail="Technician not found")
+
+    link = db.query(BranchTechnicianModel).filter(BranchTechnicianModel.technician_id == t.id).first()
+    branch = db.query(CompanyBranchModel).filter(CompanyBranchModel.id == link.branch_id).first() if link else None
+    company = db.query(UserModel).filter(UserModel.id == branch.company_id).first() if branch else None
+    t_user = db.query(UserModel).filter(or_(UserModel.id == t.id, UserModel.phone == t.phone)).first()
+
+    reqs = db.query(ServiceRequestModel).filter(
+        ServiceRequestModel.technician_id == t.id
+    ).order_by(ServiceRequestModel.created_at.desc()).all()
+
+    assigned_services = []
+    for r in reqs:
+        assigned_services.append({
+            "id": r.id,
+            "customer_name": r.customer_name,
+            "customer_phone": r.customer_phone,
+            "appliance_name": r.appliance_name,
+            "brand": r.brand,
+            "issue": r.issue,
+            "status": r.status,
+            "status_badge": r.status_badge,
+            "appointment_date": r.appointment_date,
+            "appointment_slot": r.appointment_slot
+        })
+
+    return {
+        "technician": {
+            "id": t.id,
+            "name": t.name,
+            "title": t.title or "Field Service Engineer",
+            "phone": t.phone,
+            "email": t_user.email if t_user else f"{t.name.lower().replace(' ', '.')}@servsure.com",
+            "rating": round(t.rating or 5.0, 1),
+            "total_jobs": len(reqs) if len(reqs) > 0 else (t.total_jobs or 0),
+            "branch_id": branch.id if branch else None,
+            "branch_name": branch.branch_name if branch else (t.company_branch or "Main Service Center"),
+            "branch_address": branch.address if branch else "—",
+            "manager_name": branch.manager_name if branch else "—",
+            "company_id": company.id if company else None,
+            "company_name": company.name if company else "ServSure Certified Partner",
+            "address": (link.address if link else None) or (branch.address if branch else "Field Service Territory"),
+            "pincode": (link.pincode if link else None) or (branch.pincode if branch else ""),
+            "is_active": t_user.is_active if t_user else True,
+            "is_verified": t.is_verified,
+            "avatar": t.avatar or t.name[:2].upper()
+        },
+        "services": assigned_services
+    }
+
+
+@router.get("/branches/{branch_id}")
+def get_admin_branch_details(branch_id: str, request: Request, db: Session = Depends(get_db)):
+    require_admin(request, db)
+    from app.routes.company import get_company_branch_details
+    return get_company_branch_details(branch_id, request, db)
 
 
 @router.post("/companies", status_code=201)

@@ -12,7 +12,7 @@ from app.db.models import (
 )
 from app.schemas import (
     SparePartSchema, SparePartCreatePayload,
-    CompanyPartCreatePayload, CompanyStockUpdatePayload,
+    CompanyPartCreatePayload, CompanyPartUpdatePayload, CompanyStockUpdatePayload,
     PartRequestCreatePayload, PartRequestResponseSchema,
     FranchiseInventoryItemSchema, StockMovementPayload
 )
@@ -256,6 +256,47 @@ def update_company_part_stock(
         "part_code": part.part_code,
         "stock_quantity": part.stock_quantity
     }
+
+@router.put("/company/parts/{part_id}", response_model=SparePartSchema)
+def update_company_part_details(
+    part_id: str,
+    payload: CompanyPartUpdatePayload,
+    request: Request,
+    db: Session = Depends(get_db)
+):
+    user = get_authenticated_user(request, db)
+    if user.role not in ("company", "admin"):
+        raise HTTPException(status_code=403, detail="Only company or admin can edit spare parts")
+
+    part = db.query(SparePartModel).filter(SparePartModel.id == part_id).first()
+    if not part:
+        raise HTTPException(status_code=404, detail="Spare part not found")
+
+    part.name = payload.name.strip()
+    part.category = payload.category.strip()
+    if payload.brand:
+        part.brand = payload.brand.strip()
+    part.unit_price = payload.unit_price
+    if payload.hsn_code:
+        part.hsn_code = payload.hsn_code.strip()
+    part.description = payload.description.strip() if payload.description else None
+
+    db.commit()
+    db.refresh(part)
+
+    return SparePartSchema(
+        id=part.id,
+        part_code=part.part_code,
+        name=part.name,
+        category=part.category,
+        brand=part.brand,
+        unit_price=part.unit_price,
+        hsn_code=part.hsn_code,
+        description=part.description,
+        stock_quantity=getattr(part, "stock_quantity", 0) or 0,
+        company_id=getattr(part, "company_id", None),
+        is_active=part.is_active
+    )
 
 @router.post("/part-requests", response_model=PartRequestResponseSchema)
 def create_part_request(

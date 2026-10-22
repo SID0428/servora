@@ -4,8 +4,8 @@ PRODUCTION-GRADE TECHNICAL ARCHITECTURE & DEVELOPER ONBOARDING MANUAL
 ================================================================================
 File: documentation.txt
 Platform: ServSure (formerly Servora)
-Version: 1.1.0 (Production Release)
-Last Updated: October 22, 2026
+Version: 1.1.2 (Production Release - Admin Inspection & Inventory Management)
+Last Updated: October 22, 2026 (18:25 IST)
 Repository: https://github.com/SID0428/servora.git
 
 Welcome to ServSure! This manual is the definitive, authoritative reference
@@ -257,6 +257,14 @@ Portal UI Cleanliness & Universal Settings Removal:
    - The legacy dummy technician ("Rahul Sharma" / `tech_1`) was completely purged from
      the database, seeds, and frontend receipt placeholders.
    - Company branch queries strictly return technicians assigned through `BranchTechnicianModel`.
+4. Platform Inspection & Deep-Dive Modals (Admin Portal):
+   - `#ticketDetailModal`: Full ticket inspection modal displaying request status, timeline events, verification OTPs, customer notes, assigned franchise/tech, and live financial job card breakdown (inspection fee, labor, parts breakdown, discounts, GST, total).
+   - `#opsReceiptDialog`: Standardized GST tax invoice & job receipt viewer with printable receipt layout.
+   - `#branchDetailModal`: Deep-dive branch inspection with sub-tabs for People, Stock, Logistics, Ongoing Services, and Completed History.
+   - `#technicianDetailModal`: Deep-dive technician inspection showing personal profile, active branch, parent brand company, rating, and service task history.
+   - `#customerDetailModal`: Full customer breakdown showing contact details, registered appliances (brand, model, category, serial number, warranty status), ongoing service tickets, and completed history.
+5. Modal DOM Nesting Guard:
+   - Fixed unclosed `<dialog id="customerDetailModal">` tags in `company-dashboard.html` and `franchise-dashboard.html` that previously trapped `#addPartDialog`, `#updatePartStockDialog`, and `#requestPartDialog` within hidden dialogs. Added dedicated `#editPartDialog` in `company-dashboard.html` for company part metadata updates.
 
 3.4. Background Workers (`backend/main.py`)
 -------------------------------------------
@@ -560,6 +568,17 @@ Request Headers:
 - `PUT /api/admin/companies/{company_id}/access`
   - Body: `{ "is_active": false }`
   - Deactivates company and immediately revokes all company, branch, and tech sessions.
+- `GET /api/admin/directory/{role}`:
+  - Role `"branch"`: Returns comprehensive list of all franchise branches with branch name, address, pincode, parent company name (`company_name`), manager name, mobile, active status, technician count (`technician_count`), and job count (`jobs_count`).
+  - Role `"technician"`: Returns list of all technicians with title/specialty, assigned branch name (`branch_name`), parent company name (`company_name`), mobile, rating, total jobs (`total_jobs`), and active status.
+  - Role `"customer"`: Returns list of customer users with phone, address, registered appliances count (`appliances_count`), total service requests (`total_requests`), ongoing requests (`ongoing_requests`), and completed requests (`completed_requests`).
+  - Role `"company"`: Returns onboarded companies with contact details and onboarding status.
+- `GET /api/admin/branches/{branch_id}`:
+  - Deep-dive branch inspection returning `{ branch, stats, people, inventory, service_history, warranty_claims }`.
+- `GET /api/admin/technicians/{technician_id}`:
+  - Deep-dive technician inspection returning `{ technician, services }` including assigned branch name, parent company name, specialty, contact details, rating, and service task list.
+- `GET /api/admin/customers/{customer_id}`:
+  - Deep-dive customer inspection returning `{ customer, stats, products, appliances, ongoing_services, completed_services, requests }` across all brands and service requests.
 
 5.3. Brand / Manufacturer Management (`/api/company`)
 -----------------------------------------------------
@@ -641,6 +660,19 @@ Request Headers:
     }
     ```
   - Creates spare part catalog entry with initial company warehouse stock.
+- `PUT /api/inventory/company/parts/{part_id}`:
+  - Body:
+    ```json
+    {
+      "name": "Updated Compressor Unit 240V",
+      "category": "Refrigerator",
+      "brand": "Samsung",
+      "unit_price": 4999.0,
+      "hsn_code": "841890",
+      "description": "High performance replacement compressor"
+    }
+    ```
+  - Allows company brand administrators to edit part name, category, brand, unit price, HSN code, and description.
 - `PUT /api/inventory/company/parts/{part_id}/stock`:
   - Body: `{ "quantity": 25, "mode": "add", "notes": "Batch replenishment from central factory" }`
   - Modes: `"add"` (increments existing stock) or `"set"` (reconciles exact stock level).

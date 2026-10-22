@@ -896,6 +896,8 @@
         </button>
       </div>
     </div>
+  </dialog>
+
   <!-- Add Part to Inventory Modal -->
   <dialog id="addPartDialog" class="company-dialog">
     <form id="addPartForm">
@@ -1018,6 +1020,77 @@
       <div class="dialog-actions">
         <button type="button" class="secondary-button" id="cancelUpdateStock">Cancel</button>
         <button type="submit" class="primary-action" id="submitUpdateStockBtn">Save stock update</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Edit Part Details Modal -->
+  <dialog id="editPartDialog" class="company-dialog">
+    <form id="editPartForm">
+      <div class="dialog-heading">
+        <div>
+          <div class="section-kicker">INVENTORY MASTER</div>
+          <h2>Edit spare part details</h2>
+          <p>Update part specifications, pricing, brand, and catalog information.</p>
+        </div>
+        <button type="button" class="dialog-close" id="closeEditPartDialog" aria-label="Close">×</button>
+      </div>
+
+      <input type="hidden" id="editPartId">
+
+      <div class="space-y-3 text-xs">
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <label class="block font-medium text-slate-700">
+            Part code / SKU
+            <input id="editPartCode" readonly class="mt-1 w-full rounded-xl border border-slate-200 p-2.5 font-mono uppercase font-bold text-slate-500 bg-slate-50 cursor-not-allowed">
+          </label>
+          <label class="block font-medium text-slate-700">
+            Part name *
+            <input id="editPartName" required maxlength="128" placeholder="e.g. Inverter Linear Compressor" class="mt-1 w-full rounded-xl border border-slate-200 p-2.5 text-slate-800">
+          </label>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <label class="block font-medium text-slate-700">
+            Appliance category *
+            <select id="editPartCategory" required class="mt-1 w-full rounded-xl border border-slate-200 p-2.5 text-slate-800 bg-white">
+              <option value="Air Conditioner">Air Conditioner</option>
+              <option value="Refrigerator">Refrigerator</option>
+              <option value="Washing Machine">Washing Machine</option>
+              <option value="Microwave">Microwave</option>
+              <option value="Television">Television</option>
+              <option value="Water Purifier">Water Purifier</option>
+              <option value="Geyser">Geyser</option>
+              <option value="Small Appliances">Small Appliances</option>
+            </select>
+          </label>
+          <label class="block font-medium text-slate-700">
+            Brand
+            <input id="editPartBrand" placeholder="e.g. LG, Crompton, or Universal" class="mt-1 w-full rounded-xl border border-slate-200 p-2.5 text-slate-800">
+          </label>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <label class="block font-medium text-slate-700">
+            Unit price (₹) *
+            <input id="editPartPrice" type="number" step="0.01" min="0" required placeholder="0.00" class="mt-1 w-full rounded-xl border border-slate-200 p-2.5 font-bold text-slate-800">
+          </label>
+          <label class="block font-medium text-slate-700">
+            HSN code *
+            <input id="editPartHsn" required maxlength="32" class="mt-1 w-full rounded-xl border border-slate-200 p-2.5 font-mono text-slate-800">
+          </label>
+        </div>
+
+        <label class="block font-medium text-slate-700">
+          Description & specifications <span class="text-slate-400 font-normal">(Optional)</span>
+          <textarea id="editPartDesc" rows="2" placeholder="OEM certified component specifications." class="mt-1 w-full rounded-xl border border-slate-200 p-2.5 text-slate-800"></textarea>
+        </label>
+      </div>
+
+      <p class="dialog-message" id="editPartFormMessage" aria-live="polite"></p>
+      <div class="dialog-actions">
+        <button type="button" class="secondary-button" id="cancelEditPart">Cancel</button>
+        <button type="submit" class="primary-action" id="submitEditPartBtn">Save changes</button>
       </div>
     </form>
   </dialog>

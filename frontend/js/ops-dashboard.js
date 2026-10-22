@@ -741,17 +741,17 @@ async function openCompanyBranchDetail(branchId) {
     dialog.hidden = false;
   }
 
-  const existingBranch = branches.find((b) => b.id === branchId);
+  const existingBranch = (role === "admin" ? directoryRows : branches).find((b) => b.id === branchId);
   if (existingBranch) {
     if ($("branchModalAvatar")) $("branchModalAvatar").textContent = (existingBranch.branch_name || "BR").slice(0, 2).toUpperCase();
     if ($("branchModalTitle")) $("branchModalTitle").textContent = existingBranch.branch_name || "Branch Details";
     if ($("branchModalManager")) $("branchModalManager").textContent = `👤 Manager: ${existingBranch.manager_name || "—"}`;
     if ($("branchModalEmail")) $("branchModalEmail").textContent = `✉️ ${existingBranch.email || "—"}`;
-    if ($("branchModalMobile")) $("branchModalMobile").textContent = `📞 ${existingBranch.mobile || "—"}`;
+    if ($("branchModalMobile")) $("branchModalMobile").textContent = `📞 ${existingBranch.mobile || existingBranch.phone || "—"}`;
     if ($("branchModalAddress")) $("branchModalAddress").textContent = `📍 ${existingBranch.address || "—"} (PIN: ${existingBranch.pincode || "—"})`;
     if ($("branchModalStatusBadge")) {
-      $("branchModalStatusBadge").textContent = existingBranch.password_set ? "Active" : "Pending Setup";
-      $("branchModalStatusBadge").className = `status-pill ${existingBranch.password_set ? "completed" : "pending"}`;
+      $("branchModalStatusBadge").textContent = (existingBranch.password_set || existingBranch.is_active) ? "Active" : "Pending Setup";
+      $("branchModalStatusBadge").className = `status-pill ${(existingBranch.password_set || existingBranch.is_active) ? "completed" : "pending"}`;
     }
   }
 
@@ -762,7 +762,9 @@ async function openCompanyBranchDetail(branchId) {
   if ($("branchHistoryRows")) $("branchHistoryRows").innerHTML = `<tr><td colspan="7" class="p-8 text-center text-slate-400">Loading service history...</td></tr>`;
 
   try {
-    const data = await companyApi(`/branches/${encodeURIComponent(branchId)}`);
+    const data = role === "admin"
+      ? await adminApi(`/branches/${encodeURIComponent(branchId)}`)
+      : await companyApi(`/branches/${encodeURIComponent(branchId)}`);
     if (!data || !data.branch) throw new Error("Branch data not found");
 
     const b = data.branch;
@@ -1799,16 +1801,16 @@ async function openCompanyCustomerDetail(customerId) {
     dialog.hidden = false;
   }
 
-  const existing = (role === "franchise" ? franchiseCustomers : companyCustomers).find(
+  const existing = (role === "admin" ? directoryRows : (role === "franchise" ? franchiseCustomers : companyCustomers)).find(
     (c) => c.customer_id === customerId || c.id === customerId
   );
   if (existing) {
-    if ($("custModalAvatar")) $("custModalAvatar").textContent = safe(existing.avatar || (existing.customer_name || "CU").slice(0, 2).toUpperCase());
-    if ($("custModalName")) $("custModalName").textContent = existing.customer_name || "Customer";
+    if ($("custModalAvatar")) $("custModalAvatar").textContent = safe(existing.avatar || (existing.customer_name || existing.name || "CU").slice(0, 2).toUpperCase());
+    if ($("custModalName")) $("custModalName").textContent = existing.customer_name || existing.name || "Customer";
     if ($("custModalId")) $("custModalId").textContent = `ID: ${existing.customer_id || existing.id}`;
-    if ($("custModalPhone")) $("custModalPhone").textContent = `📞 ${existing.customer_phone || "—"}`;
-    if ($("custModalEmail")) $("custModalEmail").textContent = existing.customer_email ? `✉️ ${existing.customer_email}` : "✉️ No email registered";
-    if ($("custModalAddress")) $("custModalAddress").textContent = `📍 ${existing.customer_address || "—"}`;
+    if ($("custModalPhone")) $("custModalPhone").textContent = `📞 ${existing.customer_phone || existing.phone || "—"}`;
+    if ($("custModalEmail")) $("custModalEmail").textContent = (existing.customer_email || existing.email) ? `✉️ ${existing.customer_email || existing.email}` : "✉️ No email registered";
+    if ($("custModalAddress")) $("custModalAddress").textContent = `📍 ${existing.customer_address || existing.address || "—"}`;
   }
 
   if ($("custProductsList")) $("custProductsList").innerHTML = `<div class="p-8 text-center text-slate-400">Loading registered products & warranty details...</div>`;
@@ -1816,9 +1818,11 @@ async function openCompanyCustomerDetail(customerId) {
   if ($("custHistoryRows")) $("custHistoryRows").innerHTML = `<tr><td colspan="6" class="p-8 text-center text-slate-400">Loading service history...</td></tr>`;
 
   try {
-    const data = role === "franchise"
-      ? await franchiseApi(`/customers/${encodeURIComponent(customerId)}`)
-      : await companyApi(`/customers/${encodeURIComponent(customerId)}`);
+    const data = role === "admin"
+      ? await adminApi(`/customers/${encodeURIComponent(customerId)}`)
+      : (role === "franchise"
+          ? await franchiseApi(`/customers/${encodeURIComponent(customerId)}`)
+          : await companyApi(`/customers/${encodeURIComponent(customerId)}`));
     if (!data || !data.customer) throw new Error("Customer details not found");
 
     const c = data.customer;
@@ -2694,9 +2698,14 @@ function renderCompanyInventoryAndSpares() {
                   <td><strong class="font-display text-slate-900 text-sm">₹${Number(item.unit_price || 0).toFixed(2)}</strong></td>
                   <td>${stockBadge}</td>
                   <td>
-                    <button type="button" class="table-action px-2.5 py-1 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 font-bold text-xs" data-open-update-stock="${safe(item.id)}" data-part-name="${safe(item.name)}" data-part-code="${safe(item.part_code)}" data-part-stock="${stock}">
-                      ✏️ Update Stock
-                    </button>
+                    <div class="flex items-center gap-1.5">
+                      <button type="button" class="table-action px-2.5 py-1 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 font-bold text-xs" data-open-update-stock="${safe(item.id)}" data-part-name="${safe(item.name)}" data-part-code="${safe(item.part_code)}" data-part-stock="${stock}">
+                        ✏️ Stock
+                      </button>
+                      <button type="button" class="table-action px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 font-bold text-xs" data-open-edit-part="${safe(item.id)}">
+                        ⚙️ Edit
+                      </button>
+                    </div>
                   </td>
                 </tr>
               `;
@@ -2725,6 +2734,26 @@ function renderCompanyInventoryAndSpares() {
         if ($("updateStockFormMessage")) $("updateStockFormMessage").textContent = "";
 
         $("updatePartStockDialog")?.showModal();
+      });
+    });
+
+    document.querySelectorAll("[data-open-edit-part]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const partId = btn.dataset.openEditPart;
+        const part = companySparesCatalog.find((p) => p.id === partId);
+        if (!part) return;
+
+        if ($("editPartId")) $("editPartId").value = part.id;
+        if ($("editPartCode")) $("editPartCode").value = part.part_code;
+        if ($("editPartName")) $("editPartName").value = part.name;
+        if ($("editPartCategory")) $("editPartCategory").value = part.category;
+        if ($("editPartBrand")) $("editPartBrand").value = part.brand || "";
+        if ($("editPartPrice")) $("editPartPrice").value = part.unit_price || 0;
+        if ($("editPartHsn")) $("editPartHsn").value = part.hsn_code || "841890";
+        if ($("editPartDesc")) $("editPartDesc").value = part.description || "";
+        if ($("editPartFormMessage")) $("editPartFormMessage").textContent = "";
+
+        $("editPartDialog")?.showModal();
       });
     });
   } else {
@@ -2852,28 +2881,315 @@ async function loadAdminPageData(page) {
   }
   renderPage(page);
 }
+async function openAdminTechnicianDetail(techId) {
+  const dialog = $("technicianDetailModal");
+  if (!dialog) return;
+
+  if (typeof dialog.showModal === "function") {
+    dialog.showModal();
+  } else {
+    dialog.hidden = false;
+  }
+
+  const existing = directoryRows.find((t) => t.id === techId);
+  if (existing) {
+    if ($("techModalAvatar")) $("techModalAvatar").textContent = safe(existing.avatar || (existing.name || "TC").slice(0, 2).toUpperCase());
+    if ($("techModalName")) $("techModalName").textContent = existing.name;
+    if ($("techModalTitle")) $("techModalTitle").textContent = existing.title || "Certified Field Service Engineer";
+    if ($("techModalRating")) $("techModalRating").textContent = `⭐ ${existing.rating || "5.0"}`;
+    if ($("techModalJobs")) $("techModalJobs").textContent = `${existing.total_jobs || 0} (${existing.completed_jobs || 0} completed)`;
+    if ($("techModalBranch")) $("techModalBranch").textContent = existing.branch_name || "—";
+    if ($("techModalCompany")) $("techModalCompany").textContent = existing.company_name || "—";
+    if ($("techModalEmail")) $("techModalEmail").textContent = existing.email || "—";
+    if ($("techModalPhone")) $("techModalPhone").textContent = existing.phone || "—";
+    if ($("techModalAddress")) $("techModalAddress").textContent = existing.address ? `${existing.address} ${existing.pincode ? `(PIN: ${existing.pincode})` : ""}` : "Service Territory";
+    if ($("techModalStatus")) {
+      $("techModalStatus").textContent = existing.is_active ? "Active / Verified" : "Access Disabled";
+      $("techModalStatus").className = `status-pill ${existing.is_active ? "completed" : "pending"}`;
+    }
+  }
+
+  if ($("techModalServiceRows")) {
+    $("techModalServiceRows").innerHTML = `<tr><td colspan="6" class="p-4 text-center text-slate-400">Loading technician tasks...</td></tr>`;
+  }
+
+  try {
+    const data = await adminApi(`/technicians/${encodeURIComponent(techId)}`);
+    if (!data || !data.technician) throw new Error("Technician not found");
+    const t = data.technician;
+    if ($("techModalAvatar")) $("techModalAvatar").textContent = safe(t.avatar || (t.name || "TC").slice(0, 2).toUpperCase());
+    if ($("techModalName")) $("techModalName").textContent = t.name;
+    if ($("techModalTitle")) $("techModalTitle").textContent = t.title || "Certified Field Service Engineer";
+    if ($("techModalRating")) $("techModalRating").textContent = `⭐ ${t.rating || "5.0"}`;
+    if ($("techModalJobs")) $("techModalJobs").textContent = t.total_jobs || 0;
+    if ($("techModalBranch")) $("techModalBranch").textContent = t.branch_name || "—";
+    if ($("techModalCompany")) $("techModalCompany").textContent = t.company_name || "—";
+    if ($("techModalEmail")) $("techModalEmail").textContent = t.email || "—";
+    if ($("techModalPhone")) $("techModalPhone").textContent = t.phone || "—";
+    if ($("techModalAddress")) $("techModalAddress").textContent = t.address ? `${t.address} ${t.pincode ? `(PIN: ${t.pincode})` : ""}` : "Service Territory";
+    if ($("techModalStatus")) {
+      $("techModalStatus").textContent = t.is_active ? "Active / Verified" : "Access Disabled";
+      $("techModalStatus").className = `status-pill ${t.is_active ? "completed" : "pending"}`;
+    }
+
+    const services = data.services || [];
+    if ($("techModalServiceRows")) {
+      $("techModalServiceRows").innerHTML = services.length
+        ? services.map((s) => `
+            <tr>
+              <td class="p-3"><strong class="font-mono text-blue-600 font-bold">${safe(s.id)}</strong></td>
+              <td class="p-3 font-semibold text-slate-900">${safe(s.customer_name)}<br><small class="text-slate-400 font-normal">${safe(s.customer_phone)}</small></td>
+              <td class="p-3 font-medium text-slate-800">${safe(s.brand)} ${safe(s.appliance_name)}</td>
+              <td class="p-3 text-slate-600">${safe(s.issue)}</td>
+              <td class="p-3"><span class="status-pill ${statusClass(s.status_badge)}">${safe(s.status_badge || s.status)}</span></td>
+              <td class="p-3 text-slate-500 font-mono text-[11px]">${safe(s.appointment_date)} (${safe(s.appointment_slot)})</td>
+            </tr>
+          `).join("")
+        : `<tr><td colspan="6" class="p-4 text-center text-slate-400">No service tasks assigned yet.</td></tr>`;
+    }
+  } catch (err) {
+    if ($("techModalServiceRows")) {
+      $("techModalServiceRows").innerHTML = `<tr><td colspan="6" class="p-4 text-center text-slate-400">Could not load tasks: ${safe(err.message)}</td></tr>`;
+    }
+  }
+}
+window.openAdminTechnicianDetail = openAdminTechnicianDetail;
+
+function renderAdminBranches() {
+  $("metricGrid").hidden = true;
+  $("requestSearch").placeholder = "Search branches by name, manager, parent company, or address";
+  $("tableTitle").textContent = "Branches";
+  $("tableSubtitle").textContent = "Authorized franchise branch service hubs across all partner brands.";
+  $("sidePanelTitle").textContent = "Branch network";
+  $("healthContent").innerHTML = `<div class="section-empty"><strong>${directoryRows.length}</strong> active franchise branches</div>`;
+  $("activityContent").innerHTML = `<div class="section-empty">Each branch is linked to an authorized brand partner with its dedicated technician roster.</div>`;
+  $("requestHead").innerHTML = ["Branch & Manager", "Parent Company", "Contact Information", "Address & PIN", "Staff & Workload", "Status", "Action"].map((label) => `<th>${label}</th>`).join("");
+
+  const query = ($("requestSearch")?.value || "").trim().toLowerCase();
+  const filtered = directoryRows.filter((item) =>
+    [item.branch_name, item.name, item.manager_name, item.company_name, item.email, item.phone, item.mobile, item.address, item.pincode]
+      .join(" ")
+      .toLowerCase()
+      .includes(query)
+  );
+
+  $("requestRows").innerHTML = filtered.length
+    ? filtered.map((b) => `
+        <tr>
+          <td>
+            <strong class="text-slate-900 block font-bold">${safe(b.branch_name || b.name)}</strong>
+            <small class="text-slate-500">👤 Manager: ${safe(b.manager_name || "—")}</small>
+          </td>
+          <td>
+            <span class="inline-flex items-center gap-1 font-semibold text-slate-800">🏢 ${safe(b.company_name || "ServSure Partner")}</span>
+          </td>
+          <td>
+            <span class="block text-slate-700 text-xs">✉️ ${safe(b.email)}</span>
+            <small class="text-slate-500 font-mono">📞 ${safe(b.phone || b.mobile || "—")}</small>
+          </td>
+          <td>
+            <span class="block text-slate-700 text-xs">${safe(b.address || "—")}</span>
+            <small class="text-blue-600 font-mono font-semibold">PIN: ${safe(b.pincode || "—")}</small>
+          </td>
+          <td>
+            <span class="block font-medium text-slate-800 text-xs">👨‍🔧 ${b.total_techs || 0} technicians</span>
+            <small class="text-slate-500">⚡ ${b.ongoing_jobs || 0} ongoing / ${b.total_jobs || 0} total</small>
+          </td>
+          <td>
+            <span class="status-pill ${b.is_active ? 'completed' : 'pending'}">${b.is_active ? 'Active' : 'Disabled'}</span>
+          </td>
+          <td>
+            <button type="button" class="table-action px-3 py-1 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 font-bold text-xs" data-view-branch="${safe(b.id)}">
+              View Details →
+            </button>
+          </td>
+        </tr>
+      `).join("")
+    : `<tr><td class="empty-row" colspan="7">No branches match your search.</td></tr>`;
+
+  $("requestCount").textContent = `${filtered.length} branches shown`;
+  $("resourceGrid").innerHTML = "";
+  $("bottomTitle").textContent = "Branch directory";
+  $("bottomSubtitle").textContent = "Network service locations";
+
+  document.querySelectorAll("[data-view-branch]").forEach((btn) => {
+    btn.addEventListener("click", () => openCompanyBranchDetail(btn.dataset.viewBranch));
+  });
+}
+
+function renderAdminTechnicians() {
+  $("metricGrid").hidden = true;
+  $("requestSearch").placeholder = "Search technicians by name, specialty, branch, or company";
+  $("tableTitle").textContent = "Technicians";
+  $("tableSubtitle").textContent = "Certified field technicians deployed across franchise service centers.";
+  $("sidePanelTitle").textContent = "Technician workforce";
+  $("healthContent").innerHTML = `<div class="section-empty"><strong>${directoryRows.length}</strong> certified technicians</div>`;
+  $("activityContent").innerHTML = `<div class="section-empty">Field engineers handle doorstep diagnostic, repairs, and digital job card sign-offs.</div>`;
+  $("requestHead").innerHTML = ["Technician & Specialty", "Assigned Branch", "Parent Company", "Contact", "Rating & Jobs", "Status", "Action"].map((label) => `<th>${label}</th>`).join("");
+
+  const query = ($("requestSearch")?.value || "").trim().toLowerCase();
+  const filtered = directoryRows.filter((item) =>
+    [item.name, item.title, item.branch_name, item.company_name, item.email, item.phone, item.address]
+      .join(" ")
+      .toLowerCase()
+      .includes(query)
+  );
+
+  $("requestRows").innerHTML = filtered.length
+    ? filtered.map((t) => `
+        <tr>
+          <td>
+            <strong class="text-slate-900 block font-bold">${safe(t.name)}</strong>
+            <small class="text-blue-600 font-medium">${safe(t.title || "Field Engineer")}</small>
+          </td>
+          <td>
+            <span class="inline-flex items-center gap-1 text-slate-800 font-medium text-xs">🏢 ${safe(t.branch_name || "—")}</span>
+          </td>
+          <td>
+            <span class="font-semibold text-slate-800 text-xs">${safe(t.company_name || "ServSure Network")}</span>
+          </td>
+          <td>
+            <span class="block text-slate-700 text-xs">✉️ ${safe(t.email)}</span>
+            <small class="text-slate-500 font-mono">📞 ${safe(t.phone)}</small>
+          </td>
+          <td>
+            <span class="text-amber-600 font-bold block text-xs">⭐ ${Number(t.rating || 5.0).toFixed(1)}</span>
+            <small class="text-slate-500">📋 ${t.total_jobs || 0} jobs (${t.completed_jobs || 0} resolved)</small>
+          </td>
+          <td>
+            <span class="status-pill ${t.is_active ? 'completed' : 'pending'}">${t.is_active ? 'Active / Field Ready' : 'Access Disabled'}</span>
+          </td>
+          <td>
+            <button type="button" class="table-action px-3 py-1 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 font-bold text-xs" data-view-technician="${safe(t.id)}">
+              View Details →
+            </button>
+          </td>
+        </tr>
+      `).join("")
+    : `<tr><td class="empty-row" colspan="7">No technicians match your search.</td></tr>`;
+
+  $("requestCount").textContent = `${filtered.length} technicians shown`;
+  $("resourceGrid").innerHTML = "";
+  $("bottomTitle").textContent = "Technician directory";
+  $("bottomSubtitle").textContent = "Field workforce records";
+
+  document.querySelectorAll("[data-view-technician]").forEach((btn) => {
+    btn.addEventListener("click", () => openAdminTechnicianDetail(btn.dataset.viewTechnician));
+  });
+}
+
+function renderAdminCustomers() {
+  $("metricGrid").hidden = true;
+  $("requestSearch").placeholder = "Search customers by name, phone, email, or address";
+  $("tableTitle").textContent = "Customers";
+  $("tableSubtitle").textContent = "Registered appliance owners and customer accounts.";
+  $("sidePanelTitle").textContent = "Customer registry";
+  $("healthContent").innerHTML = `<div class="section-empty"><strong>${directoryRows.length}</strong> registered customer accounts</div>`;
+  $("activityContent").innerHTML = `<div class="section-empty">Click View Details on any customer to inspect their registered products, brand warranties, and ticket history.</div>`;
+  $("requestHead").innerHTML = ["Customer & ID", "Contact Information", "Service Address", "Registered Products", "Service Requests", "Action"].map((label) => `<th>${label}</th>`).join("");
+
+  const query = ($("requestSearch")?.value || "").trim().toLowerCase();
+  const filtered = directoryRows.filter((item) =>
+    [item.name, item.id, item.email, item.phone, item.address]
+      .join(" ")
+      .toLowerCase()
+      .includes(query)
+  );
+
+  $("requestRows").innerHTML = filtered.length
+    ? filtered.map((c) => `
+        <tr>
+          <td>
+            <strong class="text-slate-900 block font-bold">${safe(c.name)}</strong>
+            <small class="font-mono text-slate-400">ID: ${safe(c.id)}</small>
+          </td>
+          <td>
+            <span class="block text-slate-700 text-xs">✉️ ${safe(c.email)}</span>
+            <small class="text-slate-500 font-mono">📞 ${safe(c.phone)}</small>
+          </td>
+          <td>
+            <span class="text-xs text-slate-700 line-clamp-2">${safe(c.address || "Address not provided")}</span>
+          </td>
+          <td>
+            <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-50 text-blue-800 border border-blue-100">
+              📦 ${c.appliances_count || 0} products
+            </span>
+          </td>
+          <td>
+            <span class="text-xs text-slate-800 font-semibold block">⚡ ${c.ongoing_requests || 0} ongoing</span>
+            <small class="text-emerald-600 font-semibold">✓ ${c.completed_requests || 0} completed</small>
+          </td>
+          <td>
+            <button type="button" class="table-action px-3 py-1 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 font-bold text-xs" data-view-customer="${safe(c.id)}">
+              View Details →
+            </button>
+          </td>
+        </tr>
+      `).join("")
+    : `<tr><td class="empty-row" colspan="6">No customers match your search.</td></tr>`;
+
+  $("requestCount").textContent = `${filtered.length} customers shown`;
+  $("resourceGrid").innerHTML = "";
+  $("bottomTitle").textContent = "Customer directory";
+  $("bottomSubtitle").textContent = "Registered appliance owners";
+
+  document.querySelectorAll("[data-view-customer]").forEach((btn) => {
+    btn.addEventListener("click", () => openCompanyCustomerDetail(btn.dataset.viewCustomer));
+  });
+}
+
 function renderDirectory(page) {
+  if (page === "Branches") { renderAdminBranches(); return; }
+  if (page === "Technicians") { renderAdminTechnicians(); return; }
+  if (page === "Customers") { renderAdminCustomers(); return; }
+
   $("metricGrid").hidden = true; $("requestSearch").placeholder = `Search ${page.toLowerCase()}`;
   $("tableTitle").textContent = page; $("tableSubtitle").textContent = `All ${page.toLowerCase()} accounts registered on ServSure.`;
   $("sidePanelTitle").textContent = `${page} directory`;
   $("healthContent").innerHTML = `<div class="section-empty"><strong>${directoryRows.length}</strong> ${page.toLowerCase()} accounts</div>`;
   $("activityContent").innerHTML = `<div class="section-empty">Directory records are loaded from the ServSure account database.</div>`;
   $("requestHead").innerHTML = ["Name", "Email", "Phone", "Address", "Account type"].map((label) => `<th>${label}</th>`).join("");
-  const query = ($("requestSearch")?.value || "").trim().toLowerCase(); const filtered = directoryRows.filter((item) => [item.name, item.email, item.phone, item.address].join(" ").toLowerCase().includes(query));
+  const query = ($("requestSearch")?.value || "").trim().toLowerCase();
+  const filtered = directoryRows.filter((item) => [item.name, item.email, item.phone, item.address].join(" ").toLowerCase().includes(query));
   $("requestRows").innerHTML = filtered.length ? filtered.map((item) => `<tr><td>${safe(item.name)}</td><td>${safe(item.email)}</td><td>${safe(item.phone)}</td><td>${safe(item.address || "—")}</td><td><span class="status-pill">${safe(item.role)}</span></td></tr>`).join("") : `<tr><td class="empty-row" colspan="5">No ${page.toLowerCase()} accounts found.</td></tr>`;
   $("requestCount").textContent = `${filtered.length} ${page.toLowerCase()} shown`; $("resourceGrid").innerHTML = "";
   $("bottomTitle").textContent = `${page} directory`; $("bottomSubtitle").textContent = "Registered platform accounts";
 }
+
 function renderRequestDirectory() {
-  $("metricGrid").hidden = true; $("requestSearch").placeholder = "Search service requests";
-  $("tableTitle").textContent = "Service requests"; $("tableSubtitle").textContent = "Service activity across all ServSure accounts.";
-  $("requestHead").innerHTML = ["Request ID", "Customer", "Appliance", "Issue", "Status", "Date"].map((label) => `<th>${label}</th>`).join("");
-  const query = ($("requestSearch")?.value || "").trim().toLowerCase(); const filtered = requests.filter((item) => [item.id, item.customer_name, item.appliance_name, item.issue, item.status_badge].join(" ").toLowerCase().includes(query));
-  $("requestRows").innerHTML = filtered.length ? filtered.map((item) => `<tr><td>${safe(item.id)}</td><td>${safe(item.customer_name)}</td><td>${safe(item.appliance_name)}</td><td>${safe(item.issue)}</td><td><span class="status-pill ${statusClass(item.status_badge)}">${safe(item.status_badge)}</span></td><td>${safe(item.appointment_date)}</td></tr>`).join("") : `<tr><td class="empty-row" colspan="6">No service requests found.</td></tr>`;
+  $("metricGrid").hidden = true; $("requestSearch").placeholder = "Search service requests by ID, customer, appliance, or status";
+  $("tableTitle").textContent = "Service requests"; $("tableSubtitle").textContent = "Service activity across all ServSure partner accounts.";
+  $("requestHead").innerHTML = ["Request ID", "Customer", "Appliance", "Issue", "Status", "Date", "Action"].map((label) => `<th>${label}</th>`).join("");
+  const query = ($("requestSearch")?.value || "").trim().toLowerCase();
+  const statusFilt = $("statusFilter") ? $("statusFilter").value : "all";
+  const filtered = requests.filter((item) => {
+    const matchesQuery = [item.id, item.customer_name, item.appliance_name, item.issue, item.status_badge, item.brand].join(" ").toLowerCase().includes(query);
+    const matchesStatus = statusFilt === "all" || item.status_badge === statusFilt;
+    return matchesQuery && matchesStatus;
+  });
+  $("requestRows").innerHTML = filtered.length ? filtered.map((item) => `
+    <tr>
+      <td><strong class="font-mono text-blue-600 font-bold">${safe(item.id)}</strong></td>
+      <td><strong class="text-slate-900 block font-semibold">${safe(item.customer_name)}</strong><small class="text-slate-400">${safe(item.customer_phone || "")}</small></td>
+      <td><strong class="text-slate-800 block text-xs">${safe(item.brand || "")} ${safe(item.appliance_name)}</strong><small class="text-slate-400 font-mono">${safe(item.model_no || "")}</small></td>
+      <td><span class="text-slate-700 text-xs">${safe(item.issue)}</span></td>
+      <td><span class="status-pill ${statusClass(item.status_badge)}">${safe(item.status_badge)}</span></td>
+      <td class="font-mono text-[11px] text-slate-500">${safe(item.appointment_date)}</td>
+      <td>
+        <button type="button" class="table-action px-3 py-1 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 font-bold text-xs" data-view-ticket="${safe(item.id)}">
+          View Details →
+        </button>
+      </td>
+    </tr>
+  `).join("") : `<tr><td class="empty-row" colspan="7">No service requests found.</td></tr>`;
   $("requestCount").textContent = `${filtered.length} service requests shown`; $("sidePanelTitle").textContent = "Request status";
   $("healthContent").innerHTML = `<div class="section-empty"><strong>${requests.length}</strong> total service requests</div>`;
   $("activityContent").innerHTML = `<div class="section-empty">${requests.filter((item) => item.status_badge !== "Completed").length} requests are currently active.</div>`;
   $("resourceGrid").innerHTML = ""; $("bottomTitle").textContent = "Service request directory"; $("bottomSubtitle").textContent = "Current request records";
+
+  document.querySelectorAll("[data-view-ticket]").forEach((btn) => {
+    btn.addEventListener("click", () => window.viewRequestDetails(btn.dataset.viewTicket));
+  });
 }
 function renderReports() {
   $("metricGrid").hidden = false; $("metricGrid").innerHTML = `<article class="metric-card"><div class="metric-label">Service requests</div><div class="metric-value">${requests.length}</div><div class="metric-bottom">All recorded requests</div></article><article class="metric-card"><div class="metric-label">Completed</div><div class="metric-value">${requests.filter((item) => item.status_badge === "Completed").length}</div><div class="metric-bottom">Requests marked complete</div></article><article class="metric-card"><div class="metric-label">Active</div><div class="metric-value">${requests.filter((item) => !["Completed", "Cancelled"].includes(item.status_badge)).length}</div><div class="metric-bottom">Open requests</div></article><article class="metric-card"><div class="metric-label">Companies</div><div class="metric-value">${companies.length}</div><div class="metric-bottom">Partner accounts</div></article>`;
@@ -4874,6 +5190,10 @@ function initEvents() {
   $("cancelAddPart")?.addEventListener("click", () => $("addPartDialog")?.close());
   $("closeUpdatePartStockDialog")?.addEventListener("click", () => $("updatePartStockDialog")?.close());
   $("cancelUpdateStock")?.addEventListener("click", () => $("updatePartStockDialog")?.close());
+  $("closeEditPartDialog")?.addEventListener("click", () => $("editPartDialog")?.close());
+  $("cancelEditPart")?.addEventListener("click", () => $("editPartDialog")?.close());
+  $("closeTechDetailModal")?.addEventListener("click", () => $("technicianDetailModal")?.close());
+  $("closeTechDetailModalFooterBtn")?.addEventListener("click", () => $("technicianDetailModal")?.close());
   $("closeRequestPartDialog")?.addEventListener("click", () => $("requestPartDialog")?.close());
   $("cancelRequestPart")?.addEventListener("click", () => $("requestPartDialog")?.close());
   $("closeTicketDetailModal")?.addEventListener("click", () => $("ticketDetailModal")?.close());
@@ -5218,6 +5538,39 @@ function initEvents() {
       await loadCompanyInventoryAndSpares();
     } catch (err) {
       if (msg) msg.textContent = extractErrorMessage(err.message, "Failed to update stock");
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  });
+
+  $("editPartForm")?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const btn = $("submitEditPartBtn");
+    const msg = $("editPartFormMessage");
+    const partId = $("editPartId").value;
+    if (!partId) return;
+
+    if (btn) btn.disabled = true;
+    if (msg) msg.textContent = "Updating component specifications…";
+    try {
+      const payload = {
+        name: $("editPartName").value.trim(),
+        category: $("editPartCategory").value.trim(),
+        brand: $("editPartBrand")?.value.trim() || undefined,
+        unit_price: parseFloat($("editPartPrice").value) || 0,
+        hsn_code: $("editPartHsn").value.trim() || "841890",
+        description: $("editPartDesc")?.value.trim() || undefined
+      };
+      await generalApi(`/api/inventory/company/parts/${encodeURIComponent(partId)}`, {
+        method: "PUT",
+        body: JSON.stringify(payload)
+      });
+      showToast(`Updated details for ${payload.name}.`);
+      $("editPartForm").reset();
+      $("editPartDialog")?.close();
+      await loadCompanyInventoryAndSpares();
+    } catch (err) {
+      if (msg) msg.textContent = extractErrorMessage(err.message, "Failed to update part details");
     } finally {
       if (btn) btn.disabled = false;
     }
