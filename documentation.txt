@@ -4,8 +4,8 @@ PRODUCTION-GRADE TECHNICAL ARCHITECTURE & DEVELOPER ONBOARDING MANUAL
 ================================================================================
 File: documentation.txt
 Platform: ServSure (formerly Servora)
-Version: 1.0.0 (Production Release)
-Last Updated: October 2026
+Version: 1.1.0 (Production Release)
+Last Updated: October 22, 2026
 Repository: https://github.com/SID0428/servora.git
 
 Welcome to ServSure! This manual is the definitive, authoritative reference
@@ -24,7 +24,7 @@ TABLE OF CONTENTS
    3.2. Operational Access Control & Cascading Deactivation Rules
    3.3. Static Multi-Portal Routing & Role Guards
    3.4. Background Workers (Render Keep-Alive & SLA Engine)
-4. DATABASE MODELS & RELATIONAL SCHEMA (22 MODELS)
+4. DATABASE MODELS & RELATIONAL SCHEMA (23 MODELS)
 5. CORE API & USAGE REFERENCE
    5.1. Authentication, Sessions & Profile (/api/auth)
    5.2. Platform Administration (/api/admin)
@@ -241,6 +241,23 @@ Technician logging in at `/admin-login.html`), the system rejects the session,
 displays an alert instructing the user of the mismatch, and redirects them to
 their legitimate role-specific portal.
 
+Portal UI Cleanliness & Universal Settings Removal:
+1. Universal "Settings" Removal:
+   - "Settings" / "System settings" navigation links and dummy panels have been
+     universally removed across all portals (Admin, Company, Franchise, Field Tech, Customer).
+   - Profile management (updating name, phone, address, and email for Admin/Company)
+     is consolidated within the Profile views.
+2. Company Portal Optimization:
+   - Obsolete platform-level management widgets (`.side-panels` "Company access" /
+     "Service overview" and `.bottom-panel` "Company directory" / "Team & service resources")
+     were completely removed from `company-dashboard.html`.
+   - Grid layout is optimized (`grid-template-columns: 1fr`) to emphasize real-time service
+     tickets, technician performance, and the end-to-end inventory supply chain.
+3. Technician Assignment Isolation:
+   - The legacy dummy technician ("Rahul Sharma" / `tech_1`) was completely purged from
+     the database, seeds, and frontend receipt placeholders.
+   - Company branch queries strictly return technicians assigned through `BranchTechnicianModel`.
+
 3.4. Background Workers (`backend/main.py`)
 -------------------------------------------
 1. Render Keep-Alive Worker (`keep_alive_ping_loop`):
@@ -256,7 +273,7 @@ their legitimate role-specific portal.
 
 
 ================================================================================
-4. DATABASE MODELS & RELATIONAL SCHEMA (22 MODELS)
+4. DATABASE MODELS & RELATIONAL SCHEMA (23 MODELS)
 ================================================================================
 All database entities are defined in `backend/app/db/models.py`:
 
@@ -371,11 +388,17 @@ All database entities are defined in `backend/app/db/models.py`:
     - `feedback_text`: Text.
 
 14. `SparePartModel` (`spare_parts` table):
-    - `id`: String(64), Primary Key.
-    - `part_number`: String(64), Unique, Indexed.
-    - `part_name`, `category`, `compatible_brand`.
-    - `unit_price`, `mrp`: Float.
-    - `is_active`: Boolean.
+    - `id`: String(64), Primary Key (e.g. `part_crm_cap01`).
+    - `part_code`: String(64), Unique, Indexed, Nullable: False (e.g. `PART-CRM-CAP01`).
+    - `name`: String(128), Nullable: False.
+    - `category`: String(64), Nullable: False.
+    - `brand`: String(64), Nullable: False.
+    - `unit_price`: Float, Nullable: False, Default: 0.0.
+    - `hsn_code`: String(32), Nullable: False, Default: "841890".
+    - `description`: Text, Nullable: True.
+    - `stock_quantity`: Integer, Default: 0, Nullable: False (Company warehouse available inventory).
+    - `company_id`: String(64), ForeignKey("users.id", ondelete="CASCADE"), Nullable: True, Index: True.
+    - `is_active`: Boolean, Default: True, Nullable: False.
 
 15. `FranchiseInventoryModel` (`franchise_inventory` table):
     - `id`: String(64), Primary Key.
@@ -437,6 +460,19 @@ All database entities are defined in `backend/app/db/models.py`:
     - `recipient`: String(128).
     - `subject`, `message`: Text.
     - `status`: String(16) ("DELIVERED", "FAILED").
+
+23. `PartRequestModel` (`part_requests` table):
+    - `id`: String(64), Primary Key (e.g. `REQ-XXXXXXXX`).
+    - `company_id`: String(64), ForeignKey("users.id", ondelete="CASCADE"), Index: True.
+    - `branch_id`: String(64), ForeignKey("company_branches.id", ondelete="CASCADE"), Index: True.
+    - `part_id`: String(64), ForeignKey("spare_parts.id", ondelete="CASCADE"), Index: True.
+    - `quantity`: Integer, Nullable: False (Units requested by franchise).
+    - `status`: String(32), Default: "Pending", Nullable: False ("Pending", "Sent", "Cancelled").
+    - `notes`: Text, Nullable: True (Requisition reason or priority notes).
+    - `requested_by`: String(128), Nullable: True (Branch manager or authorized staff name).
+    - `created_at`: DateTime, Default: datetime.utcnow, Nullable: False.
+    - `sent_at`: DateTime, Nullable: True (Timestamp when Company dispatched items).
+    - `sent_by`: String(128), Nullable: True (Company manager who approved and dispatched).
 
 
 ================================================================================
@@ -540,7 +576,7 @@ Request Headers:
 - `GET /api/franchise/metrics`: Dispatch queue, open jobs, technician count.
 - `GET /api/franchise/technicians`: List technicians.
 - `POST /api/franchise/technicians`
-  - Body: `{ "name": "Rahul Sharma", "title": "Senior Field Specialist", "mobile": "+91 98111 22334", "email": "rahul@crompton-service.com", "address": "Noida", "pincode": "201301" }`
+  - Body: `{ "name": "Vikram Sen", "title": "Senior Field Specialist", "mobile": "+91 98111 22334", "email": "vikram@franchise-service.com", "address": "Noida", "pincode": "201301" }`
 - `PUT /api/franchise/technicians/{technician_id}/access`
   - Body: `{ "is_active": false }`
   - Deactivates technician and revokes active token.
@@ -572,6 +608,77 @@ Request Headers:
 - `POST /api/requests`:
   - Body: `{ "appliance_id": "app_1", "issue_description": "Water leaking from bottom", "preferred_time": "Tomorrow, 2:00 PM - 5:00 PM" }`
   - Automatically generates 4-digit start and completion OTPs.
+
+5.7. Customer Appliances & Warranty (`/api/appliances`)
+-------------------------------------------------------
+- `GET /api/appliances`: List customer registered appliances.
+- `POST /api/appliances`: Register appliance with brand, model, purchase date, serial number, invoice URL.
+- `GET /api/appliances/{appliance_id}/warranty`: Real-time warranty validation status.
+
+5.8. Spare Parts & End-to-End Inventory Supply Chain (`/api/inventory`)
+----------------------------------------------------------------------
+- `GET /api/inventory/parts`: Spare parts catalog with category, brand, search filters, stock_quantity, and company_id.
+- `POST /api/inventory/parts`: Catalog administration (admin, company, franchise).
+- `GET /api/inventory/company/parts`: List parts belonging to company brand with warehouse stock level.
+- `POST /api/inventory/company/parts`:
+  - Body:
+    ```json
+    {
+      "name": "Heavy Duty AC Compressor Valve",
+      "part_code": "VALV-AC-2026",
+      "category": "Air Conditioner",
+      "brand": "Crompton",
+      "unit_price": 750.0,
+      "hsn_code": "848180",
+      "description": "High pressure discharge valve for inverter air conditioners",
+      "stock_quantity": 40
+    }
+    ```
+  - Creates spare part catalog entry with initial company warehouse stock.
+- `PUT /api/inventory/company/parts/{part_id}/stock`:
+  - Body: `{ "quantity": 25, "mode": "add", "notes": "Batch replenishment from central factory" }`
+  - Modes: `"add"` (increments existing stock) or `"set"` (reconciles exact stock level).
+- `POST /api/inventory/part-requests`:
+  - Body: `{ "part_id": "part_123", "quantity": 10, "notes": "Urgent stock requisition for peak season" }`
+  - Requisitions spare parts from brand company for the authenticated franchise branch.
+- `GET /api/inventory/part-requests`:
+  - Query: `?status=all|Pending|Sent`
+  - Automatically filtered: Company view returns company requisitions & Sent history; Franchise view returns branch requisitions & Received history.
+- `POST /api/inventory/part-requests/{request_id}/send`:
+  - Company sends requested spare parts to franchise branch.
+  - Validates company stock >= requested quantity (returns HTTP 400 with helpful prompt if insufficient).
+  - Decrements company warehouse stock in `spare_parts.stock_quantity`.
+  - Increments franchise warehouse stock in `franchise_inventory.quantity_available`.
+  - Updates request status to `"Sent"` with `sent_at` and `sent_by`.
+  - Records dual audit transactions in `inventory_transactions` (`transfer_out` and `stock_in`).
+- `GET /api/inventory/franchise`: List parts currently stocked in franchise branch warehouse.
+- `POST /api/inventory/transactions`: Record stock movements or technician job consumption.
+
+5.9. Warranty Claims & AMC Subscriptions (`/api/warranty-amc`)
+--------------------------------------------------------------
+- `GET /api/warranty-amc/claims`: List warranty reimbursement claims.
+- `POST /api/warranty-amc/claims`: Submit parts and labor warranty claim for completed ticket.
+- `PUT /api/warranty-amc/claims/{claim_id}`: Company approves or rejects warranty reimbursement.
+- `GET /api/warranty-amc/plans`: List available Annual Maintenance Contract (AMC) plans.
+- `POST /api/warranty-amc/subscriptions`: Customer subscribes appliance to AMC coverage.
+
+5.10. Repair Estimates & Approvals (`/api/estimates`)
+-----------------------------------------------------
+- `GET /api/estimates`: List repair estimates for tickets.
+- `POST /api/estimates`: Technician or franchise creates digital quote for parts and labor.
+- `POST /api/estimates/{estimate_id}/approve`: Customer approves estimate for repair to commence.
+- `POST /api/estimates/{estimate_id}/decline`: Customer declines estimate.
+
+5.11. Multi-Tier SLA Escalations (`/api/escalations`)
+----------------------------------------------------
+- `GET /api/escalations`: List open SLA escalation events.
+- `POST /api/escalations`: Manual escalation by customer, franchise, or technician.
+- `PUT /api/escalations/{escalation_id}/resolve`: Mark SLA breach resolved with action summary.
+
+5.12. Media & Invoice Uploads (`/api/uploads`)
+----------------------------------------------
+- `POST /api/uploads/image`: Upload defect photos, signatures, or purchase invoices.
+- Supports Base64 data URIs and multipart form file uploads.
 
 
 ================================================================================
@@ -660,15 +767,16 @@ Request Headers:
 ================================================================================
 9. DISCREPANCY LOG & CODEBASE AUDIT NOTES
 ================================================================================
-During the architectural codebase audit, the following 5 critical discrepancies
+During the architectural codebase audit, the following 8 critical discrepancies
 were identified between the initial rough draft documentation and the actual codebase:
 
-1. Discrepancy: Purged Demo Seed Accounts
-   - Initial Draft: Listed `riya.patel@crompton.com` (Company) and `shreyansh@servsure.com`
-     (Customer) as default demo accounts.
-   - Reality in Code: Both `company_1` ("Riya Patel") and `customer_1` were explicitly
-     purged from `servora.db` and [`backend/app/seeds.py`]. The active seeded demo
-     accounts are `admin@servsure.com` and `rahul.sharma@crompton-service.com`.
+1. Discrepancy: Purged Demo Seed Accounts & Dummy Technicians
+   - Initial Draft: Listed `riya.patel@crompton.com` (Company), `shreyansh@servsure.com`
+     (Customer), and `rahul.sharma@crompton-service.com` (Technician) as default demo accounts.
+   - Reality in Code: `company_1` ("Riya Patel"), `customer_1`, and `tech_1` ("Rahul Sharma")
+     were explicitly purged from `servora.db`, `backend/app/seeds.py`, and frontend receipt templates.
+     The active seeded platform admin is `admin@servsure.com`, and branch technician queries strictly
+     require explicit assignment via `BranchTechnicianModel`.
 
 2. Discrepancy: Outdated Feature Status (Prototypes vs. Live Implementation)
    - Initial Draft: Claimed operational dashboards were incomplete prototypes lacking
@@ -693,6 +801,27 @@ were identified between the initial rough draft documentation and the actual cod
      comments, `render.yaml`, and `.env.example`.
    - Reality in Code: Standardized to `ServSure` while maintaining dual-brand
      compatibility for session storage and HTTP request headers.
+
+6. Discrepancy: Universal Settings Navigation Removal
+   - Initial Draft: Depicted separate "Settings" or "System settings" navigation views in each portal.
+   - Reality in Code: "Settings" views and navigation options have been systematically removed
+     across all five portals (Admin, Company, Franchise, Technician, Customer). Profile updates
+     (including email modification for Admin and Company) are consolidated in the Profile view.
+
+7. Discrepancy: Company Portal Dashboard Layout Decluttering
+   - Initial Draft: Included platform-admin control panels on the Company Portal (`.side-panels`
+     and `.bottom-panel` displaying system access and directory widgets).
+   - Reality in Code: Removed all extraneous platform-admin panels from `frontend/company-dashboard.html`.
+     The layout is full-width single-column grid (`grid-template-columns: 1fr !important`), giving
+     immediate prominence to live service requests, assigned technicians, and the supply chain hub.
+
+8. Discrepancy: End-to-End Inventory Supply Chain & Fulfillment History
+   - Initial Draft: Contained only a static spare parts table without cross-portal requisitioning or stock tracking.
+   - Reality in Code: Fully operational supply chain linking Brand Companies and Franchise Branches.
+     Company users can add parts with initial warehouse stock and restock/update quantities.
+     Franchise branches can requisition parts (`/api/inventory/part-requests`). Upon Company dispatch,
+     warehouse stock decrements, franchise stock increments, dual audit transactions are recorded,
+     and Sent (Company) and Received (Franchise) history is maintained in real-time.
 
 ================================================================================
 End of Documentation

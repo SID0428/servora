@@ -193,15 +193,7 @@ def get_company_branch_details(
 
     tech_links = db.query(BranchTechnicianModel).filter(BranchTechnicianModel.branch_id == branch.id).all()
     tech_ids = [l.technician_id for l in tech_links]
-
-    tech_query = db.query(TechnicianModel).filter(
-        or_(
-            TechnicianModel.id.in_(tech_ids),
-            TechnicianModel.company_branch.ilike(f"%{branch.branch_name}%"),
-            TechnicianModel.company_branch == branch.id
-        )
-    )
-    technicians = tech_query.all()
+    technicians = db.query(TechnicianModel).filter(TechnicianModel.id.in_(tech_ids)).all() if tech_ids else []
 
     for t in technicians:
         t_user = db.query(UserModel).filter(
@@ -240,7 +232,7 @@ def get_company_branch_details(
         all_parts = db.query(SparePartModel).all()
         for p in all_parts:
             inv = FranchiseInventoryModel(
-                id=f"inv_{branch.id[:6]}_{p.id[:6]}",
+                id=f"inv_{uuid4().hex[:12]}",
                 branch_id=branch.id,
                 part_id=p.id,
                 quantity_available=12,

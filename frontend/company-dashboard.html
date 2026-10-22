@@ -58,6 +58,9 @@
         display: none !important;
       }
     }
+    .dashboard-grid {
+      grid-template-columns: 1fr !important;
+    }
   </style>
 </head>
 <body class="ops-page" data-role="company">
@@ -75,9 +78,7 @@
         <section class="welcome-row"><div><div class="section-kicker" id="workspaceKicker">OPERATIONS</div><h1 id="welcomeTitle">Good morning</h1><p id="welcomeSubtitle">Here is your service operation at a glance.</p></div><div class="welcome-actions"><button class="primary-action" id="addCompanyButton" hidden><span>＋</span> Add company</button><button class="primary-action" id="addBranchButton" hidden><span>＋</span> Add branch</button><button class="primary-action" id="addTechnicianButton" hidden><span>＋</span> Add technician</button><button class="primary-action" id="exportButton"><span>↓</span> Export report</button></div></section>
         <section id="pageContent">
         <section class="metric-grid" id="metricGrid"></section>
-        <section class="dashboard-grid"><div class="panel requests-panel"><div class="panel-heading"><div><h2 id="tableTitle">Recent service requests</h2><p id="tableSubtitle">Track requests across your network.</p></div><div class="table-tools"><button class="primary-action company-inline-add" id="companyInlineAdd" hidden><span>＋</span> Add company</button><label class="search-box"><span>⌕</span><input id="requestSearch" type="search" placeholder="Search requests"></label><select id="statusFilter" aria-label="Filter request status"><option value="all">All status</option><option>In Progress</option><option>Scheduled</option><option>Completed</option></select></div></div><div class="table-scroll"><table><thead><tr id="requestHead"></tr></thead><tbody id="requestRows"><tr><td colspan="7" class="empty-row">Loading service requests…</td></tr></tbody></table></div><div class="panel-foot"><span id="requestCount">Loading records</span><span>Updated just now</span></div></div>
-          <aside class="side-panels"><div class="panel health-panel"><div class="panel-heading"><div><h2 id="sidePanelTitle">Network health</h2><p>Current service performance</p></div><span class="more-button">···</span></div><div id="healthContent"></div></div><div class="panel activity-panel"><div class="panel-heading"><div><h2>Service overview</h2><p>Live workflow snapshot</p></div></div><div id="activityContent"></div></div></aside></section>
-        <section class="panel bottom-panel"><div class="panel-heading"><div><h2 id="bottomTitle">Team & service resources</h2><p id="bottomSubtitle">People and assets supporting your service network.</p></div><a href="mailto:help@servsure.com" class="text-link">Manage resources →</a></div><div class="resource-grid" id="resourceGrid"></div></section>
+        <section class="dashboard-grid"><div class="panel requests-panel"><div class="panel-heading"><div><h2 id="tableTitle">Recent service requests</h2><p id="tableSubtitle">Track requests across your network.</p></div><div class="table-tools"><button class="primary-action company-inline-add" id="companyInlineAdd" hidden><span>＋</span> Add company</button><label class="search-box"><span>⌕</span><input id="requestSearch" type="search" placeholder="Search requests"></label><select id="statusFilter" aria-label="Filter request status"><option value="all">All status</option><option>In Progress</option><option>Scheduled</option><option>Completed</option></select></div></div><div class="table-scroll"><table><thead><tr id="requestHead"></tr></thead><tbody id="requestRows"><tr><td colspan="7" class="empty-row">Loading service requests…</td></tr></tbody></table></div><div class="panel-foot"><span id="requestCount">Loading records</span><span>Updated just now</span></div></div></section>
         </section>
         <footer class="ops-footer"><span>© 2026 ServSure · Service, connected.</span><span>Privacy&nbsp;&nbsp; · &nbsp;&nbsp;Help center</span></footer>
       </div>
@@ -424,7 +425,7 @@
         <div class="sm:border-l sm:border-slate-200/80 sm:pl-4">
           <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">Servicing Franchise & Technician</span>
           <strong id="opsReceiptBranchName" class="text-slate-800 font-bold block text-sm">ServSure Authorized Franchise</strong>
-          <span id="opsReceiptTechName" class="text-blue-600 font-semibold block mt-0.5">Technician: Rahul Sharma</span>
+          <span id="opsReceiptTechName" class="text-blue-600 font-semibold block mt-0.5">Technician: —</span>
           <span id="opsReceiptApplianceDetails" class="text-slate-600 block mt-1">LG Inverter AC (LG-INV-15)</span>
           <span id="opsReceiptIssueDescription" class="text-slate-500 text-[11px] block mt-0.5">Service: Cooling repair</span>
         </div>
@@ -895,6 +896,130 @@
         </button>
       </div>
     </div>
+  <!-- Add Part to Inventory Modal -->
+  <dialog id="addPartDialog" class="company-dialog">
+    <form id="addPartForm">
+      <div class="dialog-heading">
+        <div>
+          <div class="section-kicker">INVENTORY MASTER</div>
+          <h2>Add spare part to inventory</h2>
+          <p>Register a new replacement component and set initial company warehouse stock.</p>
+        </div>
+        <button type="button" class="dialog-close" id="closeAddPartDialog" aria-label="Close">×</button>
+      </div>
+
+      <div class="space-y-3 text-xs">
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <label class="block font-medium text-slate-700">
+            Part code / SKU *
+            <input name="part_code" id="addPartCode" required maxlength="64" placeholder="e.g. PART-LG-COMP01" class="mt-1 w-full rounded-xl border border-slate-200 p-2.5 font-mono uppercase font-bold text-slate-800">
+          </label>
+          <label class="block font-medium text-slate-700">
+            Part name *
+            <input name="name" id="addPartName" required maxlength="128" placeholder="e.g. Inverter Linear Compressor" class="mt-1 w-full rounded-xl border border-slate-200 p-2.5 text-slate-800">
+          </label>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <label class="block font-medium text-slate-700">
+            Appliance category *
+            <select name="category" id="addPartCategory" required class="mt-1 w-full rounded-xl border border-slate-200 p-2.5 text-slate-800 bg-white">
+              <option value="Air Conditioner">Air Conditioner</option>
+              <option value="Refrigerator">Refrigerator</option>
+              <option value="Washing Machine">Washing Machine</option>
+              <option value="Microwave">Microwave</option>
+              <option value="Television">Television</option>
+              <option value="Water Purifier">Water Purifier</option>
+              <option value="Geyser">Geyser</option>
+              <option value="Small Appliances">Small Appliances</option>
+            </select>
+          </label>
+          <label class="block font-medium text-slate-700">
+            Brand
+            <input name="brand" id="addPartBrand" placeholder="e.g. LG, Crompton, or Universal" class="mt-1 w-full rounded-xl border border-slate-200 p-2.5 text-slate-800">
+          </label>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <label class="block font-medium text-slate-700">
+            Initial warehouse stock *
+            <input name="stock_quantity" id="addPartStock" type="number" min="0" value="10" required class="mt-1 w-full rounded-xl border border-slate-200 p-2.5 font-bold text-slate-800">
+          </label>
+          <label class="block font-medium text-slate-700">
+            Unit price (₹) *
+            <input name="unit_price" id="addPartPrice" type="number" step="0.01" min="0" required placeholder="0.00" class="mt-1 w-full rounded-xl border border-slate-200 p-2.5 font-bold text-slate-800">
+          </label>
+          <label class="block font-medium text-slate-700">
+            HSN code *
+            <input name="hsn_code" id="addPartHsn" value="841890" required maxlength="32" class="mt-1 w-full rounded-xl border border-slate-200 p-2.5 font-mono text-slate-800">
+          </label>
+        </div>
+
+        <label class="block font-medium text-slate-700">
+          Description & specifications <span class="text-slate-400 font-normal">(Optional)</span>
+          <textarea name="description" id="addPartDesc" rows="2" placeholder="e.g. OEM certified linear compressor for 260L to 340L double-door models." class="mt-1 w-full rounded-xl border border-slate-200 p-2.5 text-slate-800"></textarea>
+        </label>
+      </div>
+
+      <p class="dialog-message" id="addPartFormMessage" aria-live="polite"></p>
+      <div class="dialog-actions">
+        <button type="button" class="secondary-button" id="cancelAddPart">Cancel</button>
+        <button type="submit" class="primary-action" id="submitAddPartBtn">Save to inventory</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Update Part Stock Modal -->
+  <dialog id="updatePartStockDialog" class="company-dialog">
+    <form id="updatePartStockForm">
+      <div class="dialog-heading">
+        <div>
+          <div class="section-kicker">INVENTORY ADJUSTMENT</div>
+          <h2>Update warehouse stock</h2>
+          <p>Add fresh inventory or correct physical stock counts for this part.</p>
+        </div>
+        <button type="button" class="dialog-close" id="closeUpdatePartStockDialog" aria-label="Close">×</button>
+      </div>
+
+      <input type="hidden" id="updateStockPartId">
+      
+      <div class="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1 mb-3 text-xs">
+        <div class="flex items-center justify-between">
+          <span class="font-bold text-slate-800 text-sm" id="updateStockPartName">—</span>
+          <span class="font-mono text-xs font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded" id="updateStockPartCode">—</span>
+        </div>
+        <div class="flex items-center gap-2 text-slate-500">
+          <span>Current stock on hand:</span>
+          <strong class="text-slate-800 font-bold" id="updateStockCurrentQty">0 units</strong>
+        </div>
+      </div>
+
+      <div class="space-y-3 text-xs">
+        <label class="block font-medium text-slate-700">
+          Update method
+          <select id="updateStockMode" class="mt-1 w-full rounded-xl border border-slate-200 p-2.5 text-slate-800 bg-white">
+            <option value="add">Add stock to warehouse (Restock / Incoming shipment)</option>
+            <option value="set">Set exact stock count (Physical inventory audit)</option>
+          </select>
+        </label>
+
+        <label class="block font-medium text-slate-700">
+          <span id="updateStockQtyLabel">Quantity to add *</span>
+          <input type="number" id="updateStockQuantity" min="0" required placeholder="Enter quantity" class="mt-1 w-full rounded-xl border border-slate-200 p-2.5 font-bold text-slate-800 text-sm">
+        </label>
+
+        <label class="block font-medium text-slate-700">
+          Reason / Reference note <span class="text-slate-400 font-normal">(Optional)</span>
+          <input type="text" id="updateStockNotes" placeholder="e.g. Batch #OEM-2026-44 received from factory" class="mt-1 w-full rounded-xl border border-slate-200 p-2.5 text-slate-800">
+        </label>
+      </div>
+
+      <p class="dialog-message" id="updateStockFormMessage" aria-live="polite"></p>
+      <div class="dialog-actions">
+        <button type="button" class="secondary-button" id="cancelUpdateStock">Cancel</button>
+        <button type="submit" class="primary-action" id="submitUpdateStockBtn">Save stock update</button>
+      </div>
+    </form>
   </dialog>
 </body>
 </html>

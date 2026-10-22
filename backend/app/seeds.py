@@ -5,7 +5,7 @@ from app.db.session import engine, Base, SessionLocal
 from app.db.models import (
     UserModel, TechnicianModel, ApplianceModel, ServiceRequestModel,
     CompanyBranchModel, BranchTechnicianModel, JobCardModel, ServiceFeedbackModel,
-    SparePartModel, FranchiseInventoryModel, InventoryTransactionModel,
+    SparePartModel, PartRequestModel, FranchiseInventoryModel, InventoryTransactionModel,
     WarrantyClaimModel, AMCPlanModel, AMCSubscriptionModel,
     EstimateModel, EscalationModel, NotificationLogModel, AuthOtpModel
 )
@@ -16,6 +16,14 @@ def seed_database(db: Session):
 
     # Existing production databases need an explicit migration because
     # create_all() does not add columns to tables that already exist.
+    sp_columns = {column["name"] for column in inspect(engine).get_columns("spare_parts")}
+    if "stock_quantity" not in sp_columns:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE spare_parts ADD COLUMN stock_quantity INTEGER NOT NULL DEFAULT 0"))
+    if "company_id" not in sp_columns:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE spare_parts ADD COLUMN company_id VARCHAR(64) NULL"))
+
     user_columns = {column["name"] for column in inspect(engine).get_columns("users")}
     if "password_hash" not in user_columns:
         with engine.begin() as connection:
@@ -139,15 +147,6 @@ def seed_database(db: Session):
     if not db.query(UserModel).filter(UserModel.role != "customer").first():
         users = [
             UserModel(
-                id="tech_1",
-                name="Rahul Sharma",
-                email="rahul.sharma@crompton-service.com",
-                phone="+91 98111 22334",
-                role="technician",
-                avatar="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=250&q=80",
-                address="Sector 18, Noida"
-            ),
-            UserModel(
                 id="admin_1",
                 name="Vikramaditya Rao",
                 email="admin@servsure.com",
@@ -164,17 +163,6 @@ def seed_database(db: Session):
     if not db.query(TechnicianModel).first():
         techs = [
             TechnicianModel(
-                id="tech_1",
-                name="Rahul Sharma",
-                title="Crompton Authorized Technician",
-                company_branch="Noida Sector 63 Branch",
-                rating=4.9,
-                total_jobs=124,
-                phone="+91 98111 22334",
-                avatar="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=250&q=80",
-                is_verified=True
-            ),
-            TechnicianModel(
                 id="tech_2",
                 name="Suresh Kumar",
                 title="LG Certified Senior Technician",
@@ -189,7 +177,7 @@ def seed_database(db: Session):
         db.add_all(techs)
         db.commit()
 
-    # Clean up any legacy dummy customer, dummy service requests, and dummy company (Riya Patel)
+    # Clean up any legacy dummy customer, dummy service requests, dummy technician (Rahul Sharma), and dummy company (Riya Patel)
     try:
         dummy_reqs = db.query(ServiceRequestModel).filter(
             (ServiceRequestModel.customer_id == "customer_1") | (ServiceRequestModel.id == "SR-7845")
@@ -205,6 +193,15 @@ def seed_database(db: Session):
         db.query(ApplianceModel).filter(ApplianceModel.user_id == "customer_1").delete(synchronize_session=False)
         db.query(NotificationLogModel).filter(NotificationLogModel.user_id == "customer_1").delete(synchronize_session=False)
         db.query(UserModel).filter(UserModel.id == "customer_1").delete(synchronize_session=False)
+
+        # Remove Rahul Sharma dummy technician
+        db.query(TechnicianModel).filter(
+            (TechnicianModel.id == "tech_1") | (TechnicianModel.name == "Rahul Sharma")
+        ).delete(synchronize_session=False)
+        db.query(BranchTechnicianModel).filter(BranchTechnicianModel.technician_id == "tech_1").delete(synchronize_session=False)
+        db.query(UserModel).filter(
+            (UserModel.id == "tech_1") | (UserModel.email == "rahul.sharma@crompton-service.com")
+        ).delete(synchronize_session=False)
 
         # Remove Riya Patel dummy company & associated branch
         db.query(BranchTechnicianModel).filter(BranchTechnicianModel.branch_id == "branch_1").delete(synchronize_session=False)
@@ -384,7 +381,7 @@ def seed_database(db: Session):
                 transaction_type="job_consumption",
                 quantity=1,
                 reference_id="JC-7845",
-                performed_by="Rahul Sharma (technician)",
+                performed_by="Authorized Field Technician",
                 notes="Automatic deduction: 1x Thermostat Sensor consumed on customer ticket SR-7845",
                 created_at=dt(2026, 10, 18, 10, 45)
             )

@@ -381,7 +381,7 @@
         <div class="grid grid-cols-2 gap-2">
           <div>
             <span class="text-slate-400 block text-[10px]">Previous Technician:</span>
-            <strong id="reassignPrevTechName" class="text-slate-800 block text-xs">Rahul Sharma</strong>
+            <strong id="reassignPrevTechName" class="text-slate-800 block text-xs">Previous Technician</strong>
           </div>
           <div>
             <span class="text-slate-400 block text-[10px]">Previously Billed Amount:</span>
@@ -402,7 +402,7 @@
         <div class="p-3 rounded-2xl border border-blue-200 bg-blue-50/60 flex items-center justify-between gap-3">
           <div>
             <strong class="text-xs font-bold text-blue-900 block">Option 1: Assign Original Technician</strong>
-            <span id="reassignOriginalTechDesc" class="text-[11px] text-blue-700 block mt-0.5">Send Rahul Sharma back for free revisit under guarantee.</span>
+            <span id="reassignOriginalTechDesc" class="text-[11px] text-blue-700 block mt-0.5">Send original technician back for free revisit under guarantee.</span>
           </div>
           <button type="button" id="confirmAssignOriginalBtn" class="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-sm transition whitespace-nowrap">
             Assign Original
@@ -458,7 +458,7 @@
         <div class="sm:border-l sm:border-slate-200/80 sm:pl-4">
           <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">Servicing Franchise & Technician</span>
           <strong id="opsReceiptBranchName" class="text-slate-800 font-bold block text-sm">ServSure Authorized Franchise</strong>
-          <span id="opsReceiptTechName" class="text-blue-600 font-semibold block mt-0.5">Technician: Rahul Sharma</span>
+          <span id="opsReceiptTechName" class="text-blue-600 font-semibold block mt-0.5">Technician: —</span>
           <span id="opsReceiptApplianceDetails" class="text-slate-600 block mt-1">LG Inverter AC (LG-INV-15)</span>
           <span id="opsReceiptIssueDescription" class="text-slate-500 text-[11px] block mt-0.5">Service: Cooling repair</span>
         </div>
@@ -863,6 +863,54 @@
         </button>
       </div>
     </div>
+  <!-- Request Part from Company Modal -->
+  <dialog id="requestPartDialog" class="company-dialog">
+    <form id="requestPartForm">
+      <div class="dialog-heading">
+        <div>
+          <div class="section-kicker">OEM REQUISITION</div>
+          <h2>Request stock from company</h2>
+          <p>Order spare parts directly from the parent company's central warehouse.</p>
+        </div>
+        <button type="button" class="dialog-close" id="closeRequestPartDialog" aria-label="Close">×</button>
+      </div>
+
+      <div class="space-y-3 text-xs">
+        <label class="block font-medium text-slate-700">
+          Select spare part *
+          <select id="requestPartSelect" required class="mt-1 w-full rounded-xl border border-slate-200 p-2.5 text-slate-800 bg-white font-medium">
+            <option value="">Loading parts catalog…</option>
+          </select>
+        </label>
+
+        <div id="requestPartDetailCard" class="hidden p-3 bg-blue-50/60 border border-blue-200 rounded-xl space-y-1 text-xs">
+          <div class="flex items-center justify-between">
+            <strong id="requestPartCardName" class="text-slate-800 font-bold">—</strong>
+            <span id="requestPartCardCode" class="font-mono text-[11px] font-bold text-blue-700 bg-white px-2 py-0.5 rounded border border-blue-200">—</span>
+          </div>
+          <div class="flex items-center justify-between text-slate-600 pt-1">
+            <span>Standard Price: <strong id="requestPartCardPrice" class="text-slate-800">₹0.00</strong></span>
+            <span>Company Stock: <strong id="requestPartCardCompanyStock" class="text-blue-700">Available</strong></span>
+          </div>
+        </div>
+
+        <label class="block font-medium text-slate-700">
+          Quantity needed *
+          <input type="number" id="requestPartQuantity" min="1" max="500" value="5" required class="mt-1 w-full rounded-xl border border-slate-200 p-2.5 font-bold text-slate-800 text-sm">
+        </label>
+
+        <label class="block font-medium text-slate-700">
+          Requisition reason / note <span class="text-slate-400 font-normal">(Optional)</span>
+          <textarea id="requestPartNotes" rows="2" placeholder="e.g. Replenishing low inventory for scheduled doorstep jobs." class="mt-1 w-full rounded-xl border border-slate-200 p-2.5 text-slate-800"></textarea>
+        </label>
+      </div>
+
+      <p class="dialog-message" id="requestPartFormMessage" aria-live="polite"></p>
+      <div class="dialog-actions">
+        <button type="button" class="secondary-button" id="cancelRequestPart">Cancel</button>
+        <button type="submit" class="primary-action" id="submitRequestPartBtn">Send requisition</button>
+      </div>
+    </form>
   </dialog>
 </body>
 </html>

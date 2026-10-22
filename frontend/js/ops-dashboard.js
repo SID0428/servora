@@ -74,9 +74,9 @@ if (!checkInitialAuth()) {
 let role = dashboardRouteRole || initialUser?.role || (typeof document !== "undefined" ? document.body?.dataset?.role : null) || "company";
 const roleConfig = {
   technician: { title: "Technician workspace", kicker: "FIELD SERVICE", nav: ["My jobs", "Job history", "Route & schedule", "Earnings", "Help center"], columns: ["Ticket", "Customer", "Appliance", "Appointment", "Status", "Action"], tableTitle: "My assigned jobs", tableSubtitle: "Your service calls and the next step for each job.", bottomTitle: "Today's schedule", sideTitle: "My performance", resources: [["Assigned today", "Jobs on your schedule", "▤"], ["Completed", "Jobs closed this week", "✓"], ["Customer rating", "From recent service visits", "☆"], ["Service area", "Your assigned territory", "⌖"]] },
-  franchise: { title: "Franchise workspace", kicker: "BRANCH OPERATIONS", nav: ["Dashboard", "Service requests", "Technicians", "Inventory & Spares", "Escalations", "Active jobs", "Customers", "Reports", "Settings"], columns: ["Request ID", "Customer", "Appliance", "Issue", "Technician", "Status", "Action"], tableTitle: "Incoming service requests", tableSubtitle: "Review requests and coordinate local service work.", bottomTitle: "Branch resources", sideTitle: "Branch performance", resources: [["Technicians", "Available in this branch", "♙"], ["Active jobs", "Assigned and in progress", "⚒"], ["Inventory items", "Parts in local warehouse", "📦"], ["Service area", "Local coverage", "⌖"]] },
-  company: { title: "Company workspace", kicker: "COMPANY OPERATIONS", nav: ["Dashboard", "Branches", "Technicians", "Warranty Claims", "Spares Catalog", "Escalations", "Customers", "Service requests", "Reports", "Settings"], columns: ["Request ID", "Customer", "Company", "Appliance", "Status", "Date", "Action"], tableTitle: "Recent service requests", tableSubtitle: "Monitor service activity across the company network.", bottomTitle: "Network resources", sideTitle: "Network health", resources: [["Branches", "Locations in your network", "▥"], ["Warranty claims", "OEM reimbursement requests", "🛡️"], ["Technicians", "Field service professionals", "♙"], ["Customers", "Customers served", "♧"]] },
-  admin: { title: "Platform overview", kicker: "SERVSURE PLATFORM", nav: ["Overview", "Companies", "Branches", "Technicians", "Escalations", "Customers", "Service requests", "Reports", "System settings"], columns: ["Request ID", "Customer", "Company", "Appliance", "Status", "Date", "Action"], tableTitle: "Platform service activity", tableSubtitle: "A view of requests moving across ServSure.", bottomTitle: "Platform directory", sideTitle: "Platform health", resources: [["Companies", "Service partners", "▥"], ["Branches", "Operational locations", "⌖"], ["Technicians", "Verified professionals", "♙"], ["Customers", "Registered accounts", "♧"]] },
+  franchise: { title: "Franchise workspace", kicker: "BRANCH OPERATIONS", nav: ["Dashboard", "Service requests", "Technicians", "Inventory & Spares", "Escalations", "Active jobs", "Customers", "Reports"], columns: ["Request ID", "Customer", "Appliance", "Issue", "Technician", "Status", "Action"], tableTitle: "Incoming service requests", tableSubtitle: "Review requests and coordinate local service work.", bottomTitle: "Branch resources", sideTitle: "Branch performance", resources: [["Technicians", "Available in this branch", "♙"], ["Active jobs", "Assigned and in progress", "⚒"], ["Inventory items", "Parts in local warehouse", "📦"], ["Service area", "Local coverage", "⌖"]] },
+  company: { title: "Company workspace", kicker: "COMPANY OPERATIONS", nav: ["Dashboard", "Branches", "Technicians", "Warranty Claims", "Inventory & Spares", "Escalations", "Customers", "Service requests", "Reports"], columns: ["Request ID", "Customer", "Company", "Appliance", "Status", "Date", "Action"], tableTitle: "Recent service requests", tableSubtitle: "Monitor service activity across the company network.", bottomTitle: "Network resources", sideTitle: "Network health", resources: [["Branches", "Locations in your network", "▥"], ["Warranty claims", "OEM reimbursement requests", "🛡️"], ["Technicians", "Field service professionals", "♙"], ["Customers", "Customers served", "♧"]] },
+  admin: { title: "Platform overview", kicker: "SERVSURE PLATFORM", nav: ["Overview", "Companies", "Branches", "Technicians", "Escalations", "Customers", "Service requests", "Reports"], columns: ["Request ID", "Customer", "Company", "Appliance", "Status", "Date", "Action"], tableTitle: "Platform service activity", tableSubtitle: "A view of requests moving across ServSure.", bottomTitle: "Platform directory", sideTitle: "Platform health", resources: [["Companies", "Service partners", "▥"], ["Branches", "Operational locations", "⌖"], ["Technicians", "Verified professionals", "♙"], ["Customers", "Registered accounts", "♧"]] },
 };
 let config = roleConfig[role] || roleConfig.company;
 const $ = (id) => document.getElementById(id);
@@ -91,6 +91,11 @@ let franchiseCustomers = [];
 let franchiseInventory = [];
 let companyWarrantyClaims = [];
 let companySparesCatalog = [];
+let companyPartRequests = [];
+let franchisePartRequests = [];
+let allCatalogParts = [];
+let companyInventorySubTab = "stock"; // "stock" or "requests"
+let franchiseInventorySubTab = "stock"; // "stock" or "requests"
 let user = initialUser;
 
 try {
@@ -103,6 +108,9 @@ try {
   franchiseInventory = JSON.parse(localStorage.getItem("servora_cache_inventory") || "[]");
   companyWarrantyClaims = JSON.parse(localStorage.getItem("servora_cache_claims") || "[]");
   companySparesCatalog = JSON.parse(localStorage.getItem("servora_cache_catalog") || "[]");
+  companyPartRequests = JSON.parse(localStorage.getItem("servora_cache_part_requests") || "[]");
+  franchisePartRequests = JSON.parse(localStorage.getItem("servora_cache_part_requests_franchise") || "[]");
+  allCatalogParts = JSON.parse(localStorage.getItem("servora_cache_catalog_all") || "[]");
 } catch {}
 
 const icons = { Dashboard: "⌂", Overview: "⌂", "My jobs": "▤", "Job history": "◷", "Route & schedule": "⌖", Earnings: "$", "Help center": "?", "Service requests": "▣", "Incoming service requests": "▣", Technicians: "♙", "Inventory & Spares": "📦", "Warranty Claims": "🛡️", "Spares Catalog": "🔧", Escalations: "🚨", "Active jobs": "⚒", Customers: "♧", Reports: "▥", Settings: "⚙", Companies: "▦", Branches: "⌖", "System settings": "⚙" };
@@ -210,7 +218,7 @@ function renderPage(page) {
   if (role === "company" && page === "Branches") { renderCompanyBranches(); return; }
   if (role === "company" && page === "Customers") { renderCompanyCustomers(); return; }
   if (role === "company" && page === "Warranty Claims") { renderCompanyWarrantyClaims(); return; }
-  if (role === "company" && page === "Spares Catalog") { renderCompanySparesCatalog(); return; }
+  if (role === "company" && (page === "Inventory & Spares" || page === "Spares Catalog")) { renderCompanyInventoryAndSpares(); return; }
 
   // Franchise routes
   if (role === "franchise" && page === "Technicians") { renderFranchiseTechnicians(); return; }
@@ -252,7 +260,7 @@ function renderPage(page) {
     return;
   }
   if (page === "Settings" || page === "System settings") {
-    renderSettings();
+    renderMainDashboardView();
     return;
   }
   if (page === "Escalations" || page === "SLA Escalations") {
@@ -1863,16 +1871,24 @@ function initCustomerDetailModalEvents() {
 async function loadFranchiseInventory() {
   try {
     const branchId = user?.branch_id || user?.id || "me";
-    franchiseInventory = await generalApi(`/api/inventory/branch/${encodeURIComponent(branchId)}`);
-    try { localStorage.setItem("servora_cache_inventory", JSON.stringify(franchiseInventory)); } catch {}
+    const [invData, reqsData, catalogData] = await Promise.all([
+      generalApi(`/api/inventory/branch/${encodeURIComponent(branchId)}`),
+      generalApi("/api/inventory/part-requests"),
+      generalApi("/api/inventory/parts")
+    ]);
+    franchiseInventory = invData || [];
+    franchisePartRequests = reqsData || [];
+    allCatalogParts = catalogData || [];
+    try {
+      localStorage.setItem("servora_cache_inventory", JSON.stringify(franchiseInventory));
+      localStorage.setItem("servora_cache_part_requests_franchise", JSON.stringify(franchisePartRequests));
+      localStorage.setItem("servora_cache_catalog_all", JSON.stringify(allCatalogParts));
+    } catch {}
     renderFranchiseInventory();
   } catch (error) {
     franchiseInventory = [];
+    franchisePartRequests = [];
     renderFranchiseInventory();
-    if ($("requestRows")) {
-      $("requestRows").innerHTML = `<tr><td class="empty-row" colspan="7">${safe(error.message)}. Check your connection and try again.</td></tr>`;
-    }
-    if ($("requestCount")) $("requestCount").textContent = "Could not load warehouse inventory";
     showToast(`Inventory could not load: ${error.message}`, "error");
   }
 }
@@ -1887,101 +1903,192 @@ function renderFranchiseInventory() {
   setHidden("pageContent", false);
   setHidden("metricGrid", true);
 
-  if ($("tableTitle")) $("tableTitle").textContent = "Franchise warehouse inventory";
-  if ($("tableSubtitle")) $("tableSubtitle").textContent = "Track spare parts, current stock on hand, and record incoming OEM shipments.";
-  if ($("sidePanelTitle")) $("sidePanelTitle").textContent = "Warehouse status";
+  const pendingCount = franchisePartRequests.filter((r) => r.status === "Pending").length;
+  const receivedCount = franchisePartRequests.filter((r) => r.status === "Sent").length;
 
-  const lowStockItems = franchiseInventory.filter((item) => item.is_low_stock || item.quantity_available <= item.reorder_level);
-  if ($("healthContent")) {
-    $("healthContent").innerHTML = `
-      <div class="space-y-2.5">
-        <div class="p-3 bg-white rounded-xl border border-slate-100 flex items-center justify-between">
-          <span class="text-xs text-slate-500 font-medium">Catalog parts tracked:</span>
-          <strong class="text-sm font-bold text-slate-800">${franchiseInventory.length}</strong>
+  if ($("tableTitle")) {
+    $("tableTitle").innerHTML = `
+      <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 w-full">
+        <div>
+          <span>Franchise Inventory & Spares</span>
+          <p class="text-xs text-slate-500 font-normal mt-0.5">Track branch stock on hand, restock parts, and request components from company warehouse.</p>
         </div>
-        <div class="p-3 ${lowStockItems.length > 0 ? 'bg-amber-50 border-amber-200' : 'bg-emerald-50 border-emerald-200'} rounded-xl border flex items-center justify-between">
-          <span class="text-xs ${lowStockItems.length > 0 ? 'text-amber-800' : 'text-emerald-800'} font-semibold">Low stock warnings:</span>
-          <strong class="text-sm font-bold ${lowStockItems.length > 0 ? 'text-amber-700' : 'text-emerald-700'}">${lowStockItems.length} item${lowStockItems.length === 1 ? '' : 's'}</strong>
+        <div class="flex items-center gap-2">
+          <div class="inline-flex rounded-xl bg-slate-100 p-1 border border-slate-200">
+            <button type="button" id="tabFranchiseStock" class="px-3 py-1.5 rounded-lg text-xs font-bold transition ${franchiseInventorySubTab === 'stock' ? 'bg-white text-blue-600 shadow-xs' : 'text-slate-600 hover:text-slate-900'}">
+              📦 Warehouse Stock (${franchiseInventory.length})
+            </button>
+            <button type="button" id="tabFranchiseRequests" class="px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${franchiseInventorySubTab === 'requests' ? 'bg-white text-blue-600 shadow-xs' : 'text-slate-600 hover:text-slate-900'}">
+              📋 Requisitions & Received History (${franchisePartRequests.length})
+              ${receivedCount > 0 ? `<span class="px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-emerald-600 text-white">${receivedCount}</span>` : ''}
+            </button>
+          </div>
+          <button type="button" id="openRequestPartBtn" class="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs flex items-center gap-1 shadow-xs transition">
+            <span>＋</span> Request Stock from Company
+          </button>
         </div>
       </div>
     `;
   }
-  if ($("activityContent")) {
-    $("activityContent").innerHTML = `<div class="section-empty text-xs leading-relaxed">Automatic inventory deduction is performed whenever a digital job card is closed with replaced spare parts.</div>`;
-  }
-  if ($("bottomTitle")) $("bottomTitle").textContent = "Inventory logistics";
-  if ($("bottomSubtitle")) $("bottomSubtitle").textContent = "Replenish stock directly from authorized OEM parts distribution.";
+  if ($("tableSubtitle")) $("tableSubtitle").textContent = "";
 
-  if ($("requestHead")) {
-    $("requestHead").innerHTML = [
-      "Part name & code",
-      "Brand / Category",
-      "HSN code",
-      "Unit price (₹)",
-      "Stock on hand",
-      "Status",
-      "Logistics action"
-    ].map((label) => `<th>${safe(label)}</th>`).join("");
-  }
+  $("tabFranchiseStock")?.addEventListener("click", () => {
+    franchiseInventorySubTab = "stock";
+    renderFranchiseInventory();
+  });
+  $("tabFranchiseRequests")?.addEventListener("click", () => {
+    franchiseInventorySubTab = "requests";
+    renderFranchiseInventory();
+  });
+  $("openRequestPartBtn")?.addEventListener("click", () => {
+    const select = $("requestPartSelect");
+    if (select) {
+      if (allCatalogParts.length > 0) {
+        select.innerHTML = `<option value="">-- Choose a spare part from catalog --</option>` +
+          allCatalogParts.map((p) => `<option value="${safe(p.id)}" data-name="${safe(p.name)}" data-code="${safe(p.part_code)}" data-price="${p.unit_price}" data-stock="${p.stock_quantity || 0}">${safe(p.name)} (${safe(p.part_code)}) — ₹${p.unit_price}</option>`).join("");
+      } else {
+        select.innerHTML = `<option value="">No parts catalog available</option>`;
+      }
+    }
+    if ($("requestPartDetailCard")) $("requestPartDetailCard").classList.add("hidden");
+    if ($("requestPartFormMessage")) $("requestPartFormMessage").textContent = "";
+    $("requestPartForm")?.reset();
+    $("requestPartDialog")?.showModal();
+  });
 
   const query = $("requestSearch") ? $("requestSearch").value.trim().toLowerCase() : "";
-  if ($("requestSearch")) $("requestSearch").placeholder = "Search parts by name, code, brand, or HSN";
 
-  const filtered = franchiseInventory.filter((item) =>
-    [item.name, item.part_code, item.brand, item.category, item.hsn_code]
-      .join(" ")
-      .toLowerCase()
-      .includes(query)
-  );
+  if (franchiseInventorySubTab === "stock") {
+    if ($("requestSearch")) $("requestSearch").placeholder = "Search branch warehouse by part name, code, brand, or HSN";
+    if ($("requestHead")) {
+      $("requestHead").innerHTML = [
+        "Part name & code",
+        "Brand / Category",
+        "HSN code",
+        "Unit price (₹)",
+        "Stock on hand",
+        "Inventory status",
+        "Logistics action"
+      ].map((label) => `<th>${safe(label)}</th>`).join("");
+    }
 
-  if ($("requestRows")) {
-    $("requestRows").innerHTML = filtered.length
-      ? filtered
-          .map((item) => {
-            const isLow = item.is_low_stock || item.quantity_available <= item.reorder_level;
-            const statusBadge = isLow
-              ? `<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-50 text-amber-800 border border-amber-200">⚠️ Low stock (${item.quantity_available})</span>`
-              : `<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">✓ In stock (${item.quantity_available})</span>`;
-            
-            return `
-              <tr>
-                <td>
-                  <strong class="text-slate-900 block font-semibold">${safe(item.name)}</strong>
-                  <span class="font-mono text-[11px] text-blue-600 font-bold block">${safe(item.part_code)}</span>
-                </td>
-                <td>
-                  <span class="font-medium text-slate-800">${safe(item.brand)}</span>
-                  <small class="text-slate-400 block">${safe(item.category)}</small>
-                </td>
-                <td><span class="font-mono text-slate-600 bg-slate-100 px-2 py-0.5 rounded text-[11px]">${safe(item.hsn_code || "841890")}</span></td>
-                <td><strong class="font-display text-slate-900 text-sm">₹${Number(item.unit_price || 0).toFixed(2)}</strong></td>
-                <td>
-                  <strong class="text-sm ${isLow ? 'text-amber-700' : 'text-slate-800'}">${item.quantity_available} units</strong>
-                  <small class="text-slate-400 block">Min threshold: ${item.reorder_level}</small>
-                </td>
-                <td>${statusBadge}</td>
-                <td>
-                  <button type="button" class="table-action font-semibold text-blue-600 hover:text-blue-800 flex items-center gap-1" data-restock-btn="${safe(item.part_id)}" data-part-name="${safe(item.name)}" data-branch-id="${safe(item.branch_id || user?.branch_id || user?.id || 'me')}">
-                    <span>📦</span> Stock In →
-                  </button>
-                </td>
-              </tr>
-            `;
-          })
-          .join("")
-      : `<tr><td class="empty-row" colspan="7">${query ? "No parts match your search." : "No spare parts found in warehouse inventory."}</td></tr>`;
-  }
+    const filtered = franchiseInventory.filter((item) =>
+      [item.name, item.part_code, item.brand, item.category, item.hsn_code]
+        .join(" ")
+        .toLowerCase()
+        .includes(query)
+    );
 
-  if ($("requestCount")) {
-    $("requestCount").textContent = `${filtered.length} part${filtered.length === 1 ? "" : "s"} shown`;
-  }
-  if ($("resourceGrid")) $("resourceGrid").innerHTML = "";
+    if ($("requestRows")) {
+      $("requestRows").innerHTML = filtered.length
+        ? filtered
+            .map((item) => {
+              const isLow = item.is_low_stock || item.quantity_available <= item.reorder_level;
+              const statusBadge = isLow
+                ? `<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-50 text-amber-800 border border-amber-200">⚠️ Low stock (${item.quantity_available})</span>`
+                : `<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">✓ In stock (${item.quantity_available})</span>`;
 
-  document.querySelectorAll("[data-restock-btn]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      openRestockModal(btn.dataset.restockBtn, btn.dataset.partName, btn.dataset.branchId);
+              return `
+                <tr>
+                  <td>
+                    <strong class="text-slate-900 block font-semibold">${safe(item.name)}</strong>
+                    <span class="font-mono text-[11px] text-blue-600 font-bold block">${safe(item.part_code)}</span>
+                  </td>
+                  <td>
+                    <span class="font-medium text-slate-800">${safe(item.brand)}</span>
+                    <small class="text-slate-400 block">${safe(item.category)}</small>
+                  </td>
+                  <td><span class="font-mono text-slate-600 bg-slate-100 px-2 py-0.5 rounded text-[11px]">${safe(item.hsn_code || "841890")}</span></td>
+                  <td><strong class="font-display text-slate-900 text-sm">₹${Number(item.unit_price || 0).toFixed(2)}</strong></td>
+                  <td>
+                    <strong class="text-sm ${isLow ? 'text-amber-700' : 'text-slate-800'}">${item.quantity_available} units</strong>
+                    <small class="text-slate-400 block">Min threshold: ${item.reorder_level}</small>
+                  </td>
+                  <td>${statusBadge}</td>
+                  <td>
+                    <button type="button" class="table-action font-semibold text-blue-600 hover:text-blue-800 flex items-center gap-1" data-restock-btn="${safe(item.part_id)}" data-part-name="${safe(item.name)}" data-branch-id="${safe(item.branch_id || user?.branch_id || user?.id || 'me')}">
+                      <span>📦</span> Stock In →
+                    </button>
+                  </td>
+                </tr>
+              `;
+            })
+            .join("")
+        : `<tr><td class="empty-row" colspan="7">${query ? "No parts match your search." : "No spare parts in branch warehouse."}</td></tr>`;
+    }
+
+    if ($("requestCount")) {
+      $("requestCount").textContent = `${filtered.length} part${filtered.length === 1 ? "" : "s"} shown`;
+    }
+
+    document.querySelectorAll("[data-restock-btn]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        openRestockModal(btn.dataset.restockBtn, btn.dataset.partName, btn.dataset.branchId);
+      });
     });
-  });
+  } else {
+    // Requisitions & Received History
+    if ($("requestSearch")) $("requestSearch").placeholder = "Search requisitions by ID, part name, or status";
+    if ($("requestHead")) {
+      $("requestHead").innerHTML = [
+        "Requisition ID",
+        "Requested component",
+        "Category & Code",
+        "Quantity",
+        "Requisition status",
+        "Requested on",
+        "Shipment / Received details"
+      ].map((label) => `<th>${safe(label)}</th>`).join("");
+    }
+
+    const filtered = franchisePartRequests.filter((item) =>
+      [item.id, item.part_name, item.part_code, item.status, item.notes]
+        .join(" ")
+        .toLowerCase()
+        .includes(query)
+    );
+
+    if ($("requestRows")) {
+      $("requestRows").innerHTML = filtered.length
+        ? filtered
+            .map((req) => {
+              const isSent = req.status === "Sent";
+              const statusPill = isSent
+                ? `<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">✓ Received in Warehouse</span>`
+                : `<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-50 text-amber-800 border border-amber-200">⏳ Awaiting OEM Dispatch</span>`;
+
+              const receivedInfo = isSent
+                ? `<div class="text-xs text-slate-600 font-medium">Fulfilled & Received on <strong class="text-slate-800 font-semibold block">${safe(req.sent_at || "—")}</strong><small class="text-emerald-700 block font-semibold">Stock added to local inventory</small></div>`
+                : `<div class="text-xs text-slate-400 font-medium">Requisition sent to company.<br><span class="text-blue-600 font-semibold">Stock will auto-credit upon dispatch</span></div>`;
+
+              return `
+                <tr class="${isSent ? 'bg-emerald-50/20' : 'bg-white'}">
+                  <td><span class="font-mono font-bold text-blue-600">${safe(req.id)}</span></td>
+                  <td>
+                    <strong class="text-slate-900 block font-semibold">${safe(req.part_name)}</strong>
+                    <small class="text-slate-400 block">${safe(req.notes || "")}</small>
+                  </td>
+                  <td>
+                    <strong class="text-slate-800 block text-xs">${safe(req.category || "Spare Part")}</strong>
+                    <span class="font-mono text-[11px] text-slate-500 font-bold">${safe(req.part_code)}</span>
+                  </td>
+                  <td><strong class="text-sm font-bold text-blue-700">${req.quantity} units</strong></td>
+                  <td>${statusPill}</td>
+                  <td><span class="text-xs text-slate-600">${safe(req.created_at || "—")}</span></td>
+                  <td>${receivedInfo}</td>
+                </tr>
+              `;
+            })
+            .join("")
+        : `<tr><td class="empty-row" colspan="7">${query ? "No requisitions match your search." : "No part requisitions requested yet. Click 'Request Stock from Company' to place your first order."}</td></tr>`;
+    }
+
+    if ($("requestCount")) {
+      $("requestCount").textContent = `${filtered.length} requisition${filtered.length === 1 ? "" : "s"} (${pendingCount} pending OEM dispatch)`;
+    }
+  }
+
+  if ($("resourceGrid")) $("resourceGrid").innerHTML = "";
 }
 
 function openRestockModal(partId, partName, branchId) {
@@ -2250,26 +2357,32 @@ function initClaimReviewModalEvents() {
 }
 
 // ==========================================
-// Phase 2: Central Spares Catalog Master
+// Central Company Inventory & Spare Parts Requisitions
 // ==========================================
-async function loadCompanySparesCatalog() {
+async function loadCompanyInventoryAndSpares() {
   try {
-    companySparesCatalog = await generalApi("/api/inventory/parts");
-    try { localStorage.setItem("servora_cache_catalog", JSON.stringify(companySparesCatalog)); } catch {}
-    renderCompanySparesCatalog();
+    const [partsData, reqsData] = await Promise.all([
+      generalApi("/api/inventory/company/parts"),
+      generalApi("/api/inventory/part-requests")
+    ]);
+    companySparesCatalog = partsData || [];
+    companyPartRequests = reqsData || [];
+    try {
+      localStorage.setItem("servora_cache_catalog", JSON.stringify(companySparesCatalog));
+      localStorage.setItem("servora_cache_part_requests", JSON.stringify(companyPartRequests));
+    } catch {}
+    renderCompanyInventoryAndSpares();
   } catch (error) {
     companySparesCatalog = [];
-    renderCompanySparesCatalog();
-    if ($("requestRows")) {
-      $("requestRows").innerHTML = `<tr><td class="empty-row" colspan="6">${safe(error.message)}. Check your connection and try again.</td></tr>`;
-    }
-    if ($("requestCount")) $("requestCount").textContent = "Could not load spares catalog";
-    showToast(`Spare parts catalog could not load: ${error.message}`, "error");
+    companyPartRequests = [];
+    renderCompanyInventoryAndSpares();
+    showToast(`Inventory could not load: ${error.message}`, "error");
   }
 }
+const loadCompanySparesCatalog = loadCompanyInventoryAndSpares;
 
-function renderCompanySparesCatalog() {
-  if ($("crumbTitle")) $("crumbTitle").textContent = "Spares Catalog";
+function renderCompanyInventoryAndSpares() {
+  if ($("crumbTitle")) $("crumbTitle").textContent = "Inventory & Spares";
   setHidden("addCompanyButton", true);
   setHidden("addBranchButton", true);
   setHidden("addTechnicianButton", true);
@@ -2278,68 +2391,218 @@ function renderCompanySparesCatalog() {
   setHidden("pageContent", false);
   setHidden("metricGrid", true);
 
-  if ($("tableTitle")) $("tableTitle").textContent = "Master Spare Parts Catalog";
-  if ($("tableSubtitle")) $("tableSubtitle").textContent = "Standardized components catalog with brand compatibility, unit pricing, and GST HSN codes.";
-  if ($("sidePanelTitle")) $("sidePanelTitle").textContent = "Catalog master";
+  const pendingReqs = companyPartRequests.filter((r) => r.status === "Pending");
+  const totalStockUnits = companySparesCatalog.reduce((acc, p) => acc + (p.stock_quantity || 0), 0);
 
-  if ($("healthContent")) {
-    $("healthContent").innerHTML = `
-      <div class="space-y-2.5">
-        <div class="p-3 bg-white rounded-xl border border-slate-100 flex items-center justify-between">
-          <span class="text-xs text-slate-500 font-medium">Standard catalog parts:</span>
-          <strong class="text-sm font-bold text-slate-800">${companySparesCatalog.length}</strong>
+  if ($("tableTitle")) {
+    $("tableTitle").innerHTML = `
+      <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 w-full">
+        <div>
+          <span>Company Inventory & Spares</span>
+          <p class="text-xs text-slate-500 font-normal mt-0.5">Manage warehouse stock, add new components, and dispatch franchise parts.</p>
+        </div>
+        <div class="flex items-center gap-2">
+          <div class="inline-flex rounded-xl bg-slate-100 p-1 border border-slate-200">
+            <button type="button" id="tabCompanyStock" class="px-3 py-1.5 rounded-lg text-xs font-bold transition ${companyInventorySubTab === 'stock' ? 'bg-white text-blue-600 shadow-xs' : 'text-slate-600 hover:text-slate-900'}">
+              📦 Warehouse Stock (${companySparesCatalog.length})
+            </button>
+            <button type="button" id="tabCompanyRequests" class="px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${companyInventorySubTab === 'requests' ? 'bg-white text-blue-600 shadow-xs' : 'text-slate-600 hover:text-slate-900'}">
+              🚚 Franchise Requisitions (${companyPartRequests.length})
+              ${pendingReqs.length > 0 ? `<span class="px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-rose-500 text-white">${pendingReqs.length}</span>` : ''}
+            </button>
+          </div>
+          <button type="button" id="openAddPartBtn" class="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs flex items-center gap-1 shadow-xs transition">
+            <span>＋</span> Add New Part
+          </button>
         </div>
       </div>
     `;
   }
-  if ($("activityContent")) {
-    $("activityContent").innerHTML = `<div class="section-empty text-xs leading-relaxed">HSN codes (e.g. 841890, 845090) are required under GST Act §31 for standard 18% tax invoicing on consumer job cards.</div>`;
-  }
-  if ($("bottomTitle")) $("bottomTitle").textContent = "Spare parts inventory";
-  if ($("bottomSubtitle")) $("bottomSubtitle").textContent = "Centralized component master data";
+  if ($("tableSubtitle")) $("tableSubtitle").textContent = "";
 
-  if ($("requestHead")) {
-    $("requestHead").innerHTML = [
-      "Part code",
-      "Part name",
-      "Brand & category",
-      "HSN code",
-      "Standard unit price",
-      "Status"
-    ].map((label) => `<th>${safe(label)}</th>`).join("");
-  }
+  $("tabCompanyStock")?.addEventListener("click", () => {
+    companyInventorySubTab = "stock";
+    renderCompanyInventoryAndSpares();
+  });
+  $("tabCompanyRequests")?.addEventListener("click", () => {
+    companyInventorySubTab = "requests";
+    renderCompanyInventoryAndSpares();
+  });
+  $("openAddPartBtn")?.addEventListener("click", () => {
+    if ($("addPartFormMessage")) $("addPartFormMessage").textContent = "";
+    $("addPartForm")?.reset();
+    $("addPartDialog")?.showModal();
+  });
 
   const query = $("requestSearch") ? $("requestSearch").value.trim().toLowerCase() : "";
-  if ($("requestSearch")) $("requestSearch").placeholder = "Search catalog by name, code, brand, or HSN";
 
-  const filtered = companySparesCatalog.filter((item) =>
-    [item.name, item.part_code, item.brand, item.category, item.hsn_code]
-      .join(" ")
-      .toLowerCase()
-      .includes(query)
-  );
+  if (companyInventorySubTab === "stock") {
+    if ($("requestSearch")) $("requestSearch").placeholder = "Search inventory by part code, name, category, or HSN";
+    if ($("requestHead")) {
+      $("requestHead").innerHTML = [
+        "Part code",
+        "Part name & specifications",
+        "Category & Brand",
+        "HSN code",
+        "Standard price (₹)",
+        "Warehouse Stock",
+        "Actions"
+      ].map((label) => `<th>${safe(label)}</th>`).join("");
+    }
 
-  if ($("requestRows")) {
-    $("requestRows").innerHTML = filtered.length
-      ? filtered
-          .map((item) => `
-            <tr>
-              <td><span class="font-mono font-bold text-blue-600">${safe(item.part_code)}</span></td>
-              <td><strong class="text-slate-900 block font-semibold">${safe(item.name)}</strong><small class="text-slate-400">${safe(item.description || '')}</small></td>
-              <td><strong class="text-slate-800 block">${safe(item.brand)}</strong><small class="text-slate-500">${safe(item.category)}</small></td>
-              <td><span class="font-mono text-slate-600 bg-slate-100 px-2 py-0.5 rounded text-[11px]">${safe(item.hsn_code || '841890')}</span></td>
-              <td><strong class="font-display text-slate-900 text-sm">₹${Number(item.unit_price || 0).toFixed(2)}</strong></td>
-              <td><span class="status-pill completed">Active</span></td>
-            </tr>
-          `)
-          .join("")
-      : `<tr><td class="empty-row" colspan="6">${query ? "No parts match your search." : "No spare parts in central catalog."}</td></tr>`;
+    const filtered = companySparesCatalog.filter((item) =>
+      [item.name, item.part_code, item.brand, item.category, item.hsn_code]
+        .join(" ")
+        .toLowerCase()
+        .includes(query)
+    );
+
+    if ($("requestRows")) {
+      $("requestRows").innerHTML = filtered.length
+        ? filtered
+            .map((item) => {
+              const stock = item.stock_quantity || 0;
+              const stockBadge = stock > 0
+                ? `<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">✓ ${stock} units</span>`
+                : `<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-rose-50 text-rose-800 border border-rose-200">⚠️ Out of stock</span>`;
+
+              return `
+                <tr>
+                  <td><span class="font-mono font-bold text-blue-600">${safe(item.part_code)}</span></td>
+                  <td>
+                    <strong class="text-slate-900 block font-semibold">${safe(item.name)}</strong>
+                    <small class="text-slate-400 block">${safe(item.description || "OEM certified replacement component")}</small>
+                  </td>
+                  <td>
+                    <strong class="text-slate-800 block text-xs">${safe(item.brand || "Universal")}</strong>
+                    <small class="text-slate-500">${safe(item.category)}</small>
+                  </td>
+                  <td><span class="font-mono text-slate-600 bg-slate-100 px-2 py-0.5 rounded text-[11px]">${safe(item.hsn_code || "841890")}</span></td>
+                  <td><strong class="font-display text-slate-900 text-sm">₹${Number(item.unit_price || 0).toFixed(2)}</strong></td>
+                  <td>${stockBadge}</td>
+                  <td>
+                    <button type="button" class="table-action px-2.5 py-1 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 font-bold text-xs" data-open-update-stock="${safe(item.id)}" data-part-name="${safe(item.name)}" data-part-code="${safe(item.part_code)}" data-part-stock="${stock}">
+                      ✏️ Update Stock
+                    </button>
+                  </td>
+                </tr>
+              `;
+            })
+            .join("")
+        : `<tr><td class="empty-row" colspan="7">${query ? "No parts match your search." : "No spare parts registered yet. Click 'Add New Part' to add your first component."}</td></tr>`;
+    }
+
+    if ($("requestCount")) {
+      $("requestCount").textContent = `${filtered.length} part${filtered.length === 1 ? "" : "s"} shown (${totalStockUnits} total units in warehouse)`;
+    }
+
+    document.querySelectorAll("[data-open-update-stock]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const partId = btn.dataset.openUpdateStock;
+        const name = btn.dataset.partName;
+        const code = btn.dataset.partCode;
+        const stock = btn.dataset.partStock;
+
+        if ($("updateStockPartId")) $("updateStockPartId").value = partId;
+        if ($("updateStockPartName")) $("updateStockPartName").textContent = name;
+        if ($("updateStockPartCode")) $("updateStockPartCode").textContent = code;
+        if ($("updateStockCurrentQty")) $("updateStockCurrentQty").textContent = `${stock} units`;
+        if ($("updateStockQuantity")) $("updateStockQuantity").value = "";
+        if ($("updateStockNotes")) $("updateStockNotes").value = "";
+        if ($("updateStockFormMessage")) $("updateStockFormMessage").textContent = "";
+
+        $("updatePartStockDialog")?.showModal();
+      });
+    });
+  } else {
+    // Requisitions & Sent History sub-tab
+    if ($("requestSearch")) $("requestSearch").placeholder = "Search requests by ID, branch, or part name";
+    if ($("requestHead")) {
+      $("requestHead").innerHTML = [
+        "Requisition ID",
+        "Franchise branch",
+        "Requested part & SKU",
+        "Quantity",
+        "Requisition status",
+        "Requested on",
+        "Dispatch details / Action"
+      ].map((label) => `<th>${safe(label)}</th>`).join("");
+    }
+
+    const filtered = companyPartRequests.filter((item) =>
+      [item.id, item.branch_name, item.part_name, item.part_code, item.status, item.requested_by]
+        .join(" ")
+        .toLowerCase()
+        .includes(query)
+    );
+
+    if ($("requestRows")) {
+      $("requestRows").innerHTML = filtered.length
+        ? filtered
+            .map((req) => {
+              const isSent = req.status === "Sent";
+              const statusPill = isSent
+                ? `<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">✓ Sent & Fulfilled</span>`
+                : `<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-50 text-amber-800 border border-amber-200">⏳ Pending Requisition</span>`;
+
+              const actionContent = isSent
+                ? `<div class="text-xs text-slate-500 font-medium">Dispatched on <strong class="text-slate-800 font-semibold block">${safe(req.sent_at || "—")}</strong><small class="text-slate-400 block">By: ${safe(req.sent_by || "Company Admin")}</small></div>`
+                : `<button type="button" class="table-action px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-xs transition flex items-center gap-1" data-send-part-id="${safe(req.id)}" data-part-name="${safe(req.part_name)}" data-quantity="${req.quantity}" data-branch-name="${safe(req.branch_name)}">
+                    <span>🚀</span> Send Part →
+                   </button>`;
+
+              return `
+                <tr class="${isSent ? 'bg-slate-50/50' : 'bg-white'}">
+                  <td><span class="font-mono font-bold text-blue-600">${safe(req.id)}</span></td>
+                  <td>
+                    <strong class="text-slate-900 block font-semibold">${safe(req.branch_name || "Franchise Branch")}</strong>
+                    <small class="text-slate-400 block">${safe(req.requested_by || "")}</small>
+                  </td>
+                  <td>
+                    <strong class="text-slate-800 block">${safe(req.part_name)}</strong>
+                    <span class="font-mono text-xs text-slate-500 font-bold">${safe(req.part_code)}</span>
+                  </td>
+                  <td><strong class="text-sm font-bold text-blue-700">${req.quantity} units</strong></td>
+                  <td>${statusPill}</td>
+                  <td><span class="text-xs text-slate-600">${safe(req.created_at || "—")}</span></td>
+                  <td>${actionContent}</td>
+                </tr>
+              `;
+            })
+            .join("")
+        : `<tr><td class="empty-row" colspan="7">${query ? "No requisitions match your search." : "No part requisitions from franchise branches yet."}</td></tr>`;
+    }
+
+    if ($("requestCount")) {
+      $("requestCount").textContent = `${filtered.length} requisition${filtered.length === 1 ? "" : "s"} (${pendingReqs.length} pending dispatch)`;
+    }
+
+    document.querySelectorAll("[data-send-part-id]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const reqId = btn.dataset.sendPartId;
+        const partName = btn.dataset.partName;
+        const qty = btn.dataset.quantity;
+        const branchName = btn.dataset.branchName;
+        sendPartToFranchise(reqId, partName, qty, branchName);
+      });
+    });
   }
 
-  if ($("requestCount")) {
-    $("requestCount").textContent = `${filtered.length} part${filtered.length === 1 ? "" : "s"} shown`;
-  }
   if ($("resourceGrid")) $("resourceGrid").innerHTML = "";
+}
+const renderCompanySparesCatalog = renderCompanyInventoryAndSpares;
+
+async function sendPartToFranchise(requestId, partName, quantity, branchName) {
+  if (!confirm(`Confirm dispatch of ${quantity} units of "${partName}" to ${branchName}?\n\nThis will deduct ${quantity} units from your warehouse and add them to the franchise inventory.`)) {
+    return;
+  }
+  try {
+    const updated = await generalApi(`/api/inventory/part-requests/${requestId}/send`, { method: "POST" });
+    showToast(`Dispatched ${quantity}x "${partName}" to ${updated.branch_name}! Warehouse inventory updated.`);
+    await loadCompanyInventoryAndSpares();
+  } catch (err) {
+    showToast(extractErrorMessage(err.message, "Failed to send part to franchise"), "error");
+  }
 }
 
 async function loadWorkspacePageData(page) {
@@ -2348,7 +2611,7 @@ async function loadWorkspacePageData(page) {
   if (role === "company" && page === "Branches") { await loadCompanyBranches(); return; }
   if (role === "company" && page === "Customers") { await loadCompanyCustomers(); return; }
   if (role === "company" && page === "Warranty Claims") { await loadCompanyWarrantyClaims(); return; }
-  if (role === "company" && page === "Spares Catalog") { await loadCompanySparesCatalog(); return; }
+  if (role === "company" && (page === "Inventory & Spares" || page === "Spares Catalog")) { await loadCompanyInventoryAndSpares(); return; }
   if (role === "franchise" && page === "Technicians") { await loadFranchiseTechnicians(); return; }
   if (role === "franchise" && page === "Customers") { await loadFranchiseCustomers(); return; }
   if (role === "franchise" && page === "Inventory & Spares") { await loadFranchiseInventory(); return; }
@@ -4372,6 +4635,12 @@ function initEvents() {
   $("closeTechMap")?.addEventListener("click", () => { stopTechMapAnimation(); $("techMapDialog")?.close(); });
   $("techMapDialog")?.addEventListener("close", () => stopTechMapAnimation());
   $("closeCompanyDetail")?.addEventListener("click", () => $("companyDetailModal")?.close());
+  $("closeAddPartDialog")?.addEventListener("click", () => $("addPartDialog")?.close());
+  $("cancelAddPart")?.addEventListener("click", () => $("addPartDialog")?.close());
+  $("closeUpdatePartStockDialog")?.addEventListener("click", () => $("updatePartStockDialog")?.close());
+  $("cancelUpdateStock")?.addEventListener("click", () => $("updatePartStockDialog")?.close());
+  $("closeRequestPartDialog")?.addEventListener("click", () => $("requestPartDialog")?.close());
+  $("cancelRequestPart")?.addEventListener("click", () => $("requestPartDialog")?.close());
   $("closeTicketDetailModal")?.addEventListener("click", () => $("ticketDetailModal")?.close());
   $("closeTicketDetailModalBtn")?.addEventListener("click", () => $("ticketDetailModal")?.close());
   $("closeOpsReceiptDialog")?.addEventListener("click", () => $("opsReceiptDialog")?.close());
@@ -4629,6 +4898,126 @@ function initEvents() {
       if (msg) msg.textContent = error.message;
     } finally {
       if (submit) submit.disabled = false;
+    }
+  });
+
+  // Inventory Requisitions & Master Events
+  $("requestPartSelect")?.addEventListener("change", (e) => {
+    const opt = e.target.selectedOptions[0];
+    const card = $("requestPartDetailCard");
+    if (!opt || !opt.value) {
+      if (card) card.classList.add("hidden");
+      return;
+    }
+    if (card) card.classList.remove("hidden");
+    if ($("requestPartCardName")) $("requestPartCardName").textContent = opt.dataset.name || "";
+    if ($("requestPartCardCode")) $("requestPartCardCode").textContent = opt.dataset.code || "";
+    if ($("requestPartCardPrice")) $("requestPartCardPrice").textContent = `₹${parseFloat(opt.dataset.price || 0).toFixed(2)}`;
+    if ($("requestPartCardCompanyStock")) {
+      const stock = parseInt(opt.dataset.stock, 10) || 0;
+      $("requestPartCardCompanyStock").textContent = stock > 0 ? `${stock} units on hand in company warehouse` : "Currently low stock at company";
+    }
+  });
+
+  $("updateStockMode")?.addEventListener("change", (e) => {
+    const lbl = $("updateStockQtyLabel");
+    if (lbl) {
+      lbl.textContent = e.target.value === "set" ? "New total warehouse count *" : "Quantity to add *";
+    }
+  });
+
+  $("addPartForm")?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const btn = $("submitAddPartBtn");
+    const msg = $("addPartFormMessage");
+    if (btn) btn.disabled = true;
+    if (msg) msg.textContent = "Registering component in inventory…";
+    try {
+      const payload = {
+        part_code: $("addPartCode").value.trim().toUpperCase(),
+        name: $("addPartName").value.trim(),
+        category: $("addPartCategory").value.trim(),
+        brand: $("addPartBrand")?.value.trim() || undefined,
+        unit_price: parseFloat($("addPartPrice").value) || 0,
+        stock_quantity: parseInt($("addPartStock").value, 10) || 0,
+        hsn_code: $("addPartHsn").value.trim() || "841890",
+        description: $("addPartDesc")?.value.trim() || undefined
+      };
+      await generalApi("/api/inventory/company/parts", {
+        method: "POST",
+        body: JSON.stringify(payload)
+      });
+      showToast(`Component ${payload.name} (${payload.part_code}) added with ${payload.stock_quantity} units stock.`);
+      $("addPartForm").reset();
+      $("addPartDialog")?.close();
+      await loadCompanyInventoryAndSpares();
+    } catch (err) {
+      if (msg) msg.textContent = extractErrorMessage(err.message, "Failed to add part to inventory");
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  });
+
+  $("updatePartStockForm")?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const btn = $("submitUpdateStockBtn");
+    const msg = $("updateStockFormMessage");
+    const partId = $("updateStockPartId").value;
+    const mode = $("updateStockMode").value;
+    const qty = parseInt($("updateStockQuantity").value, 10);
+    const notes = $("updateStockNotes")?.value.trim() || undefined;
+    if (isNaN(qty) || qty < 0) {
+      if (msg) msg.textContent = "Please enter a valid non-negative quantity.";
+      return;
+    }
+    if (btn) btn.disabled = true;
+    if (msg) msg.textContent = "Updating warehouse stock…";
+    try {
+      await generalApi(`/api/inventory/company/parts/${encodeURIComponent(partId)}/stock`, {
+        method: "PUT",
+        body: JSON.stringify({ quantity: qty, mode, notes })
+      });
+      showToast("Warehouse stock updated successfully!");
+      $("updatePartStockForm").reset();
+      $("updatePartStockDialog")?.close();
+      await loadCompanyInventoryAndSpares();
+    } catch (err) {
+      if (msg) msg.textContent = extractErrorMessage(err.message, "Failed to update stock");
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  });
+
+  $("requestPartForm")?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const btn = $("submitRequestPartBtn");
+    const msg = $("requestPartFormMessage");
+    const partId = $("requestPartSelect").value;
+    const qty = parseInt($("requestPartQuantity").value, 10);
+    const notes = $("requestPartNotes")?.value.trim() || undefined;
+    if (!partId) {
+      if (msg) msg.textContent = "Please select a spare part to requisition.";
+      return;
+    }
+    if (isNaN(qty) || qty < 1) {
+      if (msg) msg.textContent = "Please specify a quantity of at least 1 unit.";
+      return;
+    }
+    if (btn) btn.disabled = true;
+    if (msg) msg.textContent = "Submitting requisition to company…";
+    try {
+      await generalApi("/api/inventory/part-requests", {
+        method: "POST",
+        body: JSON.stringify({ part_id: partId, quantity: qty, notes })
+      });
+      showToast(`Submitted requisition for ${qty} units. Company will dispatch to your warehouse.`);
+      $("requestPartForm").reset();
+      $("requestPartDialog")?.close();
+      await loadFranchiseInventory();
+    } catch (err) {
+      if (msg) msg.textContent = extractErrorMessage(err.message, "Failed to submit requisition");
+    } finally {
+      if (btn) btn.disabled = false;
     }
   });
 

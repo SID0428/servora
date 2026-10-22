@@ -346,6 +346,8 @@ class SparePartSchema(BaseModel):
     unit_price: float
     hsn_code: str
     description: Optional[str] = None
+    stock_quantity: int = 0
+    company_id: Optional[str] = None
     is_active: bool = True
 
 class SparePartCreatePayload(BaseModel):
@@ -356,6 +358,45 @@ class SparePartCreatePayload(BaseModel):
     unit_price: float = Field(ge=0.0)
     hsn_code: str = Field(default="8418", max_length=32)
     description: Optional[str] = None
+
+class CompanyPartCreatePayload(BaseModel):
+    part_code: str = Field(min_length=2, max_length=64)
+    name: str = Field(min_length=2, max_length=128)
+    category: str = Field(min_length=2, max_length=64)
+    brand: Optional[str] = None
+    unit_price: float = Field(ge=0.0)
+    stock_quantity: int = Field(default=0, ge=0)
+    hsn_code: Optional[str] = "8418"
+    description: Optional[str] = None
+
+class CompanyStockUpdatePayload(BaseModel):
+    quantity: int = Field(ge=0)
+    mode: Optional[str] = "set" # "set" or "add"
+    notes: Optional[str] = None
+
+class PartRequestCreatePayload(BaseModel):
+    part_id: str
+    quantity: int = Field(ge=1)
+    notes: Optional[str] = None
+
+class PartRequestResponseSchema(BaseModel):
+    id: str
+    company_id: str
+    company_name: Optional[str] = None
+    branch_id: str
+    branch_name: Optional[str] = None
+    part_id: str
+    part_name: Optional[str] = None
+    part_code: Optional[str] = None
+    category: Optional[str] = None
+    unit_price: Optional[float] = None
+    quantity: int
+    status: str
+    notes: Optional[str] = None
+    requested_by: Optional[str] = None
+    created_at: str
+    sent_at: Optional[str] = None
+    sent_by: Optional[str] = None
 
 class FranchiseInventoryItemSchema(BaseModel):
     id: str

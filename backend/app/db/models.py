@@ -218,7 +218,24 @@ class SparePartModel(Base):
     unit_price = Column(Float, nullable=False, default=0.0)
     hsn_code = Column(String(32), nullable=False, default="8418")
     description = Column(Text, nullable=True)
+    stock_quantity = Column(Integer, default=0, nullable=False)
+    company_id = Column(String(64), ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
     is_active = Column(Boolean, default=True)
+
+class PartRequestModel(Base):
+    __tablename__ = "part_requests"
+
+    id = Column(String(64), primary_key=True, index=True) # e.g. REQ-PART-001
+    company_id = Column(String(64), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    branch_id = Column(String(64), ForeignKey("company_branches.id", ondelete="CASCADE"), nullable=False, index=True)
+    part_id = Column(String(64), ForeignKey("spare_parts.id", ondelete="CASCADE"), nullable=False, index=True)
+    quantity = Column(Integer, nullable=False)
+    status = Column(String(32), nullable=False, default="Pending") # Pending, Sent, Cancelled
+    notes = Column(Text, nullable=True)
+    requested_by = Column(String(128), nullable=True)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    sent_at = Column(DateTime, nullable=True)
+    sent_by = Column(String(128), nullable=True)
 
 class FranchiseInventoryModel(Base):
     __tablename__ = "franchise_inventories"
