@@ -4,8 +4,8 @@ PRODUCTION-GRADE TECHNICAL ARCHITECTURE & DEVELOPER ONBOARDING MANUAL
 ================================================================================
 File: documentation.txt
 Platform: ServSure (formerly Servora)
-Version: 1.1.3 (Production Release - Confidential OTP Security & Zero-Dummy Technicians)
-Last Updated: October 22, 2026 (19:10 IST)
+Version: 1.1.4 (Production Release - Streamlined Technician Routing & Bottom Panel Decluttering)
+Last Updated: October 22, 2026 (23:05 IST)
 Repository: https://github.com/SID0428/servora.git
 
 Welcome to ServSure! This manual is the definitive, authoritative reference
@@ -265,6 +265,12 @@ Portal UI Cleanliness & Universal Settings Removal:
    - `#customerDetailModal`: Full customer breakdown showing contact details, registered appliances (brand, model, category, serial number, warranty status), ongoing service tickets, and completed history.
 5. Modal DOM Nesting Guard:
    - Fixed unclosed `<dialog id="customerDetailModal">` tags in `company-dashboard.html` and `franchise-dashboard.html` that previously trapped `#addPartDialog`, `#updatePartStockDialog`, and `#requestPartDialog` within hidden dialogs. Added dedicated `#editPartDialog` in `company-dashboard.html` for company part metadata updates.
+6. Technician Schedule & Job History Decoupling:
+   - "Today's Jobs" in Technician workspace strictly filters for active, non-completed service visits scheduled for the current date (`isJobScheduledForToday(r.appointment_date)`). When no route visits are scheduled for today, an informative empty state ("No jobs scheduled for today") is rendered with a direct CTA to Job History.
+   - Completed jobs are strictly routed to the "Job history" view. In "Job history", each completed visit is listed, and clicking any completed visit displays the full comprehensive job record card (appliance details, defect photo, repeat warranty revisit details, customer contact with one-tap calling, scheduled time, digital job card sign-off, receipt viewer, and GPS route map).
+   - "Earnings" navigation option and view removed from the Technician workspace per field operations design.
+7. Bottom Panel Decluttering Across Operations Portals:
+   - Removed redundant `.bottom-panel` ("Team & service resources" / "Franchise technicians" / "Platform directory") from `technician-dashboard.html`, `franchise-dashboard.html`, `admin-dashboard.html`, and `ops-dashboard.html`. All JavaScript references (`bottomTitle`, `bottomSubtitle`, `resourceGrid`) in `ops-dashboard.js` are null-guarded to prevent DOM exceptions.
 
 3.4. Background Workers (`backend/main.py`)
 -------------------------------------------
@@ -870,6 +876,17 @@ were identified between the initial rough draft documentation and the actual cod
      non-customer callers (Admin, Company, Franchise, Field Technician). Furthermore, the dummy technician
      `tech_2` ("Suresh Kumar") was completely purged from seeds, databases, and mock fixtures; technician rosters
      are populated strictly via dynamic franchise branch onboarding.
+
+10. Discrepancy: Technician Schedule Decoupling & Operations Footer Cleanup
+   - Initial Draft / Early Iteration: All tickets assigned to a technician were rendered under "Today's Jobs"
+     regardless of whether they were scheduled for today or already completed. In addition, an "Earnings" navigation
+     item and an extraneous bottom panel ("Team & service resources" / "Franchise technicians" / "Platform directory")
+     were displayed above the footer across technician, franchise, and admin portals.
+   - Reality in Code: "Today's Jobs" strictly displays active, non-completed service visits scheduled for today;
+     otherwise, it displays an informative "No jobs scheduled for today" card. Completed jobs are accessible
+     strictly via "Job history", and clicking any completed visit presents the comprehensive completed work card
+     with job card sign-offs, receipts, repeat visit diagnosis, and route maps. The "Earnings" navigation option
+     and the redundant bottom panels have been removed, with full null guards in `ops-dashboard.js`.
 
 ================================================================================
 End of Documentation

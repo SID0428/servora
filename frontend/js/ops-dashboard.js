@@ -73,7 +73,7 @@ if (!checkInitialAuth()) {
 
 let role = dashboardRouteRole || initialUser?.role || (typeof document !== "undefined" ? document.body?.dataset?.role : null) || "company";
 const roleConfig = {
-  technician: { title: "Technician workspace", kicker: "FIELD SERVICE", nav: ["My jobs", "Job history", "Route & schedule", "Earnings", "Help center"], columns: ["Ticket", "Customer", "Appliance", "Appointment", "Status", "Action"], tableTitle: "My assigned jobs", tableSubtitle: "Your service calls and the next step for each job.", bottomTitle: "Today's schedule", sideTitle: "My performance", resources: [["Assigned today", "Jobs on your schedule", "▤"], ["Completed", "Jobs closed this week", "✓"], ["Customer rating", "From recent service visits", "☆"], ["Service area", "Your assigned territory", "⌖"]] },
+  technician: { title: "Technician workspace", kicker: "FIELD SERVICE", nav: ["My jobs", "Job history", "Route & schedule", "Help center"], columns: ["Ticket", "Customer", "Appliance", "Appointment", "Status", "Action"], tableTitle: "My assigned jobs", tableSubtitle: "Your service calls and the next step for each job.", bottomTitle: "Today's schedule", sideTitle: "My performance", resources: [["Assigned today", "Jobs on your schedule", "▤"], ["Completed", "Jobs closed this week", "✓"], ["Customer rating", "From recent service visits", "☆"], ["Service area", "Your assigned territory", "⌖"]] },
   franchise: { title: "Franchise workspace", kicker: "BRANCH OPERATIONS", nav: ["Dashboard", "Service requests", "Technicians", "Inventory & Spares", "Escalations", "Active jobs", "Customers", "Reports"], columns: ["Request ID", "Customer", "Appliance", "Issue", "Technician", "Status", "Action"], tableTitle: "Incoming service requests", tableSubtitle: "Review requests and coordinate local service work.", bottomTitle: "Branch resources", sideTitle: "Branch performance", resources: [["Technicians", "Available in this branch", "♙"], ["Active jobs", "Assigned and in progress", "⚒"], ["Inventory items", "Parts in local warehouse", "📦"], ["Service area", "Local coverage", "⌖"]] },
   company: { title: "Company workspace", kicker: "COMPANY OPERATIONS", nav: ["Dashboard", "Branches", "Technicians", "Warranty Claims", "Inventory & Spares", "Escalations", "Customers", "Service requests", "Reports"], columns: ["Request ID", "Customer", "Company", "Appliance", "Status", "Date", "Action"], tableTitle: "Recent service requests", tableSubtitle: "Monitor service activity across the company network.", bottomTitle: "Network resources", sideTitle: "Network health", resources: [["Branches", "Locations in your network", "▥"], ["Warranty claims", "OEM reimbursement requests", "🛡️"], ["Technicians", "Field service professionals", "♙"], ["Customers", "Customers served", "♧"]] },
   admin: { title: "Platform overview", kicker: "SERVSURE PLATFORM", nav: ["Overview", "Companies", "Branches", "Technicians", "Escalations", "Customers", "Service requests", "Reports"], columns: ["Request ID", "Customer", "Company", "Appliance", "Status", "Date", "Action"], tableTitle: "Platform service activity", tableSubtitle: "A view of requests moving across ServSure.", bottomTitle: "Platform directory", sideTitle: "Platform health", resources: [["Companies", "Service partners", "▥"], ["Branches", "Operational locations", "⌖"], ["Technicians", "Verified professionals", "♙"], ["Customers", "Registered accounts", "♧"]] },
@@ -116,6 +116,46 @@ try {
 
 const icons = { Dashboard: "⌂", Overview: "⌂", "My jobs": "▤", "Job history": "◷", "Route & schedule": "⌖", Earnings: "$", "Help center": "?", "Service requests": "▣", "Incoming service requests": "▣", Technicians: "♙", "Inventory & Spares": "📦", "Warranty Claims": "🛡️", "Spares Catalog": "🔧", Escalations: "🚨", "Active jobs": "⚒", Customers: "♧", Reports: "▥", Settings: "⚙", Companies: "▦", Branches: "⌖", "System settings": "⚙" };
 function safe(value) { const node = document.createElement("span"); node.textContent = value ?? ""; return node.innerHTML; }
+function isJobScheduledForToday(dateStr) {
+  if (!dateStr || typeof dateStr !== "string") return false;
+  const now = new Date();
+  const todayY = now.getFullYear();
+  const todayM = now.getMonth();
+  const todayD = now.getDate();
+
+  const isoMatch = dateStr.trim().match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (isoMatch) {
+    const y = parseInt(isoMatch[1], 10);
+    const m = parseInt(isoMatch[2], 10) - 1;
+    const d = parseInt(isoMatch[3], 10);
+    return y === todayY && m === todayM && d === todayD;
+  }
+
+  const months = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+  const dmyMatch = dateStr.trim().match(/^(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})/);
+  if (dmyMatch) {
+    const d = parseInt(dmyMatch[1], 10);
+    const m = months.indexOf(dmyMatch[2].substring(0, 3).toLowerCase());
+    const y = parseInt(dmyMatch[3], 10);
+    if (m !== -1) {
+      return y === todayY && m === todayM && d === todayD;
+    }
+  }
+
+  const parsed = new Date(dateStr);
+  if (!isNaN(parsed.getTime())) {
+    return parsed.getFullYear() === todayY && parsed.getMonth() === todayM && parsed.getDate() === todayD;
+  }
+  return false;
+}
+window.switchOpsPage = function(pageName) {
+  const link = document.querySelector(`.nav-link[data-page="${pageName}"]`);
+  if (link) {
+    link.click();
+  } else if (typeof renderPage === "function") {
+    renderPage(pageName);
+  }
+};
 function authHeaders(extraHeaders = {}) {
   const token = user?.session_token || initialUser?.session_token;
   const uid = user?.id || initialUser?.id;
@@ -251,7 +291,7 @@ function renderPage(page) {
     return;
   }
   if (page === "Earnings") {
-    renderEarningsView();
+    renderMainDashboardView();
     return;
   }
   if (page === "Help center") {
@@ -531,8 +571,8 @@ function renderFranchiseCustomers() {
         .join("")
     : `<tr><td class="empty-row" colspan="7">${query ? "No customers match your search." : "No customers found in this franchise service area yet."}</td></tr>`;
 
-  $("requestCount").textContent = `${filtered.length} customer${filtered.length === 1 ? "" : "s"} shown`;
-  $("resourceGrid").innerHTML = "";
+  if ($("requestCount")) $("requestCount").textContent = `${filtered.length} customer${filtered.length === 1 ? "" : "s"} shown`;
+  if ($("resourceGrid")) $("resourceGrid").innerHTML = "";
 
   document.querySelectorAll("[data-view-customer]").forEach((button) =>
     button.addEventListener("click", (e) => {
@@ -548,43 +588,168 @@ function renderFranchiseCustomers() {
   );
 }
 
+function renderTechCompletedCardHtml(item) {
+  return `
+    <article class="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 shadow-sm hover:shadow-md transition space-y-3.5">
+      <div class="flex items-start justify-between gap-3">
+        <div>
+          <span class="text-[11px] font-bold uppercase tracking-wider text-blue-600 font-mono">${safe(item.id)}</span>
+          <h3 class="text-base font-bold text-slate-800 mt-0.5">${safe(item.appliance_name || item.brand)}</h3>
+          <p class="text-xs text-slate-500 mt-0.5">Issue: <span class="font-medium text-slate-700">${safe(item.issue)}</span></p>
+          <div class="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold">
+            <span>✓ Work Completed & Settled</span>
+          </div>
+        </div>
+        <span class="status-pill completed">✓ Completed</span>
+      </div>
+
+      ${item.defect_photo ? `
+        <div class="flex items-center gap-3 p-2.5 bg-blue-50/60 rounded-xl border border-blue-100">
+          <img src="${safe(item.defect_photo)}" alt="Defect" class="w-12 h-12 rounded-lg object-cover border border-slate-200 cursor-pointer shadow-xs hover:opacity-90" onclick="window.open(this.src, '_blank')">
+          <div class="text-[11px] text-slate-600">
+            <strong class="text-blue-900 block font-bold">Appliance Defect Photo Attached</strong>
+            <span class="text-slate-400">Click photo to view full resolution</span>
+          </div>
+        </div>
+      ` : ''}
+
+      ${((item.is_reopened && item.status !== 'Completed' && item.status_badge !== 'Completed') || item.previous_job_card) ? `
+        <div class="p-3 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-950 space-y-1.5">
+          <div class="flex items-center gap-2 font-bold">
+            <span class="text-sm">⚠️</span>
+            <span class="text-rose-900">Warranty Revisit · Repeat Issue</span>
+            <span class="ml-auto text-[10px] px-2 py-0.5 rounded-full bg-rose-200 text-rose-800">Priority Revisit</span>
+          </div>
+          <p class="text-rose-800 font-medium">${safe(item.reopened_reason || 'Customer reported issue recurred.')}</p>
+          ${item.previous_job_card ? `
+            <div class="p-2.5 bg-white rounded-lg border border-rose-100 space-y-1 text-[11px] text-slate-700">
+              <div class="font-bold text-slate-900">Previous Diagnosis (by ${safe(item.previous_technician_name || 'Previous Tech')}):</div>
+              <div class="text-slate-600">${safe(item.previous_job_card.work_summary)}</div>
+              ${Array.isArray(item.previous_job_card.parts_used) && item.previous_job_card.parts_used.length ? `
+                <div class="text-slate-500 font-medium text-[10px]">Parts Replaced: ${item.previous_job_card.parts_used.map(p => `${safe(p.part_name)} (×${p.quantity})`).join(', ')}</div>
+              ` : ''}
+              <div class="text-[10px] text-emerald-700 font-bold">Previous Settlement: ₹${Number(item.previous_job_card.total_amount).toFixed(2)} (PAID)</div>
+            </div>
+          ` : ''}
+        </div>
+      ` : ''}
+
+      <div class="rounded-xl bg-slate-50 p-3.5 border border-slate-100 text-xs text-slate-600 space-y-1.5">
+        <div class="flex items-center justify-between">
+          <span class="font-semibold text-slate-800">👤 Customer: ${safe(item.customer_name)}</span>
+          <a href="tel:${safe(item.customer_phone || '')}" class="inline-flex items-center gap-1 text-[11px] font-bold text-blue-600 hover:text-blue-800 bg-blue-50 px-2 py-0.5 rounded-md border border-blue-100">📞 Call</a>
+        </div>
+        <div class="flex items-start gap-1.5 text-slate-500">
+          <span class="flex-none">📍 Address:</span>
+          <span class="text-slate-700 font-medium">${safe(item.customer_address || 'Customer doorstep address')} ${item.pincode ? `<strong class="text-slate-800">(PIN: ${safe(item.pincode)})</strong>` : ''}</span>
+        </div>
+        <div class="flex items-center gap-2 text-slate-500 pt-0.5">
+          <span>🕒 Scheduled:</span>
+          <span class="font-semibold text-slate-700">${safe(item.appointment_date)} · ${safe(item.appointment_slot || 'Regular Slot')}</span>
+        </div>
+      </div>
+
+      <div class="flex flex-wrap items-center gap-2 pt-1 border-t border-slate-100">
+        <button type="button" class="px-3.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-semibold text-xs transition flex items-center gap-1.5" onclick="openOpsJobCardModal('${safe(item.id)}')">
+          📄 View Job Card
+        </button>
+        <button type="button" class="px-3.5 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 font-semibold text-xs transition flex items-center gap-1.5" onclick="openOpsReceiptModal('${safe(item.id)}')">
+          🧾 Receipt
+        </button>
+        ${item.previous_job_card ? `
+          <button type="button" class="px-3.5 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 font-semibold text-xs transition flex items-center gap-1.5" onclick="openOpsReceiptModal('${safe(item.id)}', true)">
+            🧾 Prev Receipt
+          </button>
+        ` : ''}
+        <button type="button" class="ml-auto text-xs font-semibold text-blue-600 hover:underline" onclick="openTechRouteMap('${safe(item.id)}')">
+          🗺️ Open Map Route →
+        </button>
+      </div>
+    </article>
+  `;
+}
+
 function renderJobHistoryView() {
-  $("crumbTitle").textContent = "Job history";
-  const tableEl = $("requestRows").closest("table");
+  if ($("crumbTitle")) $("crumbTitle").textContent = "Job history";
+  const tableEl = $("requestRows")?.closest("table");
   let techContainer = $("techJobCardsContainer");
-  tableEl.style.display = "none";
+  if (tableEl) tableEl.style.display = "none";
   if (techContainer) techContainer.style.display = "block";
 
-  $("tableTitle").textContent = "Job History";
-  $("tableSubtitle").textContent = "Completed field service visits and resolved tickets.";
-  $("pageContent").hidden = false;
-  $("metricGrid").hidden = false;
-  $("statusFilter").value = "Completed";
+  if ($("tableTitle")) $("tableTitle").textContent = "Job History";
+  if ($("tableSubtitle")) $("tableSubtitle").textContent = "Completed field service visits and resolved tickets.";
+  if ($("pageContent")) $("pageContent").hidden = false;
+  if ($("metricGrid")) $("metricGrid").hidden = false;
+  if ($("statusFilter")) $("statusFilter").value = "Completed";
 
   const list = requests.filter(requestForRole);
-  const completed = list.filter((r) => r.status_badge === "Completed");
+  const completed = list.filter((r) => r.status_badge === "Completed" || r.status === "Completed");
 
   if (techContainer) {
-    techContainer.innerHTML = completed.length ? completed.map((item) => `
-      <article class="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 shadow-sm space-y-3">
-        <div class="flex items-start justify-between gap-3">
-          <div>
-            <span class="text-[11px] font-bold uppercase tracking-wider text-emerald-600 font-mono">${safe(item.id)}</span>
-            <h3 class="text-base font-bold text-slate-800 mt-0.5">${safe(item.appliance_name || item.brand)}</h3>
-            <p class="text-xs text-slate-500 mt-0.5">Issue: <span class="font-medium text-slate-700">${safe(item.issue)}</span></p>
+    if (!completed.length) {
+      techContainer.innerHTML = `
+        <div class="bg-white rounded-2xl border border-slate-200 p-8 sm:p-12 text-center space-y-3 shadow-xs">
+          <span class="text-4xl block">🕒</span>
+          <h3 class="text-base font-bold text-slate-800">No completed jobs yet</h3>
+          <p class="text-xs text-slate-500 max-w-sm mx-auto">When you finish field repairs and sign off job cards, resolved visits will appear here.</p>
+        </div>
+      `;
+    } else {
+      techContainer.innerHTML = `
+        <div class="space-y-4">
+          <div class="flex items-center justify-between pb-1">
+            <span class="text-xs font-bold text-slate-600 uppercase tracking-wider">Completed Service Visits (${completed.length})</span>
+            <span class="text-xs text-slate-500">Click any work to view details & job card</span>
           </div>
-          <span class="status-pill completed">✓ Completed</span>
+          <div class="grid gap-3.5" id="techCompletedJobList">
+            ${completed.map((item) => `
+              <div class="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 shadow-xs hover:shadow-md hover:border-blue-400 transition cursor-pointer group" onclick="window.openTechCompletedJobDetail('${safe(item.id)}')">
+                <div class="flex items-start justify-between gap-3">
+                  <div class="space-y-1">
+                    <div class="flex items-center gap-2">
+                      <span class="text-[11px] font-bold uppercase tracking-wider text-blue-600 font-mono">${safe(item.id)}</span>
+                      <span class="status-pill completed">✓ Completed</span>
+                    </div>
+                    <h3 class="text-base font-bold text-slate-800 group-hover:text-blue-600 transition">${safe(item.appliance_name || item.brand)}</h3>
+                    <p class="text-xs text-slate-500">Issue: <span class="font-medium text-slate-700">${safe(item.issue)}</span></p>
+                    <div class="pt-1 text-xs text-slate-600 flex flex-wrap items-center gap-x-4 gap-y-1">
+                      <span>👤 Customer: <strong class="text-slate-800">${safe(item.customer_name)}</strong></span>
+                      <span>🕒 Closed / Scheduled: <span class="font-medium text-slate-700">${safe(item.appointment_date)}</span></span>
+                    </div>
+                  </div>
+                  <button type="button" class="px-3.5 py-1.5 rounded-xl bg-blue-50 text-blue-700 font-bold text-xs group-hover:bg-blue-600 group-hover:text-white transition flex items-center gap-1 whitespace-nowrap shadow-xs">
+                    View Details →
+                  </button>
+                </div>
+              </div>
+            `).join("")}
+          </div>
         </div>
-        <div class="rounded-xl bg-slate-50 p-3 text-xs text-slate-600 space-y-1">
-          <div>👤 Customer: <strong>${safe(item.customer_name)}</strong> (${safe(item.customer_phone || '')})</div>
-          <div>📍 ${safe(item.customer_address || 'Customer doorstep')} (PIN: ${safe(item.pincode || '')})</div>
-          <div>🕒 Closed on: ${safe(item.appointment_date)}</div>
-        </div>
-      </article>
-    `).join("") : `<div class="p-8 text-center text-slate-400 text-sm">No completed jobs yet. When you mark service calls complete, they will appear here.</div>`;
+      `;
+    }
   }
-  $("requestCount").textContent = `${completed.length} completed job${completed.length === 1 ? '' : 's'}`;
+  if ($("requestCount")) $("requestCount").textContent = `${completed.length} completed job${completed.length === 1 ? '' : 's'}`;
 }
+
+window.openTechCompletedJobDetail = function(ticketId) {
+  const req = requests.find((r) => r.id === ticketId);
+  if (!req) return;
+  const techContainer = $("techJobCardsContainer");
+  if (!techContainer) return;
+
+  techContainer.innerHTML = `
+    <div class="space-y-4">
+      <div class="flex items-center justify-between pb-1">
+        <button type="button" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold text-xs transition shadow-xs" onclick="renderJobHistoryView()">
+          ← Back to Job History
+        </button>
+        <span class="text-xs font-semibold text-slate-500 font-mono">Service Visit Record · ${safe(req.id)}</span>
+      </div>
+      ${renderTechCompletedCardHtml(req)}
+    </div>
+  `;
+  techContainer.scrollIntoView({ behavior: 'smooth', block: 'start' });
+};
 
 function renderEarningsView() {
   $("crumbTitle").textContent = "Earnings";
@@ -617,7 +782,7 @@ function renderEarningsView() {
   $("sidePanelTitle").textContent = "Payout Details";
   $("healthContent").innerHTML = `<div class="section-empty">Bank payouts are settled weekly by your authorized branch. Contact branch manager for bank detail updates.</div>`;
   $("activityContent").innerHTML = `<div class="section-empty">All service jobs completed and confirmed with customer OTP qualify for payout.</div>`;
-  $("resourceGrid").innerHTML = "";
+  if ($("resourceGrid")) $("resourceGrid").innerHTML = "";
 }
 
 function renderHelpCenterView() {
@@ -641,7 +806,7 @@ function renderHelpCenterView() {
   $("sidePanelTitle").textContent = "Field Guidelines";
   $("healthContent").innerHTML = `<div class="section-empty">Always carry your ServSure digital ID card, verified tool kit, and wear shoe covers during customer doorstep visits.</div>`;
   $("activityContent").innerHTML = `<div class="section-empty">Confirm diagnosis and price estimate with the customer prior to replacing any spare parts.</div>`;
-  $("resourceGrid").innerHTML = "";
+  if ($("resourceGrid")) $("resourceGrid").innerHTML = "";
 }
 function renderCompanyBranches() {
   if ($("crumbTitle")) $("crumbTitle").textContent = "Branches";
@@ -1791,7 +1956,7 @@ function renderCompanyCustomers() {
   $("requestCount").textContent = `${filtered.length} customer${
     filtered.length === 1 ? "" : "s"
   } shown`;
-  $("resourceGrid").innerHTML = "";
+  if ($("resourceGrid")) $("resourceGrid").innerHTML = "";
 
   document.querySelectorAll("[data-view-customer]").forEach((button) =>
     button.addEventListener("click", (e) => {
@@ -3042,10 +3207,10 @@ function renderAdminBranches() {
       `).join("")
     : `<tr><td class="empty-row" colspan="7">No branches match your search.</td></tr>`;
 
-  $("requestCount").textContent = `${filtered.length} branches shown`;
-  $("resourceGrid").innerHTML = "";
-  $("bottomTitle").textContent = "Branch directory";
-  $("bottomSubtitle").textContent = "Network service locations";
+  if ($("requestCount")) $("requestCount").textContent = `${filtered.length} branches shown`;
+  if ($("resourceGrid")) $("resourceGrid").innerHTML = "";
+  if ($("bottomTitle")) $("bottomTitle").textContent = "Branch directory";
+  if ($("bottomSubtitle")) $("bottomSubtitle").textContent = "Network service locations";
 
   document.querySelectorAll("[data-view-branch]").forEach((btn) => {
     btn.addEventListener("click", () => openCompanyBranchDetail(btn.dataset.viewBranch));
@@ -3114,10 +3279,10 @@ function renderAdminTechnicians() {
         ? `<tr><td class="empty-row" colspan="7">No technicians onboarded yet. Certified technicians will appear here once added by franchise branches.</td></tr>`
         : `<tr><td class="empty-row" colspan="7">No technicians match your search.</td></tr>`);
 
-  $("requestCount").textContent = `${filtered.length} technician${filtered.length === 1 ? '' : 's'} shown`;
-  $("resourceGrid").innerHTML = "";
-  $("bottomTitle").textContent = "Technician directory";
-  $("bottomSubtitle").textContent = "Field workforce records";
+  if ($("requestCount")) $("requestCount").textContent = `${filtered.length} technician${filtered.length === 1 ? '' : 's'} shown`;
+  if ($("resourceGrid")) $("resourceGrid").innerHTML = "";
+  if ($("bottomTitle")) $("bottomTitle").textContent = "Technician directory";
+  if ($("bottomSubtitle")) $("bottomSubtitle").textContent = "Field workforce records";
 
   document.querySelectorAll("[data-view-technician]").forEach((btn) => {
     btn.addEventListener("click", () => openAdminTechnicianDetail(btn.dataset.viewTechnician));
@@ -3174,10 +3339,10 @@ function renderAdminCustomers() {
       `).join("")
     : `<tr><td class="empty-row" colspan="6">No customers match your search.</td></tr>`;
 
-  $("requestCount").textContent = `${filtered.length} customers shown`;
-  $("resourceGrid").innerHTML = "";
-  $("bottomTitle").textContent = "Customer directory";
-  $("bottomSubtitle").textContent = "Registered appliance owners";
+  if ($("requestCount")) $("requestCount").textContent = `${filtered.length} customers shown`;
+  if ($("resourceGrid")) $("resourceGrid").innerHTML = "";
+  if ($("bottomTitle")) $("bottomTitle").textContent = "Customer directory";
+  if ($("bottomSubtitle")) $("bottomSubtitle").textContent = "Registered appliance owners";
 
   document.querySelectorAll("[data-view-customer]").forEach((btn) => {
     btn.addEventListener("click", () => openCompanyCustomerDetail(btn.dataset.viewCustomer));
@@ -3198,8 +3363,10 @@ function renderDirectory(page) {
   const query = ($("requestSearch")?.value || "").trim().toLowerCase();
   const filtered = directoryRows.filter((item) => [item.name, item.email, item.phone, item.address].join(" ").toLowerCase().includes(query));
   $("requestRows").innerHTML = filtered.length ? filtered.map((item) => `<tr><td>${safe(item.name)}</td><td>${safe(item.email)}</td><td>${safe(item.phone)}</td><td>${safe(item.address || "—")}</td><td><span class="status-pill">${safe(item.role)}</span></td></tr>`).join("") : `<tr><td class="empty-row" colspan="5">No ${page.toLowerCase()} accounts found.</td></tr>`;
-  $("requestCount").textContent = `${filtered.length} ${page.toLowerCase()} shown`; $("resourceGrid").innerHTML = "";
-  $("bottomTitle").textContent = `${page} directory`; $("bottomSubtitle").textContent = "Registered platform accounts";
+  if ($("requestCount")) $("requestCount").textContent = `${filtered.length} ${page.toLowerCase()} shown`;
+  if ($("resourceGrid")) $("resourceGrid").innerHTML = "";
+  if ($("bottomTitle")) $("bottomTitle").textContent = `${page} directory`;
+  if ($("bottomSubtitle")) $("bottomSubtitle").textContent = "Registered platform accounts";
 }
 
 function renderRequestDirectory() {
@@ -3228,10 +3395,13 @@ function renderRequestDirectory() {
       </td>
     </tr>
   `).join("") : `<tr><td class="empty-row" colspan="7">No service requests found.</td></tr>`;
-  $("requestCount").textContent = `${filtered.length} service requests shown`; $("sidePanelTitle").textContent = "Request status";
-  $("healthContent").innerHTML = `<div class="section-empty"><strong>${requests.length}</strong> total service requests</div>`;
-  $("activityContent").innerHTML = `<div class="section-empty">${requests.filter((item) => item.status_badge !== "Completed").length} requests are currently active.</div>`;
-  $("resourceGrid").innerHTML = ""; $("bottomTitle").textContent = "Service request directory"; $("bottomSubtitle").textContent = "Current request records";
+  if ($("requestCount")) $("requestCount").textContent = `${filtered.length} service requests shown`;
+  if ($("sidePanelTitle")) $("sidePanelTitle").textContent = "Request status";
+  if ($("healthContent")) $("healthContent").innerHTML = `<div class="section-empty"><strong>${requests.length}</strong> total service requests</div>`;
+  if ($("activityContent")) $("activityContent").innerHTML = `<div class="section-empty">${requests.filter((item) => item.status_badge !== "Completed").length} requests are currently active.</div>`;
+  if ($("resourceGrid")) $("resourceGrid").innerHTML = "";
+  if ($("bottomTitle")) $("bottomTitle").textContent = "Service request directory";
+  if ($("bottomSubtitle")) $("bottomSubtitle").textContent = "Current request records";
 
   document.querySelectorAll("[data-view-ticket]").forEach((btn) => {
     btn.addEventListener("click", () => window.viewRequestDetails(btn.dataset.viewTicket));
@@ -3242,10 +3412,13 @@ function renderReports() {
   $("tableTitle").textContent = "Reports"; $("tableSubtitle").textContent = "Export current ServSure platform service data.";
   $("requestHead").innerHTML = ["Report", "Coverage", "Records", "Action"].map((label) => `<th>${label}</th>`).join("");
   $("requestRows").innerHTML = `<tr><td>Service requests</td><td>All platform activity</td><td>${requests.length}</td><td><button class="table-action" id="downloadRequests">Download CSV →</button></td></tr><tr><td>Company directory</td><td>Registered partner accounts</td><td>${companies.length}</td><td><button class="table-action" id="downloadCompanies">Download CSV →</button></td></tr>`;
-  $("requestCount").textContent = "2 reports available"; $("sidePanelTitle").textContent = "Report coverage";
-  $("healthContent").innerHTML = `<div class="section-empty">Reports include current service request and company account records.</div>`;
-  $("activityContent").innerHTML = `<div class="section-empty">Use the Download CSV actions to export a snapshot.</div>`;
-  $("resourceGrid").innerHTML = ""; $("bottomTitle").textContent = "Available reports"; $("bottomSubtitle").textContent = "Download a CSV snapshot";
+  if ($("requestCount")) $("requestCount").textContent = "2 reports available";
+  if ($("sidePanelTitle")) $("sidePanelTitle").textContent = "Report coverage";
+  if ($("healthContent")) $("healthContent").innerHTML = `<div class="section-empty">Reports include current service request and company account records.</div>`;
+  if ($("activityContent")) $("activityContent").innerHTML = `<div class="section-empty">Use the Download CSV actions to export a snapshot.</div>`;
+  if ($("resourceGrid")) $("resourceGrid").innerHTML = "";
+  if ($("bottomTitle")) $("bottomTitle").textContent = "Available reports";
+  if ($("bottomSubtitle")) $("bottomSubtitle").textContent = "Download a CSV snapshot";
   $("downloadRequests").addEventListener("click", () => downloadCsv("servsure-service-requests.csv", [["Request ID", "Customer", "Appliance", "Issue", "Status", "Date"], ...requests.map((item) => [item.id, item.customer_name, item.appliance_name, item.issue, item.status_badge, item.appointment_date])]));
   $("downloadCompanies").addEventListener("click", () => downloadCsv("servsure-companies.csv", [["Company", "Email", "Phone", "Address"], ...companies.map((item) => [item.name, item.email, item.phone, item.address || ""]) ]));
 }
@@ -3254,10 +3427,13 @@ function renderSettings() {
   $("tableSubtitle").textContent = "Platform connection and email delivery configuration.";
   $("requestHead").innerHTML = ["Setting", "Configuration", "Status"].map((label) => `<th>${label}</th>`).join("");
   $("requestRows").innerHTML = `<tr><td>ServSure API</td><td>${safe(API_BASE_URL)}</td><td><span class="status-pill completed">Connected when API is reachable</span></td></tr><tr><td>Company credential email</td><td>Brevo SMTP API</td><td><span class="status-pill">Configured on backend</span></td></tr><tr><td>Administrator access</td><td>Signed-in admin account</td><td><span class="status-pill completed">Protected</span></td></tr>`;
-  $("requestCount").textContent = "3 platform settings"; $("sidePanelTitle").textContent = "Email delivery";
-  $("healthContent").innerHTML = `<div class="section-empty">Company invitation emails are sent through Brevo. API keys and sender identity are stored on the backend.</div>`;
-  $("activityContent").innerHTML = `<div class="section-empty">Set BREVO_API_KEY and BREVO_SENDER_EMAIL in the backend environment to enable delivery.</div>`;
-  $("resourceGrid").innerHTML = ""; $("bottomTitle").textContent = "Platform configuration"; $("bottomSubtitle").textContent = "Runtime settings are managed through the backend environment.";
+  if ($("requestCount")) $("requestCount").textContent = "3 platform settings";
+  if ($("sidePanelTitle")) $("sidePanelTitle").textContent = "Email delivery";
+  if ($("healthContent")) $("healthContent").innerHTML = `<div class="section-empty">Company invitation emails are sent through Brevo. API keys and sender identity are stored on the backend.</div>`;
+  if ($("activityContent")) $("activityContent").innerHTML = `<div class="section-empty">Set BREVO_API_KEY and BREVO_SENDER_EMAIL in the backend environment to enable delivery.</div>`;
+  if ($("resourceGrid")) $("resourceGrid").innerHTML = "";
+  if ($("bottomTitle")) $("bottomTitle").textContent = "Platform configuration";
+  if ($("bottomSubtitle")) $("bottomSubtitle").textContent = "Runtime settings are managed through the backend environment.";
 }
 function downloadCsv(filename, rows) {
   const csv = rows.map((row) => row.map((cell) => `"${String(cell ?? "").replaceAll('"', '""')}"`).join(",")).join("\n");
@@ -3439,22 +3615,23 @@ function renderRequests() {
       document.body.appendChild(bNav);
     }
 
-    techContainer.innerHTML = filtered.length ? filtered.map((item) => `
+    // Only non-completed jobs scheduled for today
+    const todaysJobs = filtered.filter((item) => {
+      const isCompleted = item.status === "Completed" || item.status_badge === "Completed" || item.status === "Cancelled" || item.status_badge === "Cancelled";
+      if (isCompleted) return false;
+      return isJobScheduledForToday(item.appointment_date);
+    });
+
+    techContainer.innerHTML = todaysJobs.length ? todaysJobs.map((item) => `
       <article class="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 shadow-sm hover:shadow-md transition space-y-3.5">
         <div class="flex items-start justify-between gap-3">
           <div>
             <span class="text-[11px] font-bold uppercase tracking-wider text-blue-600 font-mono">${safe(item.id)}</span>
             <h3 class="text-base font-bold text-slate-800 mt-0.5">${safe(item.appliance_name || item.brand)}</h3>
             <p class="text-xs text-slate-500 mt-0.5">Issue: <span class="font-medium text-slate-700">${safe(item.issue)}</span></p>
-            ${(item.status === 'Completed' || item.status_badge === 'Completed') ? `
-              <div class="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold">
-                <span>✓ Work Completed & Settled</span>
-              </div>
-            ` : `
-              <div class="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-blue-50 border border-blue-200 text-blue-700 text-xs font-semibold">
-                <span>📌 You have been assigned this work</span>
-              </div>
-            `}
+            <div class="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-blue-50 border border-blue-200 text-blue-700 text-xs font-semibold">
+              <span>📌 You have been assigned this work</span>
+            </div>
           </div>
           ${renderStatusBadge(item)}
         </div>
@@ -3506,60 +3683,58 @@ function renderRequests() {
         </div>
 
         <div class="flex flex-wrap items-center gap-2 pt-1 border-t border-slate-100">
-          ${item.status_badge !== 'Completed' && item.status !== 'Completed' ? `
-            ${item.status === 'Technician on the Way' ? `
-              <button type="button" class="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs shadow-sm transition flex items-center gap-1.5" onclick="techStartServiceWithOtp('${safe(item.id)}')">
-                ▶ Start Service (OTP)
-              </button>
-            ` : item.status === 'Estimate Pending Approval' ? `
-              <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-100 text-amber-900 border border-amber-300 font-semibold text-xs animate-pulse">
-                ⏳ Customer Estimate Approval Pending
-              </span>
-              <button type="button" class="px-3.5 py-1.5 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold text-xs transition" onclick="openTechEstimateModal('${safe(item.id)}')">
-                📝 View Estimate
-              </button>
-            ` : item.status === 'Repair in Progress' ? `
-              <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200 text-xs font-semibold">
-                ✓ Customer Authorized Repair
-              </span>
-              <button type="button" class="px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs shadow-sm transition flex items-center gap-1.5" onclick="openOpsJobCardModal('${safe(item.id)}')">
-                📋 Job Card & Complete
-              </button>
-            ` : item.status === 'Service In Progress' ? `
-              <button type="button" class="px-3.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-semibold text-xs shadow-sm transition flex items-center gap-1.5" onclick="openTechEstimateModal('${safe(item.id)}')">
-                📝 Pre-Repair Estimate
-              </button>
-              <button type="button" class="px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs shadow-sm transition flex items-center gap-1.5" onclick="openOpsJobCardModal('${safe(item.id)}')">
-                📋 Job Card & Complete
-              </button>
-            ` : `
-              <button type="button" class="px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs shadow-sm transition flex items-center gap-1.5" onclick="techAction('${safe(item.id)}', 'start_visit')">
-                📍 Start Visit
-              </button>
-              <button type="button" class="px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs shadow-sm transition flex items-center gap-1.5" onclick="openOpsJobCardModal('${safe(item.id)}')">
-                📋 Digital Job Card
-              </button>
-            `}
+          ${item.status === 'Technician on the Way' ? `
+            <button type="button" class="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs shadow-sm transition flex items-center gap-1.5" onclick="techStartServiceWithOtp('${safe(item.id)}')">
+              ▶ Start Service (OTP)
+            </button>
+          ` : item.status === 'Estimate Pending Approval' ? `
+            <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-100 text-amber-900 border border-amber-300 font-semibold text-xs animate-pulse">
+              ⏳ Customer Estimate Approval Pending
+            </span>
+            <button type="button" class="px-3.5 py-1.5 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold text-xs transition" onclick="openTechEstimateModal('${safe(item.id)}')">
+              📝 View Estimate
+            </button>
+          ` : item.status === 'Repair in Progress' ? `
+            <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200 text-xs font-semibold">
+              ✓ Customer Authorized Repair
+            </span>
+            <button type="button" class="px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs shadow-sm transition flex items-center gap-1.5" onclick="openOpsJobCardModal('${safe(item.id)}')">
+              📋 Job Card & Complete
+            </button>
+          ` : item.status === 'Service In Progress' ? `
+            <button type="button" class="px-3.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-semibold text-xs shadow-sm transition flex items-center gap-1.5" onclick="openTechEstimateModal('${safe(item.id)}')">
+              📝 Pre-Repair Estimate
+            </button>
+            <button type="button" class="px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs shadow-sm transition flex items-center gap-1.5" onclick="openOpsJobCardModal('${safe(item.id)}')">
+              📋 Job Card & Complete
+            </button>
           ` : `
-            <button type="button" class="px-3.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-semibold text-xs transition flex items-center gap-1.5" onclick="openOpsJobCardModal('${safe(item.id)}')">
-              📄 View Job Card
+            <button type="button" class="px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs shadow-sm transition flex items-center gap-1.5" onclick="techAction('${safe(item.id)}', 'start_visit')">
+              📍 Start Visit
             </button>
-            <button type="button" class="px-3.5 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 font-semibold text-xs transition flex items-center gap-1.5" onclick="openOpsReceiptModal('${safe(item.id)}')">
-              🧾 Receipt
+            <button type="button" class="px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs shadow-sm transition flex items-center gap-1.5" onclick="openOpsJobCardModal('${safe(item.id)}')">
+              📋 Digital Job Card
             </button>
-            ${item.previous_job_card ? `
-              <button type="button" class="px-3.5 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 font-semibold text-xs transition flex items-center gap-1.5" onclick="openOpsReceiptModal('${safe(item.id)}', true)">
-                🧾 Prev Receipt
-              </button>
-            ` : ''}
           `}
           <button type="button" class="ml-auto text-xs font-semibold text-blue-600 hover:underline" onclick="openTechRouteMap('${safe(item.id)}')">
             🗺️ Open Map Route →
           </button>
         </div>
       </article>
-    `).join("") : `<div class="p-8 text-center text-slate-400 text-sm">No service jobs assigned for today.</div>`;
-    if ($("requestCount")) $("requestCount").textContent = `${filtered.length} job${filtered.length === 1 ? "" : "s"} shown`;
+    `).join("") : `
+      <div class="bg-white rounded-2xl border border-slate-200 p-8 sm:p-12 text-center space-y-3 shadow-xs">
+        <span class="text-4xl block mb-2">📅</span>
+        <h3 class="text-base font-bold text-slate-800">No jobs scheduled for today</h3>
+        <p class="text-xs text-slate-500 max-w-sm mx-auto">You have no active service visits on your route today. Completed jobs can be viewed in your Job history.</p>
+        <button type="button" class="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-blue-50 text-blue-700 hover:bg-blue-100 font-semibold text-xs transition mt-2" onclick="window.switchOpsPage('Job history')">
+          <span>🕒 View Job history →</span>
+        </button>
+      </div>
+    `;
+
+    if ($("requestCount")) $("requestCount").textContent = todaysJobs.length
+      ? `${todaysJobs.length} job${todaysJobs.length === 1 ? '' : 's'} scheduled for today`
+      : "0 jobs scheduled for today";
     return;
   }
 
