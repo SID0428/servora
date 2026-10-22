@@ -1,623 +1,698 @@
 ================================================================================
 SERVSURE (Unified Service Intelligence Platform - USIP)
-TECHNICAL ARCHITECTURE & DEVELOPER ONBOARDING DOCUMENTATION
+PRODUCTION-GRADE TECHNICAL ARCHITECTURE & DEVELOPER ONBOARDING MANUAL
 ================================================================================
 File: documentation.txt
+Platform: ServSure (formerly Servora)
+Version: 1.0.0 (Production Release)
 Last Updated: October 2026
 Repository: https://github.com/SID0428/servora.git
 
-Welcome to ServSure! This document is designed to give you a complete, clear,
-and actionable understanding of the entire codebase, architecture, database,
-authentication lifecycle, operational workflows, and deployment setups so you
-can quickly start developing and maintaining features.
+Welcome to ServSure! This manual is the definitive, authoritative reference
+for developers, DevOps engineers, and system architects maintaining or extending
+the platform. Every workflow, API endpoint, database schema, security mechanism,
+and configuration parameter documented here has been audited and validated
+against the actual production codebase.
 
 --------------------------------------------------------------------------------
 TABLE OF CONTENTS
 --------------------------------------------------------------------------------
-1. PROJECT OVERVIEW & CORE ARCHITECTURE
-2. USER ROLES & HIERARCHICAL ACCESS CONTROL
-3. REPOSITORY DIRECTORY STRUCTURE
-4. FRONTEND ARCHITECTURE & PORTAL DIRECTORY
-   4.1. Portal Entry Points & Routing
-   4.2. Core Frontend Scripts Breakdown
-   4.3. Client-Side Session Storage & Dual-Brand Compatibility
-5. BACKEND ARCHITECTURE & API SERVICES
-   5.1. FastAPI Server Setup & Background Workers
-   5.2. Configuration & Environment Variables
-   5.3. Database Session & Connection Architecture
-   5.4. Database Models & Schema Catalog
-   5.5. Security, Sessions & Hierarchical Access Engine
-   5.6. Transactional Email Service (Brevo)
-   5.7. Notification Engine & Multi-Tier SLA Scanner (SRS 6.15)
-6. API ROUTE REFERENCE & ENDPOINTS
-   6.1. Authentication & Profile Routes (/api/auth)
-   6.2. Platform Administration Routes (/api/admin)
-   6.3. Brand / Company Routes (/api/company)
-   6.4. Franchise Branch Routes (/api/franchise)
-   6.5. Field Technician Routes (/api/technician)
-   6.6. Customer Requests, Appliances & Job Cards
-   6.7. Inventory, Warranty Claims & AMC Plans
-7. STEP-BY-STEP LOCAL DEVELOPMENT SETUP
-8. PRODUCTION DEPLOYMENT (RENDER, VERCEL, AIVEN MYSQL)
-9. HOW-TO GUIDES FOR COMMON EXTENSIONS
-   9.1. Adding a New API Endpoint
-   9.2. Adding a Database Column / Running Migrations
-   9.3. Adding a Feature to Ops Dashboard
-   9.4. Running Verification & Sanity Checks
-10. CODING CONVENTIONS, GOTCHAS & BEST PRACTICES
+1. PREREQUISITES & ENVIRONMENT REQUIREMENTS
+2. INSTALLATION & LOCAL DEVELOPMENT SETUP
+3. SYSTEM ARCHITECTURE & MULTI-TIER OPERATIONS
+   3.1. Five-Tier Organizational Hierarchy
+   3.2. Operational Access Control & Cascading Deactivation Rules
+   3.3. Static Multi-Portal Routing & Role Guards
+   3.4. Background Workers (Render Keep-Alive & SLA Engine)
+4. DATABASE MODELS & RELATIONAL SCHEMA (22 MODELS)
+5. CORE API & USAGE REFERENCE
+   5.1. Authentication, Sessions & Profile (/api/auth)
+   5.2. Platform Administration (/api/admin)
+   5.3. Brand / Manufacturer Management (/api/company)
+   5.4. Franchise Partner Hub (/api/franchise)
+   5.5. Field Technician Operations (/api/technician)
+   5.6. Service Requests & Life Cycle Management (/api/requests)
+   5.7. Customer Appliances & Warranty (/api/appliances)
+   5.8. Spare Parts & Franchise Inventory (/api/inventory)
+   5.9. Warranty Claims & AMC Subscriptions (/api/warranty-amc)
+   5.10. Repair Estimates & Approvals (/api/estimates)
+   5.11. Multi-Tier SLA Escalations (/api/escalations)
+   5.12. Media & Invoice Uploads (/api/uploads)
+6. SECURITY, SESSIONS & AUTHENTICATION MODEL
+7. PRODUCTION DEPLOYMENT (RENDER, VERCEL, AIVEN MYSQL)
+8. TROUBLESHOOTING & OPERATIONAL GOTCHAS
+9. DISCREPANCY LOG & CODEBASE AUDIT NOTES
 
 
 ================================================================================
-1. PROJECT OVERVIEW & CORE ARCHITECTURE
+1. PREREQUISITES & ENVIRONMENT REQUIREMENTS
 ================================================================================
-ServSure is an enterprise-grade post-sales service lifecycle platform that connects:
-- Appliance Brands/Manufacturers (Companies)
-- Authorized Franchise Service Centers (Branches)
-- Certified Field Service Technicians
-- Appliance Owners (Customers)
-- Platform System Administrators
+Ensure your local or production environment satisfies the following requirements:
 
-Key Architectural Decisions:
-1. Static Multi-Portal Frontend (Vanilla JavaScript + Tailwind CSS via CDN):
-   - Fast, zero-build compilation overhead.
-   - Hosted statically on Vercel with clean rewrites (vercel.json).
-   - Reusable operations master shell (ops-dashboard.js) dynamically renders
-     appropriate controls, tables, and metric cards based on user role.
-2. High-Performance Asynchronous Python Backend (FastAPI + SQLAlchemy + Pydantic):
-   - Modular route controllers in backend/app/routes/.
-   - Dual-database compatibility: local SQLite (servora.db) out-of-the-box and
-     Aiven Managed MySQL with TLS in staging/production.
-3. Decoupled Transactional Messaging & SLA Monitoring:
-   - Email dispatch via Brevo REST API with graceful HTTP-level fallbacks.
-   - Autonomous background workers for Keep-Alive pings (resetting Render idle
-     timers) and 5-minute automated SLA breach detection & escalations.
-
-
-================================================================================
-2. USER ROLES & HIERARCHICAL ACCESS CONTROL
-================================================================================
-ServSure implements a strict 5-tier organizational hierarchy:
-
-       +---------------------------------------------+
-       |             PLATFORM ADMIN                  |
-       |  (Full visibility, creates & toggles access |
-       |   for Companies, L3 Escalation Handler)     |
-       +----------------------+----------------------+
-                              |
-                              v
-       +---------------------------------------------+
-       |             COMPANY (BRAND)                 |
-       |  (e.g., Crompton, LG; manages Franchise     |
-       |   branches, warranty rules, AMC, L2 SLA)    |
-       +----------------------+----------------------+
-                              |
-                              v
-       +---------------------------------------------+
-       |            FRANCHISE (BRANCH)               |
-       |  (Local service hub; manages inventory,     |
-       |   dispatches technicians, L1 SLA)           |
-       +----------------------+----------------------+
-                              |
-                              v
-       +---------------------------------------------+
-       |             FIELD TECHNICIAN                |
-       |  (Executes tickets, digital job cards,      |
-       |   consumes parts, records OTP verification) |
-       +----------------------+----------------------+
-                              ^
-                              | (Service Requests)
-       +----------------------+----------------------+
-       |                 CUSTOMER                    |
-       |  (Registers appliances, tracks warranty/AMC,|
-       |   books repairs, tracks tech in real-time)  |
-       +----------------------+----------------------+
-
-Operational Access Deactivation Rules:
-- When Admin disables a Company -> Company, all its Branches, and all Technicians
-  under those branches are immediately blocked from logging in or calling APIs.
-  Existing user sessions are instantly deleted from user_sessions.
-- When Company disables a Branch -> Branch and its Technicians are blocked.
-- When Branch disables a Technician -> Technician is blocked.
-- Error Messages on Blocked Access:
-  - Technician: "Your technician access has been disabled. Please contact your franchise administrator."
-  - Franchise: "Your franchise access has been disabled. Please contact your company administrator."
-  - Company: "Your company access has been disabled. Please contact the platform administrator."
+- Runtime & Tooling:
+  - Python 3.11, 3.12, or 3.13 (Production Docker image uses Python 3.13.1).
+  - Node.js 18+ (Required only for syntax verification via `node --check`).
+  - Git 2.30+.
+  - Modern web browser (Chrome, Chromium, Edge, Safari, Firefox).
+- Backend Python Libraries (`backend/requirements.txt`):
+  - `fastapi>=0.115.0`
+  - `uvicorn>=0.30.0`
+  - `sqlalchemy>=2.0.35`
+  - `pymysql>=1.1.1`
+  - `cryptography>=42.0.0`
+  - `pydantic>=2.10.0`
+  - `python-dotenv>=1.0.0`
+  - `python-multipart>=0.0.9`
+- External Services:
+  - Brevo (Sendinblue): Transactional email API key and verified sender address.
+  - Aiven MySQL: Managed cloud MySQL service with TLS (for staging and production).
+  - Google Cloud Console: OAuth 2.0 Web Client ID (for Google Identity Services).
 
 
 ================================================================================
-3. REPOSITORY DIRECTORY STRUCTURE
-================================================================================
-.
-├── backend/
-│   ├── main.py                     # FastAPI application entry point, CORS, background workers
-│   ├── render.yaml                 # Render infrastructure-as-code specification
-│   ├── requirements.txt           # Python package dependencies
-│   ├── servora.db                  # Local development SQLite database file
-│   ├── .env.example                # Template for environment variables
-│   └── app/
-│       ├── config.py               # Settings loader (dotenv, DB url, CORS origins)
-│       ├── email_service.py        # Brevo transactional email client
-│       ├── notification_service.py # Omnichannel notification logic & message templates
-│       ├── security.py             # Session tokens, PBKDF2 hashing, hierarchy checks
-│       ├── seeds.py                # Database startup migrations & seed data
-│       ├── sla_engine.py           # Multi-tier SLA breach evaluation engine (SRS 6.15)
-│       ├── db/
-│       │   ├── session.py          # SQLAlchemy engine, sessionmaker, Aiven TLS configs
-│       │   └── models.py           # 22 relational SQLAlchemy ORM models
-│       ├── schemas/
-│       │   └── __init__.py         # Pydantic validation schemas for requests & responses
-│       └── routes/
-│           ├── auth.py             # Login, Google GIS, 2-step Forgot Pass, Change Pass, Profile
-│           ├── admin.py            # Platform metrics, Company onboarding & access toggle
-│           ├── company.py          # Branch management, access toggle, warranty reviews, AMC
-│           ├── franchise.py        # Technician onboarding, inventory, ticket dispatch
-│           ├── technician.py       # Job cards, start/completion OTP verification, geo-coords
-│           ├── requests.py         # Service request booking, state transitions, SLA tracking
-│           ├── appliances.py       # Customer appliance registry, warranty checks
-│           ├── inventory.py        # Parts catalog, stock balances, restock workflows
-│           ├── warranty_amc.py     # AMC plans, customer subscriptions, claims
-│           ├── estimates.py        # Repair estimates & quotation workflows
-│           ├── escalations.py      # Real-time multi-tier SLA escalation queue
-│           └── uploads.py          # File/invoice uploads endpoint
-│
-├── frontend/
-│   ├── index.html                  # Customer Landing, Service Booking & Authentication
-│   ├── customer-dashboard.html     # Customer self-service dashboard
-│   ├── admin-login.html            # Platform Admin login portal
-│   ├── admin-dashboard.html        # Platform Admin operations console
-│   ├── company-login.html          # Brand / Manufacturer login portal
-│   ├── company-dashboard.html      # Brand Operations dashboard
-│   ├── franchise-login.html        # Franchise Partner login portal
-│   ├── franchise-dashboard.html    # Franchise Hub operations dashboard
-│   ├── technician-login.html       # Field Technician login portal
-│   ├── technician-dashboard.html   # Field Technician mobile-responsive job console
-│   ├── company-setup.html          # Invited company password onboarding page
-│   ├── franchise-setup.html        # Invited franchise password onboarding page
-│   ├── technician-setup.html       # Invited technician password onboarding page
-│   ├── ops-dashboard.html          # Master fallback shell for operational dashboards
-│   ├── vercel.json                 # Vercel deployment routes, headers, rewrites
-│   ├── css/
-│   │   └── style.css               # Global typography, animations, custom modal styles
-│   └── js/
-│       ├── config.js               # API base URL resolution & local override controls
-│       ├── auth.js                 # Unified login, Google OAuth, 2-step Forgot Pass modal
-│       ├── dashboard.js            # Customer dashboard UI controller
-│       ├── ops-dashboard.js        # Universal engine powering Admin, Company, Franchise & Tech
-│       ├── company-setup.js        # Invited company verification & setup flow
-│       ├── franchise-setup.js      # Invited franchise verification & setup flow
-│       └── technician-setup.js     # Invited technician verification & setup flow
-│
-├── documentation.txt               # This developer documentation file
-└── README.md                       # High-level deployment overview
-
-
-================================================================================
-4. FRONTEND ARCHITECTURE & PORTAL DIRECTORY
+2. INSTALLATION & LOCAL DEVELOPMENT SETUP
 ================================================================================
 
-4.1. Portal Entry Points & Routing
-----------------------------------
-Each stakeholder has dedicated login and dashboard entry points configured with
-client-side role guards:
-
-- Customer Portal:
-  - Login / Signup: frontend/index.html (routes / or /login)
-  - Dashboard: frontend/customer-dashboard.html (route /customer-dashboard)
-  - Guard: Checks role == 'customer'. If operational role logs in, redirects to their dashboard.
-
-- Platform Administrator Portal:
-  - Login: frontend/admin-login.html (route /admin or /admin-login)
-  - Dashboard: frontend/admin-dashboard.html (route /admin-dashboard)
-  - Guard: Checks role == 'admin'.
-
-- Company / Brand Administrator Portal:
-  - Login: frontend/company-login.html (route /company or /company-login)
-  - Dashboard: frontend/company-dashboard.html (route /company-dashboard)
-  - Guard: Checks role == 'company'.
-
-- Franchise Branch Portal:
-  - Login: frontend/franchise-login.html (route /franchise or /franchise-login)
-  - Dashboard: frontend/franchise-dashboard.html (route /franchise-dashboard)
-  - Guard: Checks role == 'branch' or 'franchise'.
-
-- Technician Portal:
-  - Login: frontend/technician-login.html (route /technician or /technician-login)
-  - Dashboard: frontend/technician-dashboard.html (route /technician-dashboard)
-  - Guard: Checks role == 'technician'. Optimized for mobile viewport screens.
-
-4.2. Core Frontend Scripts Breakdown
-------------------------------------
-1. frontend/js/config.js:
-   - Determines the active API URL dynamically.
-   - Checks localStorage.getItem("servsure_api_url") or "servora_api_url".
-   - Falls back to DEFAULT_RENDER_API = "https://servora-3v6b.onrender.com" (or http://127.0.0.1:8000 locally).
-   - Exports helper functions: jsonHeaders(), authHeaders().
-
-2. frontend/js/auth.js:
-   - Controls all 5 login interfaces.
-   - Handles password login (POST /api/auth/login).
-   - Handles email OTP login (POST /api/auth/login-otp/request and /verify).
-   - Handles Google GIS OAuth sign-in (POST /api/auth/google).
-   - Universal 2-Step Forgot Password Modal:
-     - Automatically attaches to any #forgotLink element across all login pages.
-     - Step 1: User provides email -> calls Brevo OTP.
-     - Step 2: User provides 6-digit OTP, new password, confirm password -> updates password.
-   - Enforces strict portal mismatch checking: If a Technician attempts to login
-     via /admin-login.html, the system alerts them and redirects to /technician-login.html.
-
-3. frontend/js/ops-dashboard.js:
-   - A single unified JavaScript engine that powers Admin, Company, Franchise, and
-     Technician dashboards.
-   - Dynamically checks role from the authenticated session and activates
-     role-specific sidebar navigation, metrics, and data tables.
-   - Features:
-     - Access Toggle Switches: In Admin Companies table, Company Branches table,
-       and Franchise Technicians table, toggles is_active via PUT /api/.../access.
-     - In-Dashboard Change Password Accordion: In profile modal, calls POST /api/auth/change-password.
-     - Profile Email Editing: Admin and Company can edit their email address via PUT /api/auth/profile.
-     - Digital Job Card Builder: Technicians calculate parts, labor, GST, and capture signatures.
-     - SLA Escalation Queue: Real-time SLA monitor displaying L1/L2/L3 escalations.
-     - Inventory Restock & Warranty Claims review modals.
-
-4. frontend/js/dashboard.js:
-   - Powers the Customer Dashboard (customer-dashboard.html).
-   - Appliance Registration with model validation, serial number deduplication, invoice uploads.
-   - Real-time Service Request tracking: displays assigned technician, contact, live map simulation.
-   - Warranty protection checker and AMC subscription purchase.
-   - Digital job card inspection and customer rating / feedback submission.
-
-4.3. Client-Side Session Storage & Dual-Brand Compatibility
-------------------------------------------------------------
-To ensure backward compatibility across prior deployments and re-branded releases,
-session data is stored and checked across dual keys:
-- servsure_user / servora_user: Active customer or generic session object.
-- servsure_user_{role} / servora_user_{role}: Role-isolated operational session cache.
-- Network requests include dual headers:
-  x-servsure-user-id: <user_id> and x-servora-user-id: <user_id>.
-- The backend sets both servsure_user_id and servora_user_id HTTP-only cookies.
-
-
-================================================================================
-5. BACKEND ARCHITECTURE & API SERVICES
-================================================================================
-
-5.1. FastAPI Server Setup & Background Workers (backend/main.py)
------------------------------------------------------------------
-The API is initialized with FastAPI lifecycle event handlers:
-- Database Auto-Seed on Startup: Calls seed_database(SessionLocal()) inside the
-  lifespan context manager to run schema migrations and seed base accounts.
-- Background Worker 1: Keep-Alive Self-Ping (keep_alive_ping_loop):
-  - Sends an HTTP GET request to /health every 14 minutes.
-  - Keeps free-tier Render instances awake and avoids the 15-minute inactivity spin-down.
-- Background Worker 2: SLA Monitor Loop (sla_monitor_loop):
-  - Executes every 5 minutes.
-  - Calls evaluate_sla_breaches(db) in app/sla_engine.py to identify tickets
-    exceeding response or resolution thresholds and auto-escalates them.
-
-5.2. Configuration & Environment Variables (backend/app/config.py)
---------------------------------------------------------------------
-Settings are loaded via python-dotenv:
-
-| Variable Name               | Default Value                       | Purpose                                                |
-|-----------------------------|-------------------------------------|--------------------------------------------------------|
-| DATABASE_URL                | sqlite:///./servora.db              | SQLAlchemy URI (MySQL or SQLite)                       |
-| ALLOWED_ORIGINS             | localhost, 127.0.0.1, vercel domains| Comma-separated CORS allowed origins                   |
-| PORT                        | 8000                                | Port provided by hosting environment                   |
-| GOOGLE_CLIENT_ID            | (empty)                             | Google Identity Services client ID for OAuth token auth |
-| BREVO_API_KEY               | (empty)                             | API key for Brevo (Sendinblue) transactional emails     |
-| BREVO_SENDER_EMAIL          | (empty)                             | Verified sender email in Brevo                         |
-| BREVO_SENDER_NAME           | ServSure                            | Sender display name for emails                         |
-| FRONTEND_BASE_URL           | https://servsure.vercel.app         | Base URL used to build invite & setup links             |
-| DEMO_PASSWORD               | password123                         | Seed password accepted for demo seeded accounts         |
-
-5.3. Database Session & Connection Architecture (backend/app/db/session.py)
------------------------------------------------------------------------------
-- Handles SQLite vs MySQL connections automatically.
-- For Aiven MySQL (mysql+pymysql://...):
-  - Translates ?ssl-mode=REQUIRED to PyMySQL's SSL dictionary { "check_hostname": False }.
-  - Configures connection pool: pool_size=10, max_overflow=20, pool_recycle=3600, pool_pre_ping=True.
-- Session dependency: get_db() yields a SessionLocal() and closes it after the request.
-
-5.4. Database Models & Schema Catalog (backend/app/db/models.py)
-------------------------------------------------------------------
-There are 22 core models:
-1. UserModel: id, name, email, phone, role, password_hash, avatar, address, is_active.
-2. UserSessionModel: token_hash, user_id, expires_at.
-3. AuthOtpModel: id, email, otp_hash, expires_at, created_at, user_data.
-4. CompanyOnboardingModel: token_hash, email, name, phone, address, otp_hash, otp_expires_at, password_set_at.
-5. BranchOnboardingModel: token_hash, company_id, branch_name, manager_name, email, mobile, address, pincode...
-6. CompanyBranchModel: id, company_id, branch_name, manager_name, email, mobile, address, pincode, created_at.
-7. TechnicianModel: id, name, title, company_branch, rating, total_jobs, phone, avatar, is_verified.
-8. BranchTechnicianModel: technician_id, branch_id, address, pincode, created_at.
-9. TechnicianOnboardingModel: token_hash, branch_id, name, title, mobile, email, address, pincode...
-10. ApplianceModel: id, user_id, brand, model_number, serial_number, category, purchase_date, warranty_status, invoice_url, amc_active...
-11. ServiceRequestModel: id, customer_id, appliance_id, issue_description, preferred_time, status, technician_id, branch_id, company_id, pincode, start_otp, completion_otp, payment_status, is_escalated, escalation_level...
-12. JobCardModel: id, request_id, technician_id, diagnosis, work_done, parts_used, labor_cost, total_cost, customer_signature_url, technician_signature_url, inspection_fee, discount_amount, cgst_amount, sgst_amount, is_warranty_covered...
-13. ServiceFeedbackModel: id, request_id, customer_id, rating, feedback_text, created_at.
-14. SparePartModel: id, part_number, part_name, category, compatible_brand, unit_price, mrp, is_active.
-15. FranchiseInventoryModel: id, branch_id, part_id, quantity_in_stock, min_reorder_level, max_stock_level.
-16. InventoryTransactionModel: id, branch_id, part_id, transaction_type, quantity, unit_cost, reference_id, notes.
-17. WarrantyClaimModel: id, branch_id, request_id, appliance_id, part_id, claim_status, claim_amount, company_notes.
-18. AMCPlanModel: id, company_id, plan_name, appliance_category, duration_months, max_services, price, terms, is_active.
-19. AMCSubscriptionModel: id, user_id, appliance_id, plan_id, start_date, end_date, status, services_remaining.
-20. EstimateModel: id, request_id, branch_id, parts_cost, labor_cost, total_amount, status.
-21. EscalationModel: id, request_id, escalation_level, escalated_to_role, reason, status, created_at, resolved_at.
-22. NotificationLogModel: id, user_id, notification_type, channel, recipient, subject, message, reference_id, status.
-
-5.5. Security, Sessions & Hierarchical Access Engine (backend/app/security.py)
---------------------------------------------------------------------------------
-- Session Tokens:
-  - Cryptographic 64-character hex tokens signed with secret and timestamp.
-  - Stored in user_sessions table hashed with SHA-256 (token_hash).
-- Password Hashing:
-  - Uses PBKDF2-HMAC-SHA256 with 100,000 rounds and random 16-byte salt:
-    pbkdf2_sha256$<rounds>$<salt_hex>$<digest_hex>.
-- validate_user_active_and_hierarchy(user, db):
-  - Checked on every authenticated request and login attempt.
-  - Step 1: Checks user.is_active. If False, raises 403 and calls revoke_all_user_sessions(user.id, db).
-  - Step 2: For Technicians, checks if their assigned Branch is active. If not, raises 403.
-  - Step 3: For Technicians and Branches, checks if their parent Company is active. If not, raises 403.
-- revoke_all_user_sessions(user_id, db):
-  - Immediately deletes all active rows in user_sessions for that user.
-
-5.6. Transactional Email Service (backend/app/email_service.py)
-----------------------------------------------------------------
-- Sends email notifications via Brevo API (https://api.brevo.com/v3/smtp/email).
-- Requires BREVO_API_KEY and BREVO_SENDER_EMAIL.
-- Handles connection errors and raises informative HTTP 502/503 errors if delivery fails.
-
-5.7. Notification Engine & Multi-Tier SLA Scanner (backend/app/sla_engine.py)
--------------------------------------------------------------------------------
-SRS 6.15 SLA Evaluation Rules:
-1. Unassigned Ticket Breaches:
-   - > 4 Hours Unassigned  -> Level 1 Escalation to Franchise Branch
-   - > 8 Hours Unassigned  -> Level 2 Escalation to Brand Company Manager
-   - > 12 Hours Unassigned -> Level 3 Escalation to Platform Admin
-2. Resolution Time Breaches:
-   - > 48 Hours Unresolved -> Level 1 Escalation to Franchise Branch
-   - > 72 Hours Unresolved -> Level 2 Escalation to Brand Company Manager
-   - > 96 Hours Unresolved -> Level 3 Escalation to Platform Admin
-When an escalation triggers, an EscalationModel row is created, ticket status is
-marked is_escalated = True, and an automated email/SMS alert is logged.
-
-
-================================================================================
-6. API ROUTE REFERENCE & ENDPOINTS
-================================================================================
-
-6.1. Authentication Routes (backend/app/routes/auth.py)
----------------------------------------------------------
-- POST /api/auth/login:
-  - Payload: { email, password, role }
-  - Validates credentials against PBKDF2 hash (or demo password), checks active status,
-    creates user session, sets HTTP-only cookies, returns user profile.
-- POST /api/auth/login-otp/request:
-  - Payload: { email }
-  - Generates 6-digit OTP, stores hash in auth_otps, sends email via Brevo.
-- POST /api/auth/login-otp/verify:
-  - Payload: { email, otp }
-  - Verifies OTP hash and expiry, returns authenticated session.
-- POST /api/auth/google:
-  - Payload: { credential, role }
-  - Verifies Google GIS ID token, auto-provisions customer account or signs in.
-- POST /api/auth/forgot-password/request-otp:
-  - Payload: { email }
-  - Sends 6-digit password reset OTP to registered email. Rejects inactive accounts.
-- POST /api/auth/forgot-password/reset:
-  - Payload: { email, otp, new_password }
-  - Validates OTP, hashes new password with PBKDF2, revokes all existing sessions.
-- POST /api/auth/change-password:
-  - Payload: { current_password, new_password }
-  - Requires authenticated session. Verifies current password, updates to new password.
-- PUT /api/auth/profile:
-  - Payload: { name, phone, address, email? }
-  - Updates profile. email field is only accepted and updated for admin and company.
-- GET /api/auth/me:
-  - Returns the currently authenticated user's profile and active role.
-- POST /api/auth/logout:
-  - Revokes current session token and clears auth cookies.
-
-6.2. Platform Administration Routes (backend/app/routes/admin.py)
--------------------------------------------------------------------
-- GET /api/admin/metrics: Platform-wide stats (total companies, branches, tickets, revenue).
-- GET /api/admin/companies: List all registered brand companies with status.
-- POST /api/admin/companies: Onboard new company & send password setup email.
-- PUT /api/admin/companies/{company_id}/access:
-  - Payload: { is_active: boolean }
-  - Enables or disables company access. Hierarchically invalidates all sessions.
-
-6.3. Brand / Company Routes (backend/app/routes/company.py)
--------------------------------------------------------------
-- GET /api/company/metrics: Brand-specific ticket volumes, active branches, SLA rates.
-- GET /api/company/branches: List all franchise branches under this brand.
-- POST /api/company/branches: Onboard a new franchise branch & email setup link.
-- PUT /api/company/branches/{branch_id}/access:
-  - Payload: { is_active: boolean }
-  - Enables or disables branch access. Hierarchically invalidates branch & tech sessions.
-
-6.4. Franchise Branch Routes (backend/app/routes/franchise.py)
-----------------------------------------------------------------
-- GET /api/franchise/metrics: Branch ticket queue, technician availability, parts stock.
-- GET /api/franchise/technicians: List all technicians assigned to this branch.
-- POST /api/franchise/technicians: Onboard new field technician & email setup link.
-- PUT /api/franchise/technicians/{technician_id}/access:
-  - Payload: { is_active: boolean }
-  - Enables or disables technician access and revokes active sessions.
-
-6.5. Field Technician Routes (backend/app/routes/technician.py)
------------------------------------------------------------------
-- GET /api/technician/jobs: List assigned service requests for logged-in technician.
-- POST /api/technician/jobs/{request_id}/start: Verifies start OTP provided by customer.
-- POST /api/technician/jobs/{request_id}/complete:
-  - Submits digital Job Card (parts consumed, labor fee, diagnosis).
-  - Verifies customer completion OTP, captures signatures, finalizes ticket.
-- POST /api/technician/location: Updates real-time GPS coordinates for live customer tracking.
-
-6.6. Customer Requests, Appliances & Job Cards
-----------------------------------------------
-- GET /api/requests: List requests filtered by user role and authorization scope.
-- POST /api/requests: Customer books new service ticket.
-- GET /api/appliances: List customer registered appliances with warranty status.
-- POST /api/appliances: Register new appliance with serial number validation.
-- GET /api/requests/{request_id}/job-card: Retrieve finalized digital job card and receipt.
-
-
-================================================================================
-7. STEP-BY-STEP LOCAL DEVELOPMENT SETUP
-================================================================================
-
-Prerequisites:
-- Python 3.11 or higher
-- Modern web browser (Chrome, Edge, Firefox, Safari)
-
-Step 1: Navigate to the backend directory
-  cd backend
+Step 1: Clone the repository and navigate to backend
+```sh
+git clone https://github.com/SID0428/servora.git
+cd servora/backend
+```
 
 Step 2: Create and activate a Python virtual environment
-  # macOS / Linux
-  python3 -m venv venv
-  source venv/bin/activate
+```sh
+# macOS / Linux
+python3 -m venv venv
+source venv/bin/activate
 
-  # Windows (Command Prompt)
-  python -m venv venv
-  venv\Scripts\activate
+# Windows (Command Prompt)
+python -m venv venv
+venv\Scripts\activate
+```
 
 Step 3: Install backend dependencies
-  pip install -r requirements.txt
+```sh
+pip install --upgrade pip
+pip install -r requirements.txt
+```
 
-Step 4: Run the FastAPI backend server
-  python main.py
+Step 4: Configure environment variables
+Copy the template configuration file:
+```sh
+cp .env.example .env
+```
+For local development, no edits to `.env` are required! If `DATABASE_URL` is omitted
+or left as `sqlite:///./servora.db`, FastAPI automatically initializes and runs on
+the local SQLite database (`servora.db`).
 
-  - The backend will start at http://127.0.0.1:8000.
-  - It will automatically create servora.db (SQLite) and run all schema migrations.
-  - You can inspect the interactive Swagger API documentation at:
-    http://127.0.0.1:8000/docs
+Step 5: Launch the FastAPI backend server
+```sh
+python main.py
+```
+- Server URL: `http://127.0.0.1:8000`
+- API Health Check: `http://127.0.0.1:8000/health`
+- Interactive OpenAPI / Swagger Docs: `http://127.0.0.1:8000/docs`
+- ReDoc Documentation: `http://127.0.0.1:8000/redoc`
 
-Step 5: Run the Frontend
-Because the frontend is static HTML/CSS/JS, serve it with any static server:
-  # Open a new terminal in the frontend directory:
-  cd frontend
+Step 6: Launch the frontend static server
+Open a separate terminal window and navigate to the `frontend/` directory:
+```sh
+cd ../frontend
+# Serve using Python's built-in HTTP server on port 3000
+python3 -m http.server 3000
+```
+Open your browser at `http://localhost:3000`.
 
-  # Using Python's built-in static server:
-  python3 -m http.server 3000
-
-Open http://localhost:3000 in your web browser.
-
-Default Seeded Accounts (Password: password123):
-- Platform Admin: admin@servsure.com
-- Franchise Manager: amit.noida@crompton-service.com
-- Field Technician: rahul.sharma@crompton-service.com
+Verified Default Seed Accounts:
+All pre-seeded operational demo accounts share the password `password123`:
+- Platform Administrator: `admin@servsure.com` (Portal: `/admin-login.html`)
+- Authorized Field Technician: `rahul.sharma@crompton-service.com` (Portal: `/technician-login.html`)
+- Second Field Technician: `tech2@servora.com` (Portal: `/technician-login.html`)
+- Note: Brand Companies and Franchise Branches are provisioned dynamically via
+  invitation emails sent through Brevo, where they create their own passwords.
 
 
 ================================================================================
-8. PRODUCTION DEPLOYMENT (RENDER, VERCEL, AIVEN MYSQL)
+3. SYSTEM ARCHITECTURE & MULTI-TIER OPERATIONS
 ================================================================================
 
-8.1. Database Setup on Aiven MySQL
-----------------------------------
-1. Create a MySQL service on Aiven (or AWS RDS / Google Cloud SQL).
-2. Copy the SQLAlchemy connection URI.
-3. Replace the driver prefix with mysql+pymysql://:
-   mysql+pymysql://avnadmin:PASSWORD@HOST:PORT/defaultdb?ssl-mode=REQUIRED
+3.1. Five-Tier Organizational Hierarchy
+---------------------------------------
+ServSure coordinates appliance post-sales service across five distinct roles:
 
-8.2. Deploying Backend to Render
+       +-------------------------------------------------------------+
+       |                     PLATFORM ADMIN                          |
+       |  - Full cross-tenant governance and global metrics          |
+       |  - Onboards Brand Companies & sends setup invitations       |
+       |  - Toggles Company Access (Hierarchically suspends tenant)  |
+       |  - Handles Level 3 SLA Breaches (>12h unassigned / >96h unres)
+       +------------------------------+------------------------------+
+                                      |
+                                      v
+       +-------------------------------------------------------------+
+       |                     COMPANY (BRAND)                         |
+       |  - Manages brand-authorized Franchise Branches              |
+       |  - Toggles Branch Access (Hierarchically suspends branch)   |
+       |  - Reviews and reimburses spare parts Warranty Claims       |
+       |  - Defines and prices Annual Maintenance Contract (AMC) plans
+       |  - Handles Level 2 SLA Breaches (>8h unassigned / >72h unres)
+       +------------------------------+------------------------------+
+                                      |
+                                      v
+       +-------------------------------------------------------------+
+       |                    FRANCHISE (BRANCH)                       |
+       |  - Regional service hub managing spare parts inventory      |
+       |  - Onboards Field Technicians & dispatches service tickets  |
+       |  - Toggles Technician Access (Suspends field account)       |
+       |  - Submits warranty reimbursement claims to Brand           |
+       |  - Handles Level 1 SLA Breaches (>4h unassigned / >48h unres)
+       +------------------------------+------------------------------+
+                                      |
+                                      v
+       +-------------------------------------------------------------+
+       |                     FIELD TECHNICIAN                        |
+       |  - Accepts assigned service jobs via mobile-responsive UI   |
+       |  - Verifies customer Start-Service OTP                      |
+       |  - Generates Digital Job Cards (parts, labor, GST, sign-off)|
+       |  - Verifies customer Completion OTP & closes ticket         |
+       |  - Streams real-time GPS coordinates for customer live map  |
+       +------------------------------+------------------------------+
+                                      ^
+                                      | (Service Requests)
+       +------------------------------+------------------------------+
+       |                         CUSTOMER                            |
+       |  - Registers appliances with invoice proof of purchase      |
+       |  - Books on-demand repair tickets & tracks status live      |
+       |  - Reviews & approves repair quotations / estimates         |
+       |  - Purchases AMC protection plans & submits service ratings |
+       +-------------------------------------------------------------+
+
+3.2. Operational Access Control & Cascading Deactivation Rules
+--------------------------------------------------------------
+Access control is enforced at both the API controller level and the security
+middleware layer (`validate_user_active_and_hierarchy` in `backend/app/security.py`):
+
+1. Platform Admin disables Company:
+   - Endpoint: `PUT /api/admin/companies/{company_id}/access` with `{ "is_active": false }`.
+   - Effect: Company user is deactivated. All active sessions for the Company, all
+     Franchise Branches under this company, and all Field Technicians under those
+     branches are immediately terminated in `user_sessions`.
+   - Block Message (Company):
+     "Your company access has been disabled. Please contact the platform administrator."
+   - Block Message (Branch / Tech under disabled company):
+     "Your company access has been disabled. Please contact the platform administrator."
+
+2. Company disables Franchise Branch:
+   - Endpoint: `PUT /api/company/branches/{branch_id}/access` with `{ "is_active": false }`.
+   - Effect: Branch user is deactivated. Active sessions for the branch and all its
+     technicians are immediately revoked.
+   - Block Message (Branch):
+     "Your franchise access has been disabled. Please contact your company administrator."
+   - Block Message (Tech under disabled branch):
+     "Your franchise access has been disabled. Please contact your company administrator."
+
+3. Franchise disables Field Technician:
+   - Endpoint: `PUT /api/franchise/technicians/{technician_id}/access` with `{ "is_active": false }`.
+   - Effect: Technician user is deactivated and active sessions are revoked.
+   - Block Message:
+     "Your technician access has been disabled. Please contact your franchise administrator."
+
+4. Universal Password Reset / Deactivation Block:
+   - Deactivated users are blocked from requesting password reset OTPs or setting new passwords.
+
+3.3. Static Multi-Portal Routing & Role Guards
+----------------------------------------------
+The frontend relies on clean HTML files hosted statically on Vercel:
+
+| Portal Role    | Public Route  | HTML File                     | Script             | Authorized Dashboard Route |
+|----------------|---------------|-------------------------------|--------------------|----------------------------|
+| Customer       | `/` or `/login`| `frontend/index.html`        | `js/auth.js`       | `customer-dashboard.html`  |
+| Platform Admin | `/admin`      | `frontend/admin-login.html`   | `js/auth.js`       | `admin-dashboard.html`     |
+| Brand Company  | `/company`    | `frontend/company-login.html` | `js/auth.js`       | `company-dashboard.html`   |
+| Franchise Hub  | `/franchise`  | `frontend/franchise-login.html`| `js/auth.js`      | `franchise-dashboard.html` |
+| Field Tech     | `/technician` | `frontend/technician-login.html`| `js/auth.js`     | `technician-dashboard.html`|
+| Setup (Company)| `/setup/comp` | `frontend/company-setup.html` | `js/company-setup.js`| `company-login.html`     |
+| Setup (Branch) | `/setup/branch`| `frontend/franchise-setup.html`| `js/franchise-setup.js`| `franchise-login.html` |
+| Setup (Tech)   | `/setup/tech` | `frontend/technician-setup.html`| `js/technician-setup.js`| `technician-login.html`|
+
+Portal Role Guards (`frontend/js/auth.js`):
+If an authenticated user attempts to log in via an unauthorized portal (e.g., a
+Technician logging in at `/admin-login.html`), the system rejects the session,
+displays an alert instructing the user of the mismatch, and redirects them to
+their legitimate role-specific portal.
+
+3.4. Background Workers (`backend/main.py`)
+-------------------------------------------
+1. Render Keep-Alive Worker (`keep_alive_ping_loop`):
+   - Automatically wakes 45 seconds after FastAPI starts.
+   - Dispatches an HTTP GET request to `/health` with User-Agent `ServSure-KeepAlive/1.0`
+     every 14 minutes (840 seconds, configurable via `KEEP_ALIVE_INTERVAL_SECONDS`).
+   - Prevents Render's free-tier container from idling out (which occurs at 15 minutes).
+2. Multi-Tier SLA Monitor Worker (`sla_monitor_loop`):
+   - Evaluates active service requests every 5 minutes (300 seconds).
+   - Calls `evaluate_sla_breaches(db)` in `app/sla_engine.py`.
+   - Identifies unassigned or unresolved tickets breaching SLA thresholds and auto-escalates
+     them with automated alerts.
+
+
+================================================================================
+4. DATABASE MODELS & RELATIONAL SCHEMA (22 MODELS)
+================================================================================
+All database entities are defined in `backend/app/db/models.py`:
+
+1. `UserModel` (`users` table):
+   - `id`: String(64), Primary Key (e.g., `admin_1`, `tech_1`, UUID).
+   - `name`: String(128), Nullable: False.
+   - `email`: String(128), Unique, Indexed, Nullable: False.
+   - `phone`: String(32), Nullable: False.
+   - `role`: String(32), Nullable: False (customer, technician, branch, company, admin).
+   - `password_hash`: String(255), Nullable: True (PBKDF2-SHA256).
+   - `avatar`: Text, Nullable: True.
+   - `address`: Text, Nullable: True.
+   - `is_active`: Boolean, Default: True, Nullable: False.
+
+2. `UserSessionModel` (`user_sessions` table):
+   - `token_hash`: String(64), Primary Key (SHA-256 of session token).
+   - `user_id`: String(64), ForeignKey("users.id", CASCADE), Indexed.
+   - `expires_at`: DateTime, Indexed, Nullable: False.
+
+3. `AuthOtpModel` (`auth_otps` table):
+   - `id`: String(64), Primary Key.
+   - `email`: String(128), Indexed, Nullable: False.
+   - `otp_hash`: String(64), Nullable: False (SHA-256 of 6-digit OTP).
+   - `expires_at`: DateTime, Nullable: False (10-minute expiry).
+   - `created_at`: DateTime, Default: utcnow.
+   - `user_data`: Text, Nullable: True (JSON payload for unconfirmed registrations).
+
+4. `CompanyOnboardingModel` (`company_onboarding` table):
+   - `token_hash`: String(64), Primary Key.
+   - `email`: String(128), Nullable: False.
+   - `name`, `phone`, `address`: Basic brand metadata.
+   - `created_at`, `expires_at`: 7-day invitation expiry.
+   - `otp_hash`, `otp_expires_at`: Verification OTP before setting password.
+   - `password_set_at`: Timestamp when password was created.
+
+5. `BranchOnboardingModel` (`branch_onboarding` table):
+   - `token_hash`: String(64), Primary Key.
+   - `company_id`: String(64), ForeignKey("users.id", CASCADE).
+   - `branch_name`, `manager_name`, `email`, `mobile`, `address`, `pincode`.
+   - `otp_hash`, `otp_expires_at`, `password_set_at`.
+
+6. `CompanyBranchModel` (`company_branches` table):
+   - `id`: String(64), Primary Key.
+   - `company_id`: String(64), ForeignKey("users.id", CASCADE).
+   - UniqueConstraint("company_id", "email").
+   - `branch_name`, `manager_name`, `email`, `mobile`, `address`, `pincode`.
+
+7. `TechnicianModel` (`technicians` table):
+   - `id`: String(64), Primary Key.
+   - `name`: String(128), Nullable: False.
+   - `title`: String(128), Nullable: False.
+   - `company_branch`: String(128), Nullable: True.
+   - `rating`: Float, Default: 5.0.
+   - `total_jobs`: Integer, Default: 0.
+   - `phone`: String(32), Nullable: False.
+   - `is_verified`: Boolean, Default: True.
+
+8. `BranchTechnicianModel` (`branch_technicians` table):
+   - `technician_id`: String(64), ForeignKey("technicians.id", CASCADE), Primary Key.
+   - `branch_id`: String(64), ForeignKey("company_branches.id", CASCADE), Indexed.
+   - `address`: Text, `pincode`: String(10).
+
+9. `TechnicianOnboardingModel` (`technician_onboarding` table):
+   - `token_hash`: String(64), Primary Key.
+   - `branch_id`: String(64), ForeignKey("company_branches.id", CASCADE).
+   - `name`, `title`, `mobile`, `email`, `address`, `pincode`, `otp_hash`, `password_set_at`.
+
+10. `ApplianceModel` (`appliances` table):
+    - `id`: String(64), Primary Key.
+    - `user_id`: String(64), ForeignKey("users.id", CASCADE).
+    - `company_id`: String(64), Nullable: True.
+    - `brand`, `model_number`, `serial_number`, `category`, `purchase_date`.
+    - `warranty_status`: String(32) ("Active", "Expired").
+    - `warranty_start_date`, `warranty_end_date`: String(32).
+    - `amc_active`: Boolean, Default: False.
+    - `amc_plan_name`, `amc_end_date`: String(64).
+    - `invoice_url`: Text.
+
+11. `ServiceRequestModel` (`service_requests` table):
+    - `id`: String(64), Primary Key (e.g., `SR-7845`).
+    - `customer_id`: String(64), ForeignKey("users.id", CASCADE).
+    - `appliance_id`: String(64), ForeignKey("appliances.id", CASCADE).
+    - `technician_id`: String(64), Nullable: True.
+    - `branch_id`, `company_id`: String(64), Nullable: True.
+    - `issue_description`: Text.
+    - `status`: String(32) ("Request Created", "Assigned", "In Progress", "Completed", "Cancelled").
+    - `latitude`, `longitude`: Float (Customer location).
+    - `tech_latitude`, `tech_longitude`: Float (Live technician coordinates).
+    - `start_otp`: String(16) (Customer gives to tech to begin).
+    - `completion_otp`: String(16) (Customer gives to tech to close).
+    - `is_escalated`: Boolean, `escalation_level`: Integer (1, 2, 3).
+    - `payment_status`: String(32) ("Pending", "Paid").
+
+12. `JobCardModel` (`job_cards` table):
+    - `id`: String(64), Primary Key (e.g., `JC-8921`).
+    - `request_id`: String(64), ForeignKey("service_requests.id", CASCADE).
+    - `technician_id`: String(64), ForeignKey("technicians.id", CASCADE).
+    - `diagnosis`, `work_done`: Text.
+    - `parts_used`: Text (JSON string of consumed parts and quantities).
+    - `labor_cost`: Float.
+    - `inspection_fee`: Float, Default: 299.0.
+    - `discount_amount`: Float, Default: 0.0.
+    - `cgst_amount`, `sgst_amount`: Float (9% + 9% GST).
+    - `total_cost`: Float.
+    - `is_warranty_covered`: Boolean, Default: False.
+    - `customer_signature_url`, `technician_signature_url`: Text.
+
+13. `ServiceFeedbackModel` (`service_feedback` table):
+    - `id`: String(64), Primary Key.
+    - `request_id`, `customer_id`: Foreign keys.
+    - `rating`: Integer (1 to 5 stars).
+    - `feedback_text`: Text.
+
+14. `SparePartModel` (`spare_parts` table):
+    - `id`: String(64), Primary Key.
+    - `part_number`: String(64), Unique, Indexed.
+    - `part_name`, `category`, `compatible_brand`.
+    - `unit_price`, `mrp`: Float.
+    - `is_active`: Boolean.
+
+15. `FranchiseInventoryModel` (`franchise_inventory` table):
+    - `id`: String(64), Primary Key.
+    - `branch_id`: String(64), ForeignKey("company_branches.id", CASCADE).
+    - `part_id`: String(64), ForeignKey("spare_parts.id", CASCADE).
+    - `quantity_in_stock`: Integer.
+    - `min_reorder_level`: Integer, Default: 5.
+    - `max_stock_level`: Integer, Default: 50.
+
+16. `InventoryTransactionModel` (`inventory_transactions` table):
+    - `id`: String(64), Primary Key.
+    - `branch_id`, `part_id`: Foreign keys.
+    - `transaction_type`: String(32) ("RESTOCK", "CONSUMED", "DEFECTIVE_RETURN").
+    - `quantity`: Integer.
+    - `unit_cost`: Float.
+    - `reference_id`: String(64) (Job Card ID or PO number).
+
+17. `WarrantyClaimModel` (`warranty_claims` table):
+    - `id`: String(64), Primary Key.
+    - `branch_id`, `request_id`, `appliance_id`, `part_id`: Foreign keys.
+    - `claim_status`: String(32) ("Pending", "Approved", "Rejected").
+    - `claim_amount`: Float.
+    - `company_notes`: Text.
+
+18. `AMCPlanModel` (`amc_plans` table):
+    - `id`: String(64), Primary Key.
+    - `company_id`: String(64), ForeignKey("users.id", CASCADE).
+    - `plan_name`, `appliance_category`: String(64).
+    - `duration_months`: Integer, `max_services`: Integer.
+    - `price`: Float, `terms`: Text, `is_active`: Boolean.
+
+19. `AMCSubscriptionModel` (`amc_subscriptions` table):
+    - `id`: String(64), Primary Key.
+    - `user_id`, `appliance_id`, `plan_id`: Foreign keys.
+    - `start_date`, `end_date`: String(32).
+    - `status`: String(32) ("Active", "Expired", "Cancelled").
+    - `services_remaining`: Integer.
+
+20. `EstimateModel` (`estimates` table):
+    - `id`: String(64), Primary Key.
+    - `request_id`, `branch_id`: Foreign keys.
+    - `parts_cost`, `labor_cost`, `total_amount`: Float.
+    - `status`: String(32) ("Pending", "Approved", "Declined").
+
+21. `EscalationModel` (`escalations` table):
+    - `id`: String(64), Primary Key.
+    - `request_id`: ForeignKey("service_requests.id", CASCADE).
+    - `escalation_level`: Integer (1, 2, 3).
+    - `escalated_to_role`: String(32) ("franchise", "company", "admin").
+    - `reason`: Text.
+    - `status`: String(32) ("Open", "Resolved").
+    - `created_at`, `resolved_at`: DateTime.
+
+22. `NotificationLogModel` (`notification_logs` table):
+    - `id`: String(64), Primary Key.
+    - `user_id`: ForeignKey("users.id", CASCADE).
+    - `notification_type`: String(32) (OTP, SLA_BREACH, TICKET_UPDATE, ONBOARDING).
+    - `channel`: String(16) ("EMAIL", "SMS", "IN_APP").
+    - `recipient`: String(128).
+    - `subject`, `message`: Text.
+    - `status`: String(16) ("DELIVERED", "FAILED").
+
+
+================================================================================
+5. CORE API & USAGE REFERENCE
+================================================================================
+
+Request Headers:
+- `Content-Type: application/json`
+- `Authorization: Bearer <token>` OR Cookie: `servsure_user_id=<user_id>`
+- Dual-brand client header: `x-servsure-user-id: <user_id>` (fallback: `x-servora-user-id`)
+
+5.1. Authentication, Sessions & Profile (`/api/auth`)
+------------------------------------------------------
+- `POST /api/auth/login`
+  - Body:
+    ```json
+    {
+      "email": "admin@servsure.com",
+      "password": "password123",
+      "role": "admin"
+    }
+    ```
+  - Returns: `{ "user": { "id": "admin_1", "email": "...", "role": "admin", "is_active": true }, "token": "..." }`
+  - Sets HTTP-only cookies: `servsure_user_id` and `servora_user_id`.
+
+- `POST /api/auth/login-otp/request`
+  - Body: `{ "email": "user@example.com" }`
+  - Sends a 6-digit OTP via Brevo. Returns: `{ "message": "OTP sent successfully" }`.
+
+- `POST /api/auth/login-otp/verify`
+  - Body: `{ "email": "user@example.com", "otp": "482910" }`
+  - Returns authenticated user object and session token.
+
+- `POST /api/auth/google`
+  - Body: `{ "credential": "<GOOGLE_JWT_ID_TOKEN>", "role": "customer" }`
+  - Verifies token against Google GIS and returns authenticated session.
+
+- `POST /api/auth/forgot-password/request-otp`
+  - Body: `{ "email": "user@example.com" }`
+  - Sends 6-digit reset OTP. Returns HTTP 403 if account is deactivated.
+
+- `POST /api/auth/forgot-password/reset`
+  - Body:
+    ```json
+    {
+      "email": "user@example.com",
+      "otp": "482910",
+      "new_password": "NewSecretPassword123!"
+    }
+    ```
+  - Hashes password with PBKDF2, revokes all prior sessions.
+
+- `POST /api/auth/change-password`
+  - Requires session.
+  - Body:
+    ```json
+    {
+      "current_password": "OldPassword123!",
+      "new_password": "NewSecretPassword123!"
+    }
+    ```
+
+- `PUT /api/auth/profile`
+  - Body:
+    ```json
+    {
+      "name": "Vikramaditya Rao",
+      "phone": "+91 99999 00000",
+      "address": "ServSure Command Center, Bengaluru",
+      "email": "admin@servsure.com"
+    }
+    ```
+  - Note: `email` updates are only permitted for `admin` and `company` roles.
+
+- `GET /api/auth/me`: Returns current user session payload.
+- `POST /api/auth/logout`: Revokes active session and deletes cookies.
+
+5.2. Platform Administration (`/api/admin`)
+-------------------------------------------
+- `GET /api/admin/metrics`: Platform-wide aggregate metrics.
+- `GET /api/admin/companies`: List all onboarded brand companies with setup status.
+- `POST /api/admin/companies`
+  - Body: `{ "name": "Crompton Consumer", "email": "corporate@crompton.com", "phone": "+91 22 12345678", "address": "Mumbai" }`
+  - Sends setup invitation link via Brevo.
+- `PUT /api/admin/companies/{company_id}/access`
+  - Body: `{ "is_active": false }`
+  - Deactivates company and immediately revokes all company, branch, and tech sessions.
+
+5.3. Brand / Manufacturer Management (`/api/company`)
+-----------------------------------------------------
+- `GET /api/company/metrics`: Brand ticket volume, branches, active warranty claims.
+- `GET /api/company/branches`: List all authorized franchise branches.
+- `POST /api/company/branches`
+  - Body: `{ "branch_name": "Noida Hub", "manager_name": "Amit", "email": "amit@service.com", "mobile": "+91 98111 22233", "address": "Sec 63", "pincode": "201301" }`
+- `PUT /api/company/branches/{branch_id}/access`
+  - Body: `{ "is_active": false }`
+  - Deactivates branch and revokes all technician sessions under it.
+
+5.4. Franchise Partner Hub (`/api/franchise`)
+---------------------------------------------
+- `GET /api/franchise/metrics`: Dispatch queue, open jobs, technician count.
+- `GET /api/franchise/technicians`: List technicians.
+- `POST /api/franchise/technicians`
+  - Body: `{ "name": "Rahul Sharma", "title": "Senior Field Specialist", "mobile": "+91 98111 22334", "email": "rahul@crompton-service.com", "address": "Noida", "pincode": "201301" }`
+- `PUT /api/franchise/technicians/{technician_id}/access`
+  - Body: `{ "is_active": false }`
+  - Deactivates technician and revokes active token.
+
+5.5. Field Technician Operations (`/api/technician`)
+----------------------------------------------------
+- `GET /api/technician/jobs`: List assigned tickets.
+- `POST /api/technician/jobs/{request_id}/start`: Body: `{ "otp": "5921" }`.
+- `POST /api/technician/jobs/{request_id}/complete`:
+  - Body:
+    ```json
+    {
+      "diagnosis": "Compressor relay burned out",
+      "work_done": "Replaced relay and tested cooling cycle",
+      "parts_used": "[{\"part_id\": \"part_1\", \"qty\": 1, \"price\": 450.0}]",
+      "labor_cost": 350.0,
+      "inspection_fee": 299.0,
+      "discount_amount": 0.0,
+      "completion_otp": "8301",
+      "customer_signature_url": "data:image/png;base64,...",
+      "technician_signature_url": "data:image/png;base64,..."
+    }
+    ```
+- `POST /api/technician/location`: Body: `{ "latitude": 28.5355, "longitude": 77.3910 }`.
+
+5.6. Service Requests & Life Cycle Management (`/api/requests`)
+---------------------------------------------------------------
+- `GET /api/requests`: Lists requests authorized for current role.
+- `POST /api/requests`:
+  - Body: `{ "appliance_id": "app_1", "issue_description": "Water leaking from bottom", "preferred_time": "Tomorrow, 2:00 PM - 5:00 PM" }`
+  - Automatically generates 4-digit start and completion OTPs.
+
+
+================================================================================
+6. SECURITY, SESSIONS & AUTHENTICATION MODEL
+================================================================================
+1. Password Storage:
+   - Uses PBKDF2-HMAC-SHA256 with 100,000 iterations and 16-byte random salt.
+   - Database hash format: `pbkdf2_sha256$100000$<salt_hex>$<digest_hex>`.
+2. Session Token Architecture:
+   - 64-character secure hexadecimal token generated via `secrets.token_hex(32)`.
+   - Stored in `user_sessions` as a SHA-256 hash (`token_hash`).
+   - Revocation: `revoke_all_user_sessions(user_id, db)` instantly removes all
+     session rows for a user upon deactivation or password change.
+3. OTP Generation & Verification:
+   - 6-digit random number generated via `secrets.randbelow(900000) + 100000`.
+   - Stored in `auth_otps` table as a SHA-256 hash (`otp_hash`) with 10-minute expiry.
+   - Validated using constant-time string comparison (`hmac.compare_digest`).
+4. Dual-Key Browser Storage Compatibility:
+   - When saving authenticated sessions in JavaScript, keys are set across both
+     `servsure_*` and `servora_*` namespaces (`servsure_user`, `servora_user`).
+
+
+================================================================================
+7. PRODUCTION DEPLOYMENT (RENDER, VERCEL, AIVEN MYSQL)
+================================================================================
+
+7.1. Managed MySQL Setup (Aiven)
 --------------------------------
-1. In Render, create a new Web Service connected to your repository.
-2. Root Directory: backend
-3. Environment: Python 3
-4. Build Command: pip install -r requirements.txt
-5. Start Command: uvicorn main:app --host 0.0.0.0 --port $PORT
-6. Set Environment Variables in Render:
-   - DATABASE_URL: Your Aiven MySQL URI.
-   - ALLOWED_ORIGINS: Your Vercel frontend domain(s) (e.g., https://servsure.vercel.app).
-   - BREVO_API_KEY: Your Brevo transactional API key.
-   - BREVO_SENDER_EMAIL: Your verified sender email address in Brevo.
-   - BREVO_SENDER_NAME: ServSure
-   - FRONTEND_BASE_URL: https://servsure.vercel.app
-   - DEMO_PASSWORD: A secure random password for development seed safety.
+1. Provision a MySQL 8.0+ service in Aiven Cloud.
+2. In the Aiven console, copy the Service URI.
+3. Format the URI for SQLAlchemy with the PyMySQL driver:
+   `mysql+pymysql://avnadmin:PASSWORD@HOST:PORT/defaultdb?ssl-mode=REQUIRED`
 
-8.3. Deploying Frontend to Vercel
+7.2. Backend Deployment on Render
 ---------------------------------
-1. Import repository into Vercel.
-2. Root Directory: set to frontend.
-3. Framework Preset: select Other.
-4. Deploy. Vercel reads frontend/vercel.json to configure clean URL routing.
-5. In frontend/js/config.js, ensure DEFAULT_RENDER_API points to your Render backend URL.
+1. In Render, select **New Web Service** -> Connect GitHub repository.
+2. Root Directory: `backend`
+3. Environment: `Python 3`
+4. Build Command: `pip install -r requirements.txt`
+5. Start Command: `uvicorn main:app --host 0.0.0.0 --port $PORT`
+6. Set Environment Variables in Render:
+   - `DATABASE_URL`: `mysql+pymysql://avnadmin:PASSWORD@HOST:PORT/defaultdb?ssl-mode=REQUIRED`
+   - `ALLOWED_ORIGINS`: `https://servsure.vercel.app,https://servora-frontend-xi.vercel.app`
+   - `FRONTEND_BASE_URL`: `https://servsure.vercel.app`
+   - `BREVO_API_KEY`: `<Your Brevo API Key>`
+   - `BREVO_SENDER_EMAIL`: `<Your verified Brevo sender email>`
+   - `BREVO_SENDER_NAME`: `ServSure`
+   - `GOOGLE_CLIENT_ID`: `<Google OAuth Client ID>`
+   - `KEEP_ALIVE_INTERVAL_SECONDS`: `840`
+   - `PING_URL`: `https://servora-3v6b.onrender.com`
+
+7.3. Frontend Deployment on Vercel
+----------------------------------
+1. In Vercel, click **Add New Project** -> Import repository.
+2. Root Directory: click Edit and select `frontend`.
+3. Framework Preset: select **Other**.
+4. Build Command: (leave empty).
+5. Output Directory: (leave empty).
+6. Click **Deploy**. Vercel reads `frontend/vercel.json` for security headers and routing.
 
 
 ================================================================================
-9. HOW-TO GUIDES FOR COMMON EXTENSIONS
+8. TROUBLESHOOTING & OPERATIONAL GOTCHAS
 ================================================================================
-
-9.1. Adding a New API Endpoint
-------------------------------
-1. Identify the logical controller in backend/app/routes/ (e.g., company.py).
-2. Define request and response schemas in backend/app/schemas/__init__.py.
-3. Add the endpoint with appropriate role and session dependencies:
-   ```python
-   @router.post("/custom-action", response_model=CustomResponse)
-   def custom_action(
-       payload: CustomPayload,
-       db: Session = Depends(get_db),
-       current_user: UserModel = Depends(get_authenticated_user)
-   ):
-       # Role authorization check
-       if current_user.role != "company":
-           raise HTTPException(status_code=403, detail="Unauthorized")
-       # Business logic...
-       return { "status": "success" }
-   ```
-
-9.2. Adding a Database Column / Running Migrations
--------------------------------------------------
-1. Add the new Column to the model in backend/app/db/models.py.
-2. Because production uses an existing database, add an idempotent migration check
-   in backend/app/seeds.py:
-   ```python
-   table_columns = {col["name"] for col in inspect(engine).get_columns("table_name")}
-   if "new_column" not in table_columns:
-       with engine.begin() as connection:
-           connection.execute(text("ALTER TABLE table_name ADD COLUMN new_column VARCHAR(64) NULL"))
-   ```
-3. Test locally by running python main.py.
-
-9.3. Adding a Feature to Ops Dashboard
---------------------------------------
-1. Add necessary dialog or table markup in frontend/admin-dashboard.html,
-   company-dashboard.html, franchise-dashboard.html, or technician-dashboard.html.
-2. In frontend/js/ops-dashboard.js:
-   - Add state variable if needed.
-   - Add render logic inside renderPage(pageName).
-   - Wire event listeners in initOpsEvents().
-
-9.4. Running Verification & Sanity Checks
------------------------------------------
-- Check Python Syntax:
-  python3 -m py_compile backend/main.py backend/app/security.py backend/app/seeds.py backend/app/routes/*.py
-- Check JavaScript Syntax:
-  node --check frontend/js/*.js
+1. "sqlite3.OperationalError: database is locked" (Local Development):
+   - SQLite locks the file during write transactions. Ensure sessions are closed
+     promptly with `db.close()`. For high concurrency, point to MySQL.
+2. Aiven MySQL SSL Connection Errors:
+   - Error: `pymysql.err.OperationalError: (3159, 'Connections using insecure transport are prohibited')`.
+   - Solution: Ensure `?ssl-mode=REQUIRED` is appended to `DATABASE_URL`. The backend
+     `session.py` translates this into `{ "check_hostname": False }` for PyMySQL.
+3. Brevo Email HTTP 502/503:
+   - Error: `Brevo is not configured. Set BREVO_API_KEY and BREVO_SENDER_EMAIL`.
+   - Solution: Ensure `BREVO_API_KEY` and `BREVO_SENDER_EMAIL` are valid and the
+     sender email is verified in your Brevo account dashboard.
+4. Render 15-Minute Container Sleep:
+   - Render free-tier spins down after 15 minutes of inactivity.
+   - Solution: The autonomous background worker `keep_alive_ping_loop` pings
+     `/health` every 14 minutes, keeping the container active 24/7.
+5. "Role Mismatch" Redirect on Login:
+   - If an operational user (e.g., technician) attempts to log in via `admin-login.html`
+     or `index.html`, the client displays an alert and redirects them to their correct
+     portal (`technician-login.html`).
 
 
 ================================================================================
-10. CODING CONVENTIONS, GOTCHAS & BEST PRACTICES
+9. DISCREPANCY LOG & CODEBASE AUDIT NOTES
 ================================================================================
-1. Never Remove validate_user_active_and_hierarchy:
-   - Every sensitive or state-changing endpoint must call validate_user_active_and_hierarchy.
-   - This ensures deactivated companies, branches, or technicians cannot perform actions.
-2. Preserving Dual Branding Compatibility:
-   - When reading or setting local storage items in JavaScript, maintain fallback
-     support for servsure_* and servora_* keys.
-3. Password Handling:
-   - Always hash passwords using make_password_hash (pbkdf2_sha256$).
-   - Never store plain-text passwords in the database.
-4. Email Delivery:
-   - The platform treats Brevo configuration strictly. If Brevo credentials are
-     missing or misconfigured during onboarding or OTP requests, an informative
-     HTTP error is raised to the client rather than failing silently.
-5. SQLite vs MySQL Data Types:
-   - Use standard SQLAlchemy types (String(64), Integer, Float, Boolean, DateTime).
-   - Avoid engine-specific types like MySQL ENUM or JSON functions to ensure 100%
-     compatibility between local development (SQLite) and production (MySQL).
+During the architectural codebase audit, the following 5 critical discrepancies
+were identified between the initial rough draft documentation and the actual codebase:
+
+1. Discrepancy: Purged Demo Seed Accounts
+   - Initial Draft: Listed `riya.patel@crompton.com` (Company) and `shreyansh@servsure.com`
+     (Customer) as default demo accounts.
+   - Reality in Code: Both `company_1` ("Riya Patel") and `customer_1` were explicitly
+     purged from `servora.db` and [`backend/app/seeds.py`]. The active seeded demo
+     accounts are `admin@servsure.com` and `rahul.sharma@crompton-service.com`.
+
+2. Discrepancy: Outdated Feature Status (Prototypes vs. Live Implementation)
+   - Initial Draft: Claimed operational dashboards were incomplete prototypes lacking
+     real account provisioning, password reset, and access controls.
+   - Reality in Code: All 4 operations dashboards (Admin, Company, Franchise, Technician)
+     are 100% functional with real Brevo onboarding invitations, universal 2-step Forgot
+     Password email OTP, in-dashboard password change, multi-tier SLA monitoring,
+     and digital job card creation.
+
+3. Discrepancy: Operational Access Control & Cascading Deactivation
+   - Initial Draft: No documentation of access toggle switches or cascading session revocation.
+   - Reality in Code: Fully implemented across Admin, Company, and Franchise tables
+     via `PUT /api/.../access` and enforced globally via `validate_user_active_and_hierarchy`.
+
+4. Discrepancy: Missing Environment Variables
+   - Initial Draft: Omitted `GOOGLE_CLIENT_ID`, `ALLOWED_ORIGINS`, `FRONTEND_BASE_URL`,
+     `KEEP_ALIVE_INTERVAL_SECONDS`, and `PING_URL`.
+   - Reality in Code: Fully implemented and actively utilized in `config.py` and `main.py`.
+
+5. Discrepancy: Residual Legacy Brand Names
+   - Initial Draft: Residual references to `Servora` were present in configuration
+     comments, `render.yaml`, and `.env.example`.
+   - Reality in Code: Standardized to `ServSure` while maintaining dual-brand
+     compatibility for session storage and HTTP request headers.
 
 ================================================================================
 End of Documentation

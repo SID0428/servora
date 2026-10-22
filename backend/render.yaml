@@ -21,7 +21,7 @@ services:
       - key: BREVO_SENDER_EMAIL
         sync: false
       - key: BREVO_SENDER_NAME
-        value: Servora
+        value: ServSure
       - key: FRONTEND_BASE_URL
         value: https://servora-frontend-xi.vercel.app
       - key: KEEP_ALIVE_INTERVAL_SECONDS
