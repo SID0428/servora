@@ -256,6 +256,7 @@ def verify_registration_otp(payload: CustomerRegistrationVerifyOtp, response: Re
         role="customer",
         password_hash=user_data["password_hash"],
         address=user_data.get("address"),
+        created_at=datetime.utcnow(),
     )
     db.add(user)
     db.delete(record)
@@ -420,6 +421,7 @@ def register_customer(payload: CustomerRegistration, response: Response, db: Ses
         role="customer",
         password_hash=make_password_hash(payload.password),
         address=(payload.address or "").strip() or None,
+        created_at=datetime.utcnow(),
     )
     db.add(user)
     try:
@@ -664,6 +666,7 @@ def reset_forgot_password(payload: ForgotPasswordReset, db: Session = Depends(ge
         raise HTTPException(status_code=400, detail="Invalid or expired verification code. Please check your code or request a new one.")
 
     user.password_hash = make_password_hash(payload.new_password)
+    user.is_active = True
 
     # If user had an onboarding invite pending, finalize onboarding
     if user.role == "company":

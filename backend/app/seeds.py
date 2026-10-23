@@ -31,6 +31,9 @@ def seed_database(db: Session):
     if "is_active" not in user_columns:
         with engine.begin() as connection:
             connection.execute(text("ALTER TABLE users ADD COLUMN is_active BOOLEAN NOT NULL DEFAULT 1"))
+    if "created_at" not in user_columns:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE users ADD COLUMN created_at DATETIME NULL"))
 
     appliance_columns = {column["name"] for column in inspect(engine).get_columns("appliances")}
     if "company_id" not in appliance_columns:

@@ -54,7 +54,7 @@ def branch_payload(branch: CompanyBranchModel, onboarding: BranchOnboardingModel
         "mobile": branch.mobile,
         "address": branch.address,
         "pincode": branch.pincode,
-        "is_active": getattr(branch_user, "is_active", True) if branch_user else True,
+        "is_active": getattr(branch_user, "is_active", False if (onboarding and not onboarding.password_set_at) else True) if branch_user else False,
         "password_set": bool(onboarding and onboarding.password_set_at),
         "password_set_at": onboarding.password_set_at.isoformat() if onboarding and onboarding.password_set_at else None,
         "created_at": branch.created_at.isoformat(),
@@ -68,7 +68,7 @@ def issue_franchise_invite(branch: CompanyBranchModel, onboarding: BranchOnboard
     onboarding.pending_password_hash = None
     onboarding.otp_hash = None
     onboarding.otp_expires_at = None
-    frontend_url = os.getenv("FRONTEND_BASE_URL", "https://servora-frontend-xi.vercel.app").rstrip("/")
+    frontend_url = os.getenv("FRONTEND_BASE_URL", "https://servsure.vercel.app").rstrip("/")
     setup_url = f"{frontend_url}/franchise-setup.html?token={token}"
     values = {
         "branch": branch.branch_name,
@@ -646,9 +646,10 @@ def list_company_technicians(
             "rating": round(t.rating or 4.9, 1) if t else 4.9,
             "total_jobs": completed_jobs if completed_jobs > 0 else (t.total_jobs or 0 if t else 0),
             "active_jobs": active_jobs,
-            "is_active": getattr(u, "is_active", True) if u else True,
-            "status": "Active / Field Ready" if (getattr(u, "is_active", True) if u else True) else "Access Suspended",
+            "is_active": getattr(u, "is_active", False) if u else False,
+            "status": "Pending Setup" if not (o and o.password_set_at) else ("Active / Field Ready" if (getattr(u, "is_active", False) if u else False) else "Access Suspended"),
             "password_set": bool(o and o.password_set_at),
+            "password_set_at": o.password_set_at.isoformat() if (o and o.password_set_at) else None,
             "created_at": link.created_at.strftime("%d %b %Y") if getattr(link, "created_at", None) else "",
             "avatar": (t.avatar if t else None) or (name[:2].upper() if name else "TC")
         })
@@ -724,6 +725,8 @@ def create_company_branch(payload: CompanyBranchCreate, request: Request, db: Se
         role="branch",
         address=f"{branch.address}, {branch.pincode}",
         password_hash=None,
+        is_active=False,
+        created_at=datetime.utcnow(),
     )
     onboarding = BranchOnboardingModel(branch_id=branch_id)
     # The onboarding row references users.id. Flush the franchise user first
@@ -736,7 +739,7 @@ def create_company_branch(payload: CompanyBranchCreate, request: Request, db: Se
         issue_franchise_invite(branch, onboarding, company)
         db.commit()
         db.refresh(branch)
-        return branch_payload(branch, onboarding)
+        return branch_payload(branch, onboarding, branch_user)
     except Exception:
         db.rollback()
         raise
@@ -839,6 +842,7 @@ def verify_franchise_setup_otp(payload: CompanyOtpVerify, db: Session = Depends(
         raise HTTPException(status_code=400, detail="The verification code is incorrect")
 
     branch_user.password_hash = onboarding.pending_password_hash
+    branch_user.is_active = True
     onboarding.password_set_at = datetime.utcnow()
     onboarding.pending_password_hash = None
     onboarding.otp_hash = None
@@ -849,7 +853,7 @@ def verify_franchise_setup_otp(payload: CompanyOtpVerify, db: Session = Depends(
 
     company = db.query(UserModel).filter_by(id=branch.company_id, role="company").first()
     company_name = company.name if company else "your company"
-    frontend_url = os.getenv("FRONTEND_BASE_URL", "https://servora-frontend-xi.vercel.app").rstrip("/")
+    frontend_url = os.getenv("FRONTEND_BASE_URL", "https://servsure.vercel.app").rstrip("/")
     portal_url = f"{frontend_url}/franchise-login.html"
     confirmation_email_sent = False
     try:

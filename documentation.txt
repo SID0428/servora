@@ -4,8 +4,8 @@ PRODUCTION-GRADE TECHNICAL ARCHITECTURE & DEVELOPER ONBOARDING MANUAL
 ================================================================================
 File: documentation.txt
 Platform: ServSure (formerly Servora)
-Version: 1.1.4 (Production Release - Streamlined Technician Routing & Bottom Panel Decluttering)
-Last Updated: October 22, 2026 (23:05 IST)
+Version: 1.1.5 (Production Release - First-Time Setup Activation & Account Creation/Password Timestamps)
+Last Updated: October 23, 2026 (22:25 IST)
 Repository: https://github.com/SID0428/servora.git
 
 Welcome to ServSure! This manual is the definitive, authoritative reference
@@ -300,7 +300,8 @@ All database entities are defined in `backend/app/db/models.py`:
    - `password_hash`: String(255), Nullable: True (PBKDF2-SHA256).
    - `avatar`: Text, Nullable: True.
    - `address`: Text, Nullable: True.
-   - `is_active`: Boolean, Default: True, Nullable: False.
+   - `is_active`: Boolean, Default: True, Nullable: False (Set to False upon creation for company, branch, and technician accounts until first-time password setup is verified via OTP).
+   - `created_at`: DateTime, Nullable: True, Default: utcnow (Auto-migrated on startup; records exact account registration timestamp).
 
 2. `UserSessionModel` (`user_sessions` table):
    - `token_hash`: String(64), Primary Key (SHA-256 of session token).
@@ -567,37 +568,40 @@ Request Headers:
 5.2. Platform Administration (`/api/admin`)
 -------------------------------------------
 - `GET /api/admin/metrics`: Platform-wide aggregate metrics.
-- `GET /api/admin/companies`: List all onboarded brand companies with setup status.
+- `GET /api/admin/companies`: List all onboarded brand companies with setup status (`created_at`, `password_set`, `password_set_at`, `is_active`).
 - `POST /api/admin/companies`
   - Body: `{ "name": "Crompton Consumer", "email": "corporate@crompton.com", "phone": "+91 22 12345678", "address": "Mumbai" }`
-  - Sends setup invitation link via Brevo.
+  - Creates brand user account with `is_active = False` (Pending Setup) and `created_at = utcnow()`.
+  - Sends setup invitation link pointing to `https://servsure.vercel.app` via Brevo. Account is only activated (`is_active = True`) and `password_set_at` recorded once the company verifies setup OTP and sets initial password.
 - `PUT /api/admin/companies/{company_id}/access`
   - Body: `{ "is_active": false }`
   - Deactivates company and immediately revokes all company, branch, and tech sessions.
 - `GET /api/admin/directory/{role}`:
-  - Role `"branch"`: Returns comprehensive list of all franchise branches with branch name, address, pincode, parent company name (`company_name`), manager name, mobile, active status, technician count (`technician_count`), and job count (`jobs_count`).
-  - Role `"technician"`: Returns list of all technicians with title/specialty, assigned branch name (`branch_name`), parent company name (`company_name`), mobile, rating, total jobs (`total_jobs`), and active status.
-  - Role `"customer"`: Returns list of customer users with phone, address, registered appliances count (`appliances_count`), total service requests (`total_requests`), ongoing requests (`ongoing_requests`), and completed requests (`completed_requests`).
-  - Role `"company"`: Returns onboarded companies with contact details and onboarding status.
+  - Role `"branch"`: Returns comprehensive list of all franchise branches with branch name, address, pincode, parent company name (`company_name`), manager name, mobile, active status, technician count (`technician_count`), job count (`jobs_count`), `created_at`, `password_set`, and `password_set_at`.
+  - Role `"technician"`: Returns list of all technicians with title/specialty, assigned branch name (`branch_name`), parent company name (`company_name`), mobile, rating, total jobs (`total_jobs`), active status, `created_at`, `password_set`, and `password_set_at`.
+  - Role `"customer"`: Returns list of customer users with phone, address, registered appliances count (`appliances_count`), total service requests (`total_requests`), ongoing requests (`ongoing_requests`), completed requests (`completed_requests`), `created_at`, and active status.
+  - Role `"company"`: Returns onboarded companies with contact details, `created_at`, `password_set_at`, and onboarding status.
 - `GET /api/admin/branches/{branch_id}`:
-  - Deep-dive branch inspection returning `{ branch, stats, people, inventory, service_history, warranty_claims }`.
+  - Deep-dive branch inspection returning `{ branch, stats, people, inventory, service_history, warranty_claims }` with `created_at`, `password_set`, and `password_set_at`.
 - `GET /api/admin/technicians/{technician_id}`:
-  - Deep-dive technician inspection returning `{ technician, services }` including assigned branch name, parent company name, specialty, contact details, rating, and service task list.
+  - Deep-dive technician inspection returning `{ technician, services }` including assigned branch name, parent company name, specialty, contact details, rating, `created_at`, `password_set`, `password_set_at`, and service task list.
 - `GET /api/admin/customers/{customer_id}`:
   - Deep-dive customer inspection returning `{ customer, stats, products, appliances, ongoing_services, completed_services, requests }` across all brands and service requests.
 
 5.3. Brand / Manufacturer Management (`/api/company`)
 -----------------------------------------------------
 - `GET /api/company/metrics`: Brand ticket volume, branches, active warranty claims.
-- `GET /api/company/branches`: List all authorized franchise branches.
+- `GET /api/company/branches`: List all authorized franchise branches with `created_at`, `password_set`, `password_set_at`, and `is_active`.
 - `POST /api/company/branches`
   - Body: `{ "branch_name": "Noida Hub", "manager_name": "Amit", "email": "amit@service.com", "mobile": "+91 98111 22233", "address": "Sec 63", "pincode": "201301" }`
+  - Creates branch user account with `is_active = False` (Pending Setup) and `created_at = utcnow()`.
+  - Sends setup invitation link pointing to `https://servsure.vercel.app`. Account becomes `is_active = True` and records `password_set_at` upon OTP verification.
 - `PUT /api/company/branches/{branch_id}/access`
   - Body: `{ "is_active": false }`
   - Deactivates branch and revokes all technician sessions under it.
 - `GET /api/company/technicians`:
   - Query parameters: `?branch_id=<branch_id>&search=<query>`
-  - Returns all technicians deployed across the company's franchise network, including their assigned branch name, branch manager, specialty, contact details, rating, and ongoing/completed jobs.
+  - Returns all technicians deployed across the company's franchise network, including their assigned branch name, branch manager, specialty, contact details, rating, ongoing/completed jobs, `created_at`, `password_set_at`, and active status.
 - `PUT /api/company/technicians/{technician_id}/access`:
   - Body: `{ "is_active": false }`
   - Toggles technician portal access and revokes active sessions on deactivation.
@@ -605,9 +609,11 @@ Request Headers:
 5.4. Franchise Partner Hub (`/api/franchise`)
 ---------------------------------------------
 - `GET /api/franchise/metrics`: Dispatch queue, open jobs, technician count.
-- `GET /api/franchise/technicians`: List technicians.
+- `GET /api/franchise/technicians`: List technicians with `created_at`, `password_set`, `password_set_at`, and active status.
 - `POST /api/franchise/technicians`
   - Body: `{ "name": "Vikram Sen", "title": "Senior Field Specialist", "mobile": "+91 98111 22334", "email": "vikram@franchise-service.com", "address": "Noida", "pincode": "201301" }`
+  - Creates technician user account with `is_active = False` (Pending Setup) and `created_at = utcnow()`.
+  - Sends setup invitation link pointing to `https://servsure.vercel.app`. Account becomes active upon OTP verification.
 - `PUT /api/franchise/technicians/{technician_id}/access`
   - Body: `{ "is_active": false }`
   - Deactivates technician and revokes active token.
@@ -887,6 +893,19 @@ were identified between the initial rough draft documentation and the actual cod
      strictly via "Job history", and clicking any completed visit presents the comprehensive completed work card
      with job card sign-offs, receipts, repeat visit diagnosis, and route maps. The "Earnings" navigation option
      and the redundant bottom panels have been removed, with full null guards in `ops-dashboard.js`.
+
+11. Discrepancy: First-Time Setup URL, Account Gating & Registration/Password Timestamps
+   - Initial Draft / Early Iteration: First-time password set links dispatched in onboarding emails referenced
+     the legacy deployment URL `https://servora-frontend-xi.vercel.app/`. Furthermore, newly created company,
+     branch, and technician accounts defaulted to `is_active = True`, leaving them immediately active in portals
+     even before password creation, and neither `created_at` nor `password_set_at` was presented in directory tables.
+   - Reality in Code: All setup emails and fallback redirects use `https://servsure.vercel.app/`.
+     Newly onboarded company, franchise branch, and technician accounts are created with `is_active = False`
+     ("Pending Setup"). Portal access and active state are strictly unlocked only after the recipient clicks
+     the setup link, verifies their 6-digit OTP, and sets their password (`verify_*_setup_otp`), at which point
+     `is_active` becomes `True` and `password_set_at` is permanently recorded. `created_at` has been added
+     to `UserModel` (with startup auto-migration), and both "Created On" and "Password Set" dates are actively
+     displayed across Admin, Company, and Franchise directory tables and detail inspection modals.
 
 ================================================================================
 End of Documentation

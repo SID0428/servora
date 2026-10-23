@@ -14,6 +14,7 @@ class UserModel(Base):
     avatar = Column(Text, nullable=True)
     address = Column(Text, nullable=True)
     is_active = Column(Boolean, default=True, nullable=False)
+    created_at = Column(DateTime, nullable=True, default=datetime.utcnow)
 
 class UserSessionModel(Base):
     __tablename__ = "user_sessions"

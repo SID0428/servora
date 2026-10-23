@@ -114,8 +114,17 @@ try {
   allCatalogParts = JSON.parse(localStorage.getItem("servora_cache_catalog_all") || "[]");
 } catch {}
 
-const icons = { Dashboard: "⌂", Overview: "⌂", "My jobs": "▤", "Job history": "◷", "Route & schedule": "⌖", Earnings: "$", "Help center": "?", "Service requests": "▣", "Incoming service requests": "▣", Technicians: "♙", "Inventory & Spares": "📦", "Warranty Claims": "🛡️", "Spares Catalog": "🔧", Escalations: "🚨", "Active jobs": "⚒", Customers: "♧", Reports: "▥", Settings: "⚙", Companies: "▦", Branches: "⌖", "System settings": "⚙" };
 function safe(value) { const node = document.createElement("span"); node.textContent = value ?? ""; return node.innerHTML; }
+function formatDisplayDate(dateVal) {
+  if (!dateVal) return "—";
+  try {
+    const d = new Date(dateVal);
+    if (isNaN(d.getTime())) return String(dateVal);
+    return d.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+  } catch (e) {
+    return String(dateVal || "—");
+  }
+}
 function isJobScheduledForToday(dateStr) {
   if (!dateStr || typeof dateStr !== "string") return false;
   const now = new Date();
@@ -827,8 +836,16 @@ function renderCompanyBranches() {
   const query = $("requestSearch") ? $("requestSearch").value.trim().toLowerCase() : "";
   const filtered = branches.filter((branch) => [branch.branch_name, branch.manager_name, branch.email, branch.mobile, branch.address, branch.pincode].join(" ").toLowerCase().includes(query));
   if ($("requestRows")) $("requestRows").innerHTML = filtered.length ? filtered.map((branch) => {
+    const isPwSet = Boolean(branch.password_set || branch.password_set_at);
     const isAccessActive = branch.is_active !== false;
-    const accessPill = isAccessActive ? `<span class="status-pill completed">Active</span>` : `<span class="status-pill cancelled">Access Suspended</span>`;
+    let accessPill = "";
+    if (!isPwSet) {
+      accessPill = `<span class="status-pill pending">Pending Setup</span>`;
+    } else if (isAccessActive) {
+      accessPill = `<span class="status-pill completed">Active</span>`;
+    } else {
+      accessPill = `<span class="status-pill cancelled">Access Suspended</span>`;
+    }
     const toggleBtn = isAccessActive
       ? `<button type="button" class="table-action text-rose-600 hover:bg-rose-50 font-semibold" data-toggle-branch-access="${safe(branch.id)}" data-next-active="false">🚫 Disable Access</button>`
       : `<button type="button" class="table-action text-emerald-600 hover:bg-emerald-50 font-semibold" data-toggle-branch-access="${safe(branch.id)}" data-next-active="true">✅ Enable Access</button>`;
@@ -915,8 +932,22 @@ async function openCompanyBranchDetail(branchId) {
     if ($("branchModalMobile")) $("branchModalMobile").textContent = `📞 ${existingBranch.mobile || existingBranch.phone || "—"}`;
     if ($("branchModalAddress")) $("branchModalAddress").textContent = `📍 ${existingBranch.address || "—"} (PIN: ${existingBranch.pincode || "—"})`;
     if ($("branchModalStatusBadge")) {
-      $("branchModalStatusBadge").textContent = (existingBranch.password_set || existingBranch.is_active) ? "Active" : "Pending Setup";
-      $("branchModalStatusBadge").className = `status-pill ${(existingBranch.password_set || existingBranch.is_active) ? "completed" : "pending"}`;
+      const isPwSet = Boolean(existingBranch.password_set || existingBranch.password_set_at);
+      if (!isPwSet) {
+        $("branchModalStatusBadge").textContent = "Pending Setup";
+        $("branchModalStatusBadge").className = "status-pill pending";
+      } else if (existingBranch.is_active !== false) {
+        $("branchModalStatusBadge").textContent = "Active";
+        $("branchModalStatusBadge").className = "status-pill completed";
+      } else {
+        $("branchModalStatusBadge").textContent = "Disabled";
+        $("branchModalStatusBadge").className = "status-pill cancelled";
+      }
+    }
+    if ($("branchModalCreated")) $("branchModalCreated").textContent = `📅 Created: ${formatDisplayDate(existingBranch.created_at)}`;
+    if ($("branchModalPasswordSet")) {
+      const isPwSet = Boolean(existingBranch.password_set || existingBranch.password_set_at);
+      $("branchModalPasswordSet").textContent = `🔑 Password Set: ${isPwSet ? formatDisplayDate(existingBranch.password_set_at) : "Pending Setup"}`;
     }
   }
 
@@ -938,8 +969,22 @@ async function openCompanyBranchDetail(branchId) {
     if ($("branchModalAvatar")) $("branchModalAvatar").textContent = b.avatar || (b.name || "BR").slice(0, 2).toUpperCase();
     if ($("branchModalTitle")) $("branchModalTitle").textContent = b.name;
     if ($("branchModalStatusBadge")) {
-      $("branchModalStatusBadge").textContent = b.status || "Active";
-      $("branchModalStatusBadge").className = `status-pill ${b.status === "Active" ? "completed" : "pending"}`;
+      const isPwSet = Boolean(b.password_set || b.password_set_at);
+      if (!isPwSet) {
+        $("branchModalStatusBadge").textContent = "Pending Setup";
+        $("branchModalStatusBadge").className = "status-pill pending";
+      } else if (b.is_active !== false) {
+        $("branchModalStatusBadge").textContent = "Active";
+        $("branchModalStatusBadge").className = "status-pill completed";
+      } else {
+        $("branchModalStatusBadge").textContent = "Disabled";
+        $("branchModalStatusBadge").className = "status-pill cancelled";
+      }
+    }
+    if ($("branchModalCreated")) $("branchModalCreated").textContent = `📅 Created: ${formatDisplayDate(b.created_at)}`;
+    if ($("branchModalPasswordSet")) {
+      const isPwSet = Boolean(b.password_set || b.password_set_at);
+      $("branchModalPasswordSet").textContent = `🔑 Password Set: ${isPwSet ? formatDisplayDate(b.password_set_at) : "Pending Setup"}`;
     }
     if ($("branchModalManager")) $("branchModalManager").textContent = `👤 Manager: ${b.manager_name || "—"}`;
     if ($("branchModalEmail")) $("branchModalEmail").textContent = `✉️ ${b.email || "—"}`;
@@ -1238,8 +1283,16 @@ function renderFranchiseTechnicians() {
   const query = $("requestSearch") ? $("requestSearch").value.trim().toLowerCase() : "";
   const filtered = technicians.filter((technician) => [technician.name, technician.title, technician.email, technician.mobile, technician.address, technician.pincode].join(" ").toLowerCase().includes(query));
   if ($("requestRows")) $("requestRows").innerHTML = filtered.length ? filtered.map((technician) => {
+    const isPwSet = Boolean(technician.password_set || technician.password_set_at);
     const isAccessActive = technician.is_active !== false;
-    const accessPill = isAccessActive ? `<span class="status-pill completed">Active</span>` : `<span class="status-pill cancelled">Access Suspended</span>`;
+    let accessPill = "";
+    if (!isPwSet) {
+      accessPill = `<span class="status-pill pending">Pending Setup</span>`;
+    } else if (isAccessActive) {
+      accessPill = `<span class="status-pill completed">Active</span>`;
+    } else {
+      accessPill = `<span class="status-pill cancelled">Access Suspended</span>`;
+    }
     const toggleBtn = isAccessActive
       ? `<button class="table-action text-rose-600 hover:bg-rose-50 font-semibold" data-toggle-tech-access="${safe(technician.id)}" data-next-active="false">🚫 Disable Access</button>`
       : `<button class="table-action text-emerald-600 hover:bg-emerald-50 font-semibold" data-toggle-tech-access="${safe(technician.id)}" data-next-active="true">✅ Enable Access</button>`;
@@ -1321,10 +1374,20 @@ function renderCompanies() {
   if ($("activityContent")) $("activityContent").innerHTML = `<div class="section-empty">Click on any company row or "View Details →" to inspect its branches, technicians, registered appliances, and active tickets.</div>`;
   if ($("bottomTitle")) $("bottomTitle").textContent = "Company directory";
   if ($("bottomSubtitle")) $("bottomSubtitle").textContent = "Company portal accounts registered on ServSure.";
-  if ($("requestHead")) $("requestHead").innerHTML = ["Company", "Administrator email", "Phone", "Access Status", "Details", "Action"].map((name) => `<th>${name}</th>`).join("");
+  if ($("requestHead")) $("requestHead").innerHTML = ["Company", "Administrator email", "Phone", "Created On", "Password Set", "Access Status", "Details", "Action"].map((name) => `<th>${name}</th>`).join("");
   $("requestRows").innerHTML = companies.length ? companies.map((company) => {
+    const isPwSet = Boolean(company.password_set || company.password_set_at);
     const isAccessActive = company.is_active !== false;
-    const accessPill = isAccessActive ? `<span class="status-pill completed">Active</span>` : `<span class="status-pill cancelled">Access Suspended</span>`;
+    let accessPill = "";
+    if (!isPwSet) {
+      accessPill = `<span class="status-pill pending">Pending Setup</span>`;
+    } else if (isAccessActive) {
+      accessPill = `<span class="status-pill completed">Active</span>`;
+    } else {
+      accessPill = `<span class="status-pill cancelled">Access Suspended</span>`;
+    }
+    const createdText = formatDisplayDate(company.created_at);
+    const pwSetText = isPwSet ? formatDisplayDate(company.password_set_at) : `<span class="text-amber-600 font-medium text-xs">Pending Setup</span>`;
     const toggleBtn = isAccessActive
       ? `<button class="table-action text-rose-600 hover:bg-rose-50 font-semibold" onclick="event.stopPropagation();" data-toggle-company-access="${safe(company.id)}" data-next-active="false">🚫 Disable Access</button>`
       : `<button class="table-action text-emerald-600 hover:bg-emerald-50 font-semibold" onclick="event.stopPropagation();" data-toggle-company-access="${safe(company.id)}" data-next-active="true">✅ Enable Access</button>`;
@@ -1333,11 +1396,13 @@ function renderCompanies() {
       <td><div class="customer-cell"><span class="customer-avatar">${safe(company.name.split(/\s+/).map((part) => part[0]).slice(0, 2).join(""))}</span><span class="customer-name">${safe(company.name)}<small>${safe(company.id)}</small></span></div></td>
       <td>${safe(company.email)}</td>
       <td>${safe(company.phone)}</td>
+      <td class="text-slate-600 text-xs font-mono">${createdText}</td>
+      <td class="text-slate-600 text-xs font-mono">${pwSetText}</td>
       <td>${accessPill}</td>
       <td><button class="table-action px-2.5 py-1 rounded bg-blue-50 text-blue-700 hover:bg-blue-100 font-semibold text-xs" onclick="event.stopPropagation(); viewCompanyDetails('${safe(company.id)}')">View Details →</button></td>
       <td>${toggleBtn}</td>
     </tr>`;
-  }).join("") : `<tr><td class="empty-row" colspan="6">No companies yet. Add your first company to get started.</td></tr>`;
+  }).join("") : `<tr><td class="empty-row" colspan="8">No companies yet. Add your first company to get started.</td></tr>`;
 
   document.querySelectorAll("[data-toggle-company-access]").forEach((button) => button.addEventListener("click", async () => {
     const companyId = button.dataset.toggleCompanyAccess;
@@ -1386,6 +1451,8 @@ window.viewCompanyDetails = async function(companyId) {
   if ($("companyDetailEmail")) $("companyDetailEmail").textContent = "…";
   if ($("companyDetailPhone")) $("companyDetailPhone").textContent = "…";
   if ($("companyDetailAddress")) $("companyDetailAddress").textContent = "…";
+  if ($("companyDetailCreated")) $("companyDetailCreated").textContent = "📅 Created: …";
+  if ($("companyDetailPasswordSet")) $("companyDetailPasswordSet").textContent = "🔑 Password Set: …";
   ["companyStatBranches", "companyStatTechs", "companyStatProducts", "companyStatTotalServices", "companyStatOngoing", "companyStatCompleted"].forEach(id => {
     if ($(id)) $(id).textContent = "…";
   });
@@ -1407,6 +1474,21 @@ window.viewCompanyDetails = async function(companyId) {
     if ($("companyDetailEmail")) $("companyDetailEmail").textContent = company.email;
     if ($("companyDetailPhone")) $("companyDetailPhone").textContent = company.phone;
     if ($("companyDetailAddress")) $("companyDetailAddress").textContent = company.address || "Registered Corporate Office";
+    if ($("companyDetailCreated")) $("companyDetailCreated").textContent = `📅 Created: ${formatDisplayDate(company.created_at)}`;
+    const isCompPwSet = Boolean(company.password_set || company.password_set_at);
+    if ($("companyDetailPasswordSet")) $("companyDetailPasswordSet").textContent = `🔑 Password Set: ${isCompPwSet ? formatDisplayDate(company.password_set_at) : "Pending Setup"}`;
+    if ($("companyDetailStatus")) {
+      if (!isCompPwSet) {
+        $("companyDetailStatus").textContent = "Pending Setup";
+        $("companyDetailStatus").className = "status-pill pending";
+      } else if (company.is_active !== false) {
+        $("companyDetailStatus").textContent = "Active Partner";
+        $("companyDetailStatus").className = "status-pill completed";
+      } else {
+        $("companyDetailStatus").textContent = "Access Suspended";
+        $("companyDetailStatus").className = "status-pill cancelled";
+      }
+    }
 
     if ($("companyStatBranches")) $("companyStatBranches").textContent = stats.total_branches;
     if ($("companyStatTechs")) $("companyStatTechs").textContent = stats.total_technicians;
@@ -1718,10 +1800,16 @@ function renderCompanyTechnicians() {
 
   if ($("requestRows")) {
     $("requestRows").innerHTML = filtered.length ? filtered.map((t) => {
+      const isPwSet = Boolean(t.password_set || t.password_set_at);
       const isAccessActive = t.is_active !== false;
-      const accessPill = isAccessActive 
-        ? `<span class="status-pill completed">Active</span>` 
-        : `<span class="status-pill cancelled">Access Suspended</span>`;
+      let accessPill = "";
+      if (!isPwSet) {
+        accessPill = `<span class="status-pill pending">Pending Setup</span>`;
+      } else if (isAccessActive) {
+        accessPill = `<span class="status-pill completed">Active</span>`;
+      } else {
+        accessPill = `<span class="status-pill cancelled">Access Suspended</span>`;
+      }
       
       const toggleBtn = isAccessActive
         ? `<button type="button" class="table-action text-rose-600 hover:bg-rose-50 font-semibold" data-toggle-company-tech-access="${safe(t.id)}" data-next-active="false">🚫 Disable Access</button>`
@@ -3100,8 +3188,22 @@ async function openAdminTechnicianDetail(techId) {
     if ($("techModalPhone")) $("techModalPhone").textContent = existing.phone || "—";
     if ($("techModalAddress")) $("techModalAddress").textContent = existing.address ? `${existing.address} ${existing.pincode ? `(PIN: ${existing.pincode})` : ""}` : "Service Territory";
     if ($("techModalStatus")) {
-      $("techModalStatus").textContent = existing.is_active ? "Active / Verified" : "Access Disabled";
-      $("techModalStatus").className = `status-pill ${existing.is_active ? "completed" : "pending"}`;
+      const isPwSet = Boolean(existing.password_set || existing.password_set_at);
+      if (!isPwSet) {
+        $("techModalStatus").textContent = "Pending Setup";
+        $("techModalStatus").className = "status-pill pending";
+      } else if (existing.is_active) {
+        $("techModalStatus").textContent = "Active / Verified";
+        $("techModalStatus").className = "status-pill completed";
+      } else {
+        $("techModalStatus").textContent = "Access Disabled";
+        $("techModalStatus").className = "status-pill cancelled";
+      }
+    }
+    if ($("techModalCreated")) $("techModalCreated").textContent = formatDisplayDate(existing.created_at);
+    if ($("techModalPasswordSet")) {
+      const isPwSet = Boolean(existing.password_set || existing.password_set_at);
+      $("techModalPasswordSet").textContent = isPwSet ? formatDisplayDate(existing.password_set_at) : "Pending Setup";
     }
   }
 
@@ -3124,8 +3226,22 @@ async function openAdminTechnicianDetail(techId) {
     if ($("techModalPhone")) $("techModalPhone").textContent = t.phone || "—";
     if ($("techModalAddress")) $("techModalAddress").textContent = t.address ? `${t.address} ${t.pincode ? `(PIN: ${t.pincode})` : ""}` : "Service Territory";
     if ($("techModalStatus")) {
-      $("techModalStatus").textContent = t.is_active ? "Active / Verified" : "Access Disabled";
-      $("techModalStatus").className = `status-pill ${t.is_active ? "completed" : "pending"}`;
+      const isPwSet = Boolean(t.password_set || t.password_set_at);
+      if (!isPwSet) {
+        $("techModalStatus").textContent = "Pending Setup";
+        $("techModalStatus").className = "status-pill pending";
+      } else if (t.is_active) {
+        $("techModalStatus").textContent = "Active / Verified";
+        $("techModalStatus").className = "status-pill completed";
+      } else {
+        $("techModalStatus").textContent = "Access Disabled";
+        $("techModalStatus").className = "status-pill cancelled";
+      }
+    }
+    if ($("techModalCreated")) $("techModalCreated").textContent = formatDisplayDate(t.created_at);
+    if ($("techModalPasswordSet")) {
+      const isPwSet = Boolean(t.password_set || t.password_set_at);
+      $("techModalPasswordSet").textContent = isPwSet ? formatDisplayDate(t.password_set_at) : "Pending Setup";
     }
 
     const services = data.services || [];
@@ -3159,7 +3275,7 @@ function renderAdminBranches() {
   $("sidePanelTitle").textContent = "Branch network";
   $("healthContent").innerHTML = `<div class="section-empty"><strong>${directoryRows.length}</strong> active franchise branches</div>`;
   $("activityContent").innerHTML = `<div class="section-empty">Each branch is linked to an authorized brand partner with its dedicated technician roster.</div>`;
-  $("requestHead").innerHTML = ["Branch & Manager", "Parent Company", "Contact Information", "Address & PIN", "Staff & Workload", "Status", "Action"].map((label) => `<th>${label}</th>`).join("");
+  $("requestHead").innerHTML = ["Branch & Manager", "Parent Company", "Contact Information", "Created On", "Password Set", "Staff & Workload", "Status", "Action"].map((label) => `<th>${label}</th>`).join("");
 
   const query = ($("requestSearch")?.value || "").trim().toLowerCase();
   const filtered = directoryRows.filter((item) =>
@@ -3170,7 +3286,19 @@ function renderAdminBranches() {
   );
 
   $("requestRows").innerHTML = filtered.length
-    ? filtered.map((b) => `
+    ? filtered.map((b) => {
+        const isPwSet = Boolean(b.password_set || b.password_set_at);
+        const isAccessActive = b.is_active !== false;
+        let statusBadge = "";
+        if (!isPwSet) {
+          statusBadge = '<span class="status-pill pending">Pending Setup</span>';
+        } else if (isAccessActive) {
+          statusBadge = '<span class="status-pill completed">Active</span>';
+        } else {
+          statusBadge = '<span class="status-pill cancelled">Disabled</span>';
+        }
+
+        return `
         <tr>
           <td>
             <strong class="text-slate-900 block font-bold">${safe(b.branch_name || b.name)}</strong>
@@ -3183,10 +3311,8 @@ function renderAdminBranches() {
             <span class="block text-slate-700 text-xs">✉️ ${safe(b.email)}</span>
             <small class="text-slate-500 font-mono">📞 ${safe(b.phone || b.mobile || "—")}</small>
           </td>
-          <td>
-            <span class="block text-slate-700 text-xs">${safe(b.address || "—")}</span>
-            <small class="text-blue-600 font-mono font-semibold">PIN: ${safe(b.pincode || "—")}</small>
-          </td>
+          <td class="text-slate-600 text-xs font-mono">${formatDisplayDate(b.created_at)}</td>
+          <td class="text-slate-600 text-xs font-mono">${isPwSet ? formatDisplayDate(b.password_set_at) : '<span class="text-amber-600 font-medium text-xs">Pending Setup</span>'}</td>
           <td>
             <span class="block font-medium ${b.total_techs ? 'text-slate-800' : 'text-slate-400'} text-xs">
               ${b.total_techs ? `👨‍🔧 ${b.total_techs} technician${b.total_techs > 1 ? 's' : ''}` : '👤 No technicians'}
@@ -3196,7 +3322,7 @@ function renderAdminBranches() {
             </small>
           </td>
           <td>
-            <span class="status-pill ${b.is_active ? 'completed' : 'pending'}">${b.is_active ? 'Active' : 'Disabled'}</span>
+            ${statusBadge}
           </td>
           <td>
             <button type="button" class="table-action px-3 py-1 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 font-bold text-xs" data-view-branch="${safe(b.id)}">
@@ -3204,8 +3330,9 @@ function renderAdminBranches() {
             </button>
           </td>
         </tr>
-      `).join("")
-    : `<tr><td class="empty-row" colspan="7">No branches match your search.</td></tr>`;
+      `;
+      }).join("")
+    : `<tr><td class="empty-row" colspan="8">No branches match your search.</td></tr>`;
 
   if ($("requestCount")) $("requestCount").textContent = `${filtered.length} branches shown`;
   if ($("resourceGrid")) $("resourceGrid").innerHTML = "";
@@ -3234,7 +3361,7 @@ function renderAdminTechnicians() {
 
   $("healthContent").innerHTML = `<div class="section-empty"><strong>${validTechs.length}</strong> certified technicians</div>`;
   $("activityContent").innerHTML = `<div class="section-empty">Field engineers handle doorstep diagnostic, repairs, and digital job card sign-offs.</div>`;
-  $("requestHead").innerHTML = ["Technician & Specialty", "Assigned Branch", "Parent Company", "Contact", "Rating & Jobs", "Status", "Action"].map((label) => `<th>${label}</th>`).join("");
+  $("requestHead").innerHTML = ["Technician & Specialty", "Assigned Branch", "Parent Company", "Contact", "Created On", "Password Set", "Rating & Jobs", "Status", "Action"].map((label) => `<th>${label}</th>`).join("");
 
   const query = ($("requestSearch")?.value || "").trim().toLowerCase();
   const filtered = validTechs.filter((item) =>
@@ -3245,7 +3372,19 @@ function renderAdminTechnicians() {
   );
 
   $("requestRows").innerHTML = filtered.length
-    ? filtered.map((t) => `
+    ? filtered.map((t) => {
+        const isPwSet = Boolean(t.password_set || t.password_set_at);
+        const isAccessActive = t.is_active !== false;
+        let statusBadge = "";
+        if (!isPwSet) {
+          statusBadge = '<span class="status-pill pending">Pending Setup</span>';
+        } else if (isAccessActive) {
+          statusBadge = '<span class="status-pill completed">Active / Field Ready</span>';
+        } else {
+          statusBadge = '<span class="status-pill cancelled">Access Disabled</span>';
+        }
+
+        return `
         <tr>
           <td>
             <strong class="text-slate-900 block font-bold">${safe(t.name)}</strong>
@@ -3261,12 +3400,14 @@ function renderAdminTechnicians() {
             <span class="block text-slate-700 text-xs">✉️ ${safe(t.email)}</span>
             <small class="text-slate-500 font-mono">📞 ${safe(t.phone)}</small>
           </td>
+          <td class="text-slate-600 text-xs font-mono">${formatDisplayDate(t.created_at)}</td>
+          <td class="text-slate-600 text-xs font-mono">${isPwSet ? formatDisplayDate(t.password_set_at) : '<span class="text-amber-600 font-medium text-xs">Pending Setup</span>'}</td>
           <td>
             <span class="text-amber-600 font-bold block text-xs">⭐ ${Number(t.rating || 5.0).toFixed(1)}</span>
             <small class="text-slate-500">📋 ${t.total_jobs || 0} jobs (${t.completed_jobs || 0} resolved)</small>
           </td>
           <td>
-            <span class="status-pill ${t.is_active ? 'completed' : 'pending'}">${t.is_active ? 'Active / Field Ready' : 'Access Disabled'}</span>
+            ${statusBadge}
           </td>
           <td>
             <button type="button" class="table-action px-3 py-1 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 font-bold text-xs" data-view-technician="${safe(t.id)}">
@@ -3274,10 +3415,11 @@ function renderAdminTechnicians() {
             </button>
           </td>
         </tr>
-      `).join("")
+      `;
+      }).join("")
     : (validTechs.length === 0
-        ? `<tr><td class="empty-row" colspan="7">No technicians onboarded yet. Certified technicians will appear here once added by franchise branches.</td></tr>`
-        : `<tr><td class="empty-row" colspan="7">No technicians match your search.</td></tr>`);
+        ? `<tr><td class="empty-row" colspan="9">No technicians onboarded yet. Certified technicians will appear here once added by franchise branches.</td></tr>`
+        : `<tr><td class="empty-row" colspan="9">No technicians match your search.</td></tr>`);
 
   if ($("requestCount")) $("requestCount").textContent = `${filtered.length} technician${filtered.length === 1 ? '' : 's'} shown`;
   if ($("resourceGrid")) $("resourceGrid").innerHTML = "";

@@ -78,7 +78,7 @@ def technician_payload(
         "mobile": technician.phone,
         "address": profile.address,
         "pincode": profile.pincode,
-        "is_active": getattr(user, "is_active", True),
+        "is_active": getattr(user, "is_active", False if (onboarding and not onboarding.password_set_at) else True),
         "password_set": bool(onboarding and onboarding.password_set_at),
         "password_set_at": onboarding.password_set_at.isoformat() if onboarding and onboarding.password_set_at else None,
         "created_at": profile.created_at.isoformat(),
@@ -98,7 +98,7 @@ def issue_technician_invite(
     onboarding.pending_password_hash = None
     onboarding.otp_hash = None
     onboarding.otp_expires_at = None
-    frontend_url = os.getenv("FRONTEND_BASE_URL", "https://servora-frontend-xi.vercel.app").rstrip("/")
+    frontend_url = os.getenv("FRONTEND_BASE_URL", "https://servsure.vercel.app").rstrip("/")
     setup_url = f"{frontend_url}/technician-setup.html?token={token}"
     values = {
         "technician": technician.name,
@@ -202,6 +202,8 @@ def create_franchise_technician(
         role="technician",
         address=f"{payload.address.strip()}, {payload.pincode.strip()}",
         password_hash=None,
+        is_active=False,
+        created_at=datetime.utcnow(),
     )
     profile = BranchTechnicianModel(
         technician_id=technician_id,
@@ -624,6 +626,7 @@ def verify_technician_setup_otp(payload: CompanyOtpVerify, db: Session = Depends
         raise HTTPException(status_code=400, detail="The verification code is incorrect")
 
     user.password_hash = onboarding.pending_password_hash
+    user.is_active = True
     onboarding.password_set_at = datetime.utcnow()
     onboarding.pending_password_hash = None
     onboarding.otp_hash = None
@@ -633,7 +636,7 @@ def verify_technician_setup_otp(payload: CompanyOtpVerify, db: Session = Depends
     technician.is_verified = True
     db.commit()
 
-    frontend_url = os.getenv("FRONTEND_BASE_URL", "https://servora-frontend-xi.vercel.app").rstrip("/")
+    frontend_url = os.getenv("FRONTEND_BASE_URL", "https://servsure.vercel.app").rstrip("/")
     portal_url = f"{frontend_url}/technician-login.html"
     branch = db.query(CompanyBranchModel).filter_by(id=profile.branch_id).first()
     branch_name = branch.branch_name if branch else "your franchise"

@@ -11,7 +11,8 @@ from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.db.models import (
-    CompanyOnboardingModel, UserModel, CompanyBranchModel,
+    CompanyOnboardingModel, BranchOnboardingModel, TechnicianOnboardingModel,
+    UserModel, CompanyBranchModel,
     TechnicianModel, BranchTechnicianModel, ApplianceModel, ServiceRequestModel,
     JobCardModel
 )
@@ -42,12 +43,17 @@ def digest(value: str) -> str:
 
 
 def company_payload(user: UserModel, onboarding: CompanyOnboardingModel | None = None) -> dict:
+    created_at_val = None
+    if getattr(user, "created_at", None):
+        iso_str = user.created_at.isoformat()
+        created_at_val = iso_str if iso_str.endswith("Z") else f"{iso_str}Z"
     return {
         "id": user.id, "name": user.name, "email": user.email, "phone": user.phone,
         "address": user.address, "role": user.role,
-        "is_active": getattr(user, "is_active", True),
+        "is_active": getattr(user, "is_active", False if (onboarding and not onboarding.password_set_at) else True),
         "password_set": bool(onboarding and onboarding.password_set_at),
         "password_set_at": f"{onboarding.password_set_at.isoformat()}Z" if onboarding and onboarding.password_set_at else None,
+        "created_at": created_at_val,
     }
 
 
@@ -58,7 +64,7 @@ def issue_invite(company: UserModel, onboarding: CompanyOnboardingModel) -> str:
     onboarding.pending_password_hash = None
     onboarding.otp_hash = None
     onboarding.otp_expires_at = None
-    frontend_url = os.getenv("FRONTEND_BASE_URL", "https://servora-frontend-xi.vercel.app").rstrip("/")
+    frontend_url = os.getenv("FRONTEND_BASE_URL", "https://servsure.vercel.app").rstrip("/")
     link = f"{frontend_url}/company-setup.html?token={token}"
     safe_name = html.escape(company.name)
     safe_email = html.escape(company.email)
@@ -266,11 +272,16 @@ def list_directory(role: str, request: Request, db: Session = Depends(get_db)):
         companies_by_id = {u.id: u for u in db.query(UserModel).filter(UserModel.role == "company").all()}
         branch_users_by_id = {u.id: u for u in db.query(UserModel).filter(UserModel.role == "branch").all()}
         branch_users_by_email = {u.email.lower(): u for u in db.query(UserModel).filter(UserModel.role == "branch").all()}
+        branch_onboarding_map = {item.branch_id: item for item in db.query(BranchOnboardingModel).all()}
 
         result = []
         for b in branches:
             company = companies_by_id.get(b.company_id)
             b_user = branch_users_by_id.get(b.id) or branch_users_by_email.get(b.email.lower())
+            onb = branch_onboarding_map.get(b.id)
+            pw_set = bool(onb and onb.password_set_at)
+            pw_set_at = f"{onb.password_set_at.isoformat()}Z" if (onb and onb.password_set_at) else None
+            created_at_val = f"{b.created_at.isoformat()}Z" if (b.created_at and not b.created_at.isoformat().endswith("Z")) else (b.created_at.isoformat() if b.created_at else None)
             
             branch_ids = [b.id]
             if b_user and b_user.id != b.id:
@@ -308,7 +319,10 @@ def list_directory(role: str, request: Request, db: Session = Depends(get_db)):
                 "mobile": b.mobile,
                 "address": b.address,
                 "pincode": b.pincode,
-                "is_active": b_user.is_active if b_user else True,
+                "is_active": getattr(b_user, "is_active", False) if b_user else False,
+                "password_set": pw_set,
+                "password_set_at": pw_set_at,
+                "created_at": created_at_val,
                 "total_techs": tech_count,
                 "total_jobs": jobs_count,
                 "ongoing_jobs": ongoing_jobs,
@@ -341,6 +355,7 @@ def list_directory(role: str, request: Request, db: Session = Depends(get_db)):
         companies_by_id = {u.id: u for u in db.query(UserModel).filter(UserModel.role == "company").all()}
         tech_users_by_id = {u.id: u for u in db.query(UserModel).filter(UserModel.role == "technician").all()}
         tech_users_by_phone = {u.phone: u for u in db.query(UserModel).filter(UserModel.role == "technician").all()}
+        tech_onboarding_map = {item.technician_id: item for item in db.query(TechnicianOnboardingModel).all()}
 
         result = []
         for t in techs:
@@ -348,6 +363,11 @@ def list_directory(role: str, request: Request, db: Session = Depends(get_db)):
             branch = branches_by_id.get(link.branch_id) if link else None
             company = companies_by_id.get(branch.company_id) if branch else None
             t_user = tech_users_by_id.get(t.id) or tech_users_by_phone.get(t.phone)
+            onb = tech_onboarding_map.get(t.id)
+            pw_set = bool(onb and onb.password_set_at)
+            pw_set_at = f"{onb.password_set_at.isoformat()}Z" if (onb and onb.password_set_at) else None
+            raw_created = (link.created_at if link else None) or (getattr(t_user, "created_at", None) if t_user else None)
+            created_at_val = f"{raw_created.isoformat()}Z" if (raw_created and not raw_created.isoformat().endswith("Z")) else (raw_created.isoformat() if raw_created else None)
 
             completed_jobs = db.query(ServiceRequestModel).filter(
                 ServiceRequestModel.technician_id == t.id,
@@ -377,8 +397,11 @@ def list_directory(role: str, request: Request, db: Session = Depends(get_db)):
                 "company_name": company.name if company else "ServSure Certified Partner",
                 "address": (link.address if link else None) or (branch.address if branch else "Field Service Territory"),
                 "pincode": (link.pincode if link else None) or (branch.pincode if branch else ""),
-                "is_active": t_user.is_active if t_user else True,
+                "is_active": getattr(t_user, "is_active", False) if t_user else False,
                 "is_verified": t.is_verified,
+                "password_set": pw_set,
+                "password_set_at": pw_set_at,
+                "created_at": created_at_val,
                 "role": "technician",
                 "avatar": t.avatar or t.name[:2].upper()
             })
@@ -398,6 +421,7 @@ def list_directory(role: str, request: Request, db: Session = Depends(get_db)):
                 ServiceRequestModel.customer_id == c.id,
                 ServiceRequestModel.status_badge == "Completed"
             ).count()
+            created_at_val = f"{c.created_at.isoformat()}Z" if (getattr(c, "created_at", None) and not c.created_at.isoformat().endswith("Z")) else (c.created_at.isoformat() if getattr(c, "created_at", None) else None)
 
             result.append({
                 "id": c.id,
@@ -410,6 +434,7 @@ def list_directory(role: str, request: Request, db: Session = Depends(get_db)):
                 "ongoing_requests": ongoing_reqs,
                 "completed_requests": completed_reqs,
                 "is_active": c.is_active,
+                "created_at": created_at_val,
                 "role": "customer",
                 "avatar": c.name[:2].upper()
             })
@@ -548,6 +573,12 @@ def get_admin_technician_details(technician_id: str, request: Request, db: Sessi
             "appointment_slot": r.appointment_slot
         })
 
+    onb = db.query(TechnicianOnboardingModel).filter_by(technician_id=t.id).first() if t else None
+    pw_set = bool(onb and onb.password_set_at)
+    pw_set_at = f"{onb.password_set_at.isoformat()}Z" if (onb and onb.password_set_at) else None
+    raw_created = (link.created_at if link else None) or (getattr(t_user, "created_at", None) if t_user else None)
+    created_at_val = f"{raw_created.isoformat()}Z" if (raw_created and not raw_created.isoformat().endswith("Z")) else (raw_created.isoformat() if raw_created else None)
+
     return {
         "technician": {
             "id": t.id,
@@ -565,8 +596,11 @@ def get_admin_technician_details(technician_id: str, request: Request, db: Sessi
             "company_name": company.name if company else "ServSure Certified Partner",
             "address": (link.address if link else None) or (branch.address if branch else "Field Service Territory"),
             "pincode": (link.pincode if link else None) or (branch.pincode if branch else ""),
-            "is_active": t_user.is_active if t_user else True,
+            "is_active": getattr(t_user, "is_active", False) if t_user else False,
             "is_verified": t.is_verified,
+            "password_set": pw_set,
+            "password_set_at": pw_set_at,
+            "created_at": created_at_val,
             "avatar": t.avatar or t.name[:2].upper()
         },
         "services": assigned_services
@@ -592,7 +626,7 @@ def create_company(payload: CompanyCreate, request: Request, db: Session = Depen
     company = UserModel(
         id=f"company_{uuid4().hex[:12]}", name=payload.name.strip(), email=email,
         phone=payload.phone.strip(), role="company", address=(payload.address or "").strip() or None,
-        password_hash=None,
+        password_hash=None, is_active=False, created_at=datetime.utcnow(),
     )
     db.add(company)
     db.flush()
@@ -668,6 +702,7 @@ def verify_company_setup_otp(payload: CompanyOtpVerify, db: Session = Depends(ge
     if not hmac.compare_digest(onboarding.otp_hash, submitted):
         raise HTTPException(status_code=400, detail="The verification code is incorrect")
     company.password_hash = onboarding.pending_password_hash
+    company.is_active = True
     onboarding.password_set_at = datetime.utcnow()
     onboarding.pending_password_hash = None
     onboarding.otp_hash = None
@@ -675,7 +710,7 @@ def verify_company_setup_otp(payload: CompanyOtpVerify, db: Session = Depends(ge
     onboarding.invite_token_hash = None
     onboarding.invite_expires_at = None
     db.commit()
-    frontend_url = os.getenv("FRONTEND_BASE_URL", "https://servora-frontend-xi.vercel.app").rstrip("/")
+    frontend_url = os.getenv("FRONTEND_BASE_URL", "https://servsure.vercel.app").rstrip("/")
     portal_url = f"{frontend_url}/company-login.html"
     confirmation_email_sent = False
     safe_name = html.escape(company.name)
