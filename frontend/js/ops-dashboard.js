@@ -1509,7 +1509,7 @@ function renderBranchOngoing(requests) {
           <small class="text-slate-500 block">${safe(r.issue)}</small>
         </td>
         <td class="p-3 text-slate-700 font-medium whitespace-nowrap">${safe(r.technician_name)}</td>
-        <td class="p-3 text-slate-600 whitespace-nowrap">${safe(r.appointment_date)} · ${safe(r.appointment_slot)}</td>
+        <td class="p-3 text-slate-600 whitespace-nowrap">${safe(r.appointment_date)} · ${safe(r.appointment_slot)}${(r.timeline || []).some(t => t.title === "Appointment Rescheduled") ? ' <span class="text-[10px] font-bold text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">🔄 Rescheduled</span>' : ''}</td>
         <td class="p-3 whitespace-nowrap"><span class="status-pill in-progress">${safe(r.status)}</span></td>
         <td class="p-3 text-right whitespace-nowrap">
           <button type="button" class="table-action font-bold text-blue-600 hover:text-blue-800" onclick="viewRequestDetails('${safe(r.id)}')">View Ticket →</button>
@@ -2602,7 +2602,7 @@ function renderCustomerOngoing(requests) {
           <span class="text-slate-800 font-medium block">${safe(r.branch_name)}</span>
           <small class="text-slate-400 block">Tech: ${safe(r.technician_name)}</small>
         </td>
-        <td class="p-3 text-slate-600 whitespace-nowrap">${safe(r.appointment_date)} · ${safe(r.appointment_slot)}</td>
+        <td class="p-3 text-slate-600 whitespace-nowrap">${safe(r.appointment_date)} · ${safe(r.appointment_slot)}${(r.timeline || []).some(t => t.title === "Appointment Rescheduled") ? ' <span class="text-[10px] font-bold text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">🔄 Rescheduled</span>' : ''}</td>
         <td class="p-3 whitespace-nowrap"><span class="status-pill in-progress">${safe(r.status)}</span></td>
         <td class="p-3 text-right whitespace-nowrap">
           <button type="button" class="table-action font-bold text-blue-600 hover:text-blue-800" onclick="viewRequestDetails('${safe(r.id)}')">View Ticket →</button>
@@ -5947,7 +5947,8 @@ window.viewRequestDetails = async function(requestId) {
   const branchObj = branches.find((b) => b.id === req.branch_id);
   if ($("ticketModalBranchName")) $("ticketModalBranchName").textContent = branchObj ? branchObj.branch_name : (req.branch_id || "Unassigned");
   if ($("ticketModalBranchPhone")) $("ticketModalBranchPhone").textContent = branchObj ? `Manager: ${branchObj.manager_name || ''} · ${branchObj.mobile || branchObj.email || ''}` : "Local Franchise Branch";
-  if ($("ticketModalAppointment")) $("ticketModalAppointment").textContent = `${req.appointment_date || 'Scheduled'} · ${req.appointment_slot || 'Regular Slot'}`;
+  const isRescheduled = (req.timeline || []).some(t => t.title === "Appointment Rescheduled");
+  if ($("ticketModalAppointment")) $("ticketModalAppointment").innerHTML = `${safe(req.appointment_date || 'Scheduled')} · ${safe(req.appointment_slot || 'Regular Slot')}${isRescheduled ? ' <span class="inline-flex items-center gap-1 text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">🔄 Rescheduled</span>' : ''}`;
 
   const tech = req.technician;
   if ($("ticketModalTechName")) $("ticketModalTechName").textContent = tech ? tech.name : (req.technician_name || "Awaiting Assignment");

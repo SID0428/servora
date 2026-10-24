@@ -1201,12 +1201,20 @@ function populateTracking(request) {
   }
 
   if ($("trackingAppointmentText")) {
-    $("trackingAppointmentText").textContent = `${formatDate(request.appointment_date)} • ${request.appointment_slot || "Scheduled Slot"}`;
+    const isRescheduled = (request.timeline || []).some(t => t.title === "Appointment Rescheduled");
+    $("trackingAppointmentText").innerHTML = `${formatDate(request.appointment_date)} • ${request.appointment_slot || "Scheduled Slot"}${isRescheduled ? ' <span class="inline-flex items-center text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200 ml-1">🔄 Rescheduled</span>' : ''}`;
   }
   if ($("rescheduleBtn")) {
-    $("rescheduleBtn").onclick = () => {
-      showToast("To reschedule this visit, choose an updated date/slot or contact support.");
-    };
+    const lockedStates = ["Service In Progress", "Repair in Progress", "Completed", "Cancelled"];
+    const canReschedule = !lockedStates.includes(request.status);
+    if (canReschedule) {
+      $("rescheduleBtn").style.display = "inline-flex";
+      $("rescheduleBtn").classList.remove("opacity-40", "cursor-not-allowed");
+      $("rescheduleBtn").title = "Reschedule your appointment";
+      $("rescheduleBtn").onclick = () => window.openRescheduleModal(request.id);
+    } else {
+      $("rescheduleBtn").style.display = "none";
+    }
   }
 
   if ($("technicianVerified")) {
@@ -1690,6 +1698,11 @@ window.openBookingModal = function (applianceId = "") {
   if ($("bookingMessage")) $("bookingMessage").textContent = "";
   syncBookingAddress();
   openDialog("bookingDialog");
+  if ($("bookDate") && $("bookSlot")) {
+    loadAvailableSlots($("bookDate").value, $("bookSlot"), {
+      pincode: $("bookPincode")?.value || currentUser?.pincode
+    });
+  }
 };
 
 window.openAddApplianceModal = function () {
@@ -3237,6 +3250,47 @@ document.addEventListener("DOMContentLoaded", async () => {
   if ($("bookDate")) {
     $("bookDate").min = localToday;
     $("bookDate").value = localToday;
+    $("bookDate").addEventListener("change", () => {
+      loadAvailableSlots($("bookDate").value, $("bookSlot"), {
+        pincode: $("bookPincode")?.value || currentUser?.pincode
+      });
+    });
+  }
+
+  // Reschedule Modal listeners
+  if ($("closeRescheduleModalBtn")) {
+    $("closeRescheduleModalBtn").addEventListener("click", () => closeDialog("rescheduleModal"));
+  }
+  if ($("cancelRescheduleBtn")) {
+    $("cancelRescheduleBtn").addEventListener("click", () => closeDialog("rescheduleModal"));
+  }
+  if ($("rescheduleForm")) {
+    $("rescheduleForm").addEventListener("submit", submitReschedule);
+  }
+  if ($("rescheduleDate")) {
+    $("rescheduleDate").addEventListener("change", async () => {
+      const reqId = $("rescheduleRequestId")?.value;
+      const req = userRequests.find((r) => r.id === reqId);
+      await loadAvailableSlots($("rescheduleDate").value, $("rescheduleSlotSelect"), {
+        requestId: reqId,
+        feedbackEl: $("rescheduleSlotFeedback"),
+        branchId: req?.branch_id
+      });
+    });
+  }
+  if ($("rescheduleSlotSelect")) {
+    $("rescheduleSlotSelect").addEventListener("change", () => {
+      const selectEl = $("rescheduleSlotSelect");
+      const feedbackEl = $("rescheduleSlotFeedback");
+      if (feedbackEl && selectEl) {
+        const dot = feedbackEl.querySelector("#rescheduleSlotFeedbackDot");
+        const text = feedbackEl.querySelector("#rescheduleSlotFeedbackText");
+        if (selectEl.value) {
+          if (dot) dot.className = "w-2 h-2 rounded-full bg-emerald-500 shrink-0";
+          if (text) text.textContent = `Selected: ${selectEl.value}`;
+        }
+      }
+    });
   }
 
   // Instantly hydrate user profile from localStorage cache to eliminate any flash during refresh
@@ -3328,4 +3382,163 @@ window.respondToCustomerEstimate = async function(action) {
     showToast(err.message, "error");
   }
 };
+
+// ==========================================
+// Timeslot Management & Rescheduling
+// ==========================================
+async function loadAvailableSlots(dateStr, selectEl, options = {}) {
+  if (!dateStr || !selectEl) return;
+  const { requestId = null, branchId = null, pincode = null, selectedSlot = null, feedbackEl = null } = options;
+
+  const currentVal = selectEl.value;
+  selectEl.disabled = true;
+  selectEl.innerHTML = `<option value="">Checking slot capacity…</option>`;
+
+  try {
+    const params = new URLSearchParams({ date: dateStr });
+    if (requestId) params.append("request_id", requestId);
+    if (branchId) params.append("branch_id", branchId);
+    if (pincode) params.append("pincode", pincode);
+
+    const data = await readApiJson(`/api/requests/available-slots?${params.toString()}`);
+    selectEl.innerHTML = "";
+
+    const slots = data.slots || [];
+    if (!slots.length) {
+      selectEl.innerHTML = `<option value="" disabled>No slots available for this date</option>`;
+      return;
+    }
+
+    let slotToSelect = null;
+    let anyAvailable = false;
+
+    slots.forEach((s) => {
+      const opt = document.createElement("option");
+      opt.value = s.slot;
+      if (s.available) {
+        anyAvailable = true;
+        opt.textContent = `${s.slot} (✓ ${s.remaining} left)`;
+        if (!slotToSelect) slotToSelect = s.slot;
+        if ((selectedSlot && s.slot === selectedSlot) || (!slotToSelect && s.slot === currentVal)) {
+          slotToSelect = s.slot;
+        }
+      } else {
+        opt.disabled = true;
+        opt.textContent = `${s.slot} (❌ ${s.reason || "Full"})`;
+        opt.className = "text-slate-400 bg-slate-50";
+      }
+      selectEl.appendChild(opt);
+    });
+
+    if (slotToSelect) {
+      selectEl.value = slotToSelect;
+    }
+
+    if (feedbackEl) {
+      feedbackEl.classList.remove("hidden");
+      const dot = feedbackEl.querySelector("#rescheduleSlotFeedbackDot");
+      const text = feedbackEl.querySelector("#rescheduleSlotFeedbackText");
+      const currentSelected = slots.find((s) => s.slot === selectEl.value);
+      if (currentSelected && currentSelected.available) {
+        if (dot) dot.className = "w-2 h-2 rounded-full bg-emerald-500 shrink-0";
+        if (text) text.textContent = `Available · ${currentSelected.remaining} capacity remaining (${data.branch_name || "Franchise Hub"})`;
+      } else {
+        if (dot) dot.className = "w-2 h-2 rounded-full bg-rose-500 shrink-0";
+        if (text) text.textContent = anyAvailable ? "Please select an available slot" : "All slots fully booked or past cutoff";
+      }
+    }
+    return data;
+  } catch (err) {
+    console.error("Failed to load available slots:", err);
+    selectEl.innerHTML = `
+      <option value="10:00 AM - 12:00 PM">10:00 AM - 12:00 PM</option>
+      <option value="01:00 PM - 03:00 PM">01:00 PM - 03:00 PM</option>
+      <option value="04:00 PM - 06:00 PM" selected>04:00 PM - 06:00 PM</option>
+      <option value="06:00 PM - 08:00 PM">06:00 PM - 08:00 PM</option>
+    `;
+  } finally {
+    selectEl.disabled = false;
+  }
+}
+
+window.openRescheduleModal = async function(requestId) {
+  const req = userRequests.find((r) => r.id === requestId);
+  if (!req) return;
+
+  const lockedStates = ["Service In Progress", "Repair in Progress", "Completed", "Cancelled"];
+  if (lockedStates.includes(req.status)) {
+    showToast(`Visits with status "${req.status}" cannot be rescheduled.`, "warning");
+    return;
+  }
+
+  if ($("rescheduleRequestId")) $("rescheduleRequestId").value = req.id;
+  if ($("rescheduleTicketBadge")) $("rescheduleTicketBadge").textContent = req.id;
+  if ($("rescheduleApplianceBadge")) $("rescheduleApplianceBadge").textContent = `${req.appliance_name || 'Appliance'}${req.model_no ? ` (${req.model_no})` : ""}`;
+  if ($("rescheduleCurrentBadge")) $("rescheduleCurrentBadge").textContent = `${formatDate(req.appointment_date)} • ${req.appointment_slot || "Scheduled Slot"}`;
+  if ($("rescheduleFormMsg")) $("rescheduleFormMsg").textContent = "";
+
+  const today = new Date();
+  const localToday = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+  if ($("rescheduleDate")) {
+    $("rescheduleDate").min = localToday;
+    $("rescheduleDate").value = req.appointment_date && req.appointment_date >= localToday ? req.appointment_date : localToday;
+  }
+
+  openDialog("rescheduleModal");
+
+  if ($("rescheduleSlotSelect") && $("rescheduleDate")) {
+    await loadAvailableSlots($("rescheduleDate").value, $("rescheduleSlotSelect"), {
+      requestId: req.id,
+      selectedSlot: req.appointment_slot,
+      feedbackEl: $("rescheduleSlotFeedback"),
+      branchId: req.branch_id
+    });
+  }
+};
+
+async function submitReschedule(event) {
+  event.preventDefault();
+  const reqId = $("rescheduleRequestId")?.value;
+  const newDate = $("rescheduleDate")?.value;
+  const newSlot = $("rescheduleSlotSelect")?.value;
+  const reason = $("rescheduleReason")?.value;
+  const btn = $("submitRescheduleBtn");
+  const msgEl = $("rescheduleFormMsg");
+
+  if (!reqId || !newDate || !newSlot) {
+    if (msgEl) msgEl.textContent = "Please select both a valid date and time slot.";
+    return;
+  }
+
+  if (msgEl) msgEl.textContent = "";
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = `<span>⏳</span> Updating…`;
+  }
+
+  try {
+    const updated = await readApiJson(`/api/requests/${encodeURIComponent(reqId)}/reschedule`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        new_date: newDate,
+        new_slot: newSlot,
+        reason: reason || "Customer requested reschedule"
+      })
+    });
+
+    closeDialog("rescheduleModal");
+    showToast(`✓ Visit #${reqId} rescheduled to ${formatDate(newDate)} (${newSlot})`, "success");
+    await loadDashboardData();
+    await loadTrackingDetails(reqId, updated);
+  } catch (err) {
+    if (msgEl) msgEl.textContent = err.message || "Failed to reschedule appointment. Please try another slot.";
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = `<span>📅</span> Confirm Reschedule`;
+    }
+  }
+}
+
 

@@ -4,8 +4,8 @@ PRODUCTION-GRADE TECHNICAL ARCHITECTURE & DEVELOPER ONBOARDING MANUAL
 ================================================================================
 File: documentation.txt
 Platform: ServSure (formerly Servora)
-Version: 1.6.0 (Production Release - Automated Serialized Spare Parts Requisition & Traceability Engine)
-Last Updated: October 24, 2026 (22:55 IST)
+Version: 1.7.0 (Production Release - Dynamic Timeslot Capacity Management & Appointment Rescheduling Engine)
+Last Updated: October 24, 2026 (23:45 IST)
 Repository: https://github.com/SID0428/servora.git
 
 Welcome to ServSure! This manual is the definitive, authoritative reference
@@ -710,9 +710,29 @@ Request Headers:
 5.6. Service Requests & Life Cycle Management (`/api/requests`)
 ---------------------------------------------------------------
 - `GET /api/requests`: Lists requests authorized for current role.
+- `GET /api/requests/available-slots`:
+  - Query parameters:
+    - `date` (required, string `YYYY-MM-DD`): Target appointment date.
+    - `pincode` (optional, string): Customer pincode used to resolve servicing branch.
+    - `branch_id` (optional, string): Servicing franchise branch ID.
+    - `request_id` (optional, string): Active service ticket ID if rescheduling (excludes this ticket's existing slot from count).
+  - Dynamic Capacity & Cutoff Calculation:
+    - Slots: `10:00 AM - 12:00 PM`, `01:00 PM - 03:00 PM`, `04:00 PM - 06:00 PM`, `06:00 PM - 08:00 PM`.
+    - Dynamic Capacity Formula: `max(4, active_technician_count * 2)` jobs per 2-hour window.
+    - Past Dates: Strictly blocked (`available: false, reason: "Past dates cannot be scheduled"`).
+    - Same-Day Lead-Time Cutoff: Requires at least 1 hour lead time before slot start (`available: false, reason: "Slot booking cutoff passed (1 hr lead time required)"`).
+    - Full Bookings: When booked >= capacity (`available: false, reason: "Fully Booked"`).
+  - Returns: `{ "date": "2026-10-25", "branch_id": "br_1", "branch_name": "South Delhi Branch", "slots": [{ "slot": "10:00 AM - 12:00 PM", "available": true, "capacity": 6, "booked": 1, "remaining": 5, "reason": null }] }`.
 - `POST /api/requests`:
-  - Body: `{ "appliance_id": "app_1", "issue_description": "Water leaking from bottom", "preferred_time": "Tomorrow, 2:00 PM - 5:00 PM" }`
+  - Body: `{ "appliance_id": "app_1", "issue": "Water leaking", "preferred_date": "2026-10-25", "preferred_slot": "10:00 AM - 12:00 PM", "address": "...", "pincode": "..." }`
+  - Validates preferred slot capacity and same-day lead time cutoff before ticket creation.
   - Automatically generates 4-digit start and completion OTPs.
+- `POST /api/requests/{request_id}/reschedule`:
+  - Body: `{ "new_date": "2026-10-26", "new_slot": "04:00 PM - 06:00 PM", "reason": "Customer unavailable" }`
+  - Access Control: Customer can only reschedule their own requests; Franchise/Admin can reschedule assigned tickets.
+  - Lifecycle Lock: Rescheduling is strictly rejected with HTTP 400 once doorstep service has commenced or concluded (`Service In Progress`, `Repair in Progress`, `Completed`, `Cancelled`).
+  - Validation: Verifies slot availability and lead-time cutoff on `new_date`.
+  - Side Effects: Updates `appointment_date`, `appointment_slot`, appends `Appointment Rescheduled` event to `timeline_json`, and dispatches Brevo transactional notification (`notify_appointment_rescheduled`).
 
 5.7. Customer Appliances & Warranty (`/api/appliances`)
 -------------------------------------------------------

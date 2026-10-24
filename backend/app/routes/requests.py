@@ -2,9 +2,9 @@ import json
 import random
 import re
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import List, Optional
-from fastapi import APIRouter, Depends, Request, HTTPException
+from fastapi import APIRouter, Depends, Request, HTTPException, Query
 from sqlalchemy import false, or_
 from sqlalchemy.orm import Session
 from app.db.session import get_db
@@ -28,12 +28,16 @@ from app.db.models import (
 )
 from app.notification_service import (
     notify_booking_created,
+    notify_appointment_rescheduled,
     notify_technician_assigned,
     notify_technician_arrival
 )
 from app.schemas import (
     ServiceRequestDetail,
     ServiceBookingCreate,
+    TimeSlotInfo,
+    AvailableSlotsResponse,
+    RescheduleRequestPayload,
     TechnicianBase,
     TimelineStep,
     FranchiseAssignPayload,
@@ -311,6 +315,163 @@ def get_request(request_id: str, request: Request, db: Session = Depends(get_db)
             raise HTTPException(status_code=403, detail="Not allowed to view this service request")
     return format_request_detail(req, db, user=user)
 
+# ==========================================
+# Timeslot Capacity & Schedule Engine
+# ==========================================
+
+STANDARD_TIME_SLOTS = [
+    {"slot": "10:00 AM - 12:00 PM", "start_hour": 10, "start_min": 0},
+    {"slot": "01:00 PM - 03:00 PM", "start_hour": 13, "start_min": 0},
+    {"slot": "04:00 PM - 06:00 PM", "start_hour": 16, "start_min": 0},
+    {"slot": "06:00 PM - 08:00 PM", "start_hour": 18, "start_min": 0},
+]
+
+def calculate_available_slots(
+    date_str: str,
+    branch_id: Optional[str] = None,
+    pincode: Optional[str] = None,
+    exclude_request_id: Optional[str] = None,
+    db: Session = None
+) -> AvailableSlotsResponse:
+    # 1. Parse target date
+    try:
+        clean_date_str = date_str.strip()[:10]
+        target_date = datetime.strptime(clean_date_str, "%Y-%m-%d").date()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid date format. Expected YYYY-MM-DD (e.g. 2026-10-25)")
+
+    today = datetime.now().date()
+    now_dt = datetime.now()
+
+    # 2. Resolve servicing branch
+    branch = None
+    if branch_id:
+        branch = db.query(CompanyBranchModel).filter(CompanyBranchModel.id == branch_id).first()
+    if not branch and pincode:
+        branch = db.query(CompanyBranchModel).filter(CompanyBranchModel.pincode == pincode.strip()).first()
+    if not branch:
+        branch = db.query(CompanyBranchModel).first()
+
+    b_id = branch.id if branch else None
+    b_name = branch.branch_name if branch else "Main Service Center"
+
+    # 3. Dynamic capacity based on active technicians at branch
+    active_tech_count = 0
+    if b_id:
+        tech_records = db.query(BranchTechnicianModel.technician_id).filter(BranchTechnicianModel.branch_id == b_id).all()
+        t_ids = [t[0] for t in tech_records]
+        if t_ids:
+            active_tech_count = db.query(UserModel).filter(
+                UserModel.id.in_(t_ids),
+                UserModel.is_active == True
+            ).count()
+
+    if active_tech_count == 0:
+        active_tech_count = db.query(TechnicianModel).count() or 1
+
+    # Max 2 concurrent doorstep visits per active technician per 2-hour window, minimum 4 per slot
+    slot_capacity = max(4, active_tech_count * 2)
+
+    # 4. Count existing active bookings for this date and branch
+    query = db.query(ServiceRequestModel).filter(
+        ServiceRequestModel.appointment_date == clean_date_str,
+        ~ServiceRequestModel.status.in_(["Completed", "Cancelled"])
+    )
+    if b_id:
+        query = query.filter(ServiceRequestModel.branch_id == b_id)
+    if exclude_request_id:
+        query = query.filter(ServiceRequestModel.id != exclude_request_id)
+
+    booked_requests = query.all()
+    booked_counts = {}
+    for r in booked_requests:
+        s = (r.appointment_slot or "").strip()
+        booked_counts[s] = booked_counts.get(s, 0) + 1
+
+    # 5. Build slot availability objects
+    slots_list: List[TimeSlotInfo] = []
+    is_past_date = target_date < today
+    is_today = target_date == today
+
+    for slot_def in STANDARD_TIME_SLOTS:
+        s_name = slot_def["slot"]
+        booked = booked_counts.get(s_name, 0)
+        remaining = max(0, slot_capacity - booked)
+
+        if is_past_date:
+            slots_list.append(TimeSlotInfo(
+                slot=s_name,
+                available=False,
+                capacity=slot_capacity,
+                booked=booked,
+                remaining=0,
+                reason="Past dates cannot be scheduled"
+            ))
+            continue
+
+        if is_today:
+            slot_start_dt = datetime(
+                year=today.year,
+                month=today.month,
+                day=today.day,
+                hour=slot_def["start_hour"],
+                minute=slot_def["start_min"]
+            )
+            # Enforce 1-hour minimum lead time
+            cutoff_dt = slot_start_dt - timedelta(hours=1)
+            if now_dt >= cutoff_dt:
+                slots_list.append(TimeSlotInfo(
+                    slot=s_name,
+                    available=False,
+                    capacity=slot_capacity,
+                    booked=booked,
+                    remaining=remaining,
+                    reason="Booking window closed for this slot"
+                ))
+                continue
+
+        if booked >= slot_capacity:
+            slots_list.append(TimeSlotInfo(
+                slot=s_name,
+                available=False,
+                capacity=slot_capacity,
+                booked=booked,
+                remaining=0,
+                reason="Fully Booked"
+            ))
+        else:
+            slots_list.append(TimeSlotInfo(
+                slot=s_name,
+                available=True,
+                capacity=slot_capacity,
+                booked=booked,
+                remaining=remaining,
+                reason=None
+            ))
+
+    return AvailableSlotsResponse(
+        date=clean_date_str,
+        branch_id=b_id,
+        branch_name=b_name,
+        slots=slots_list
+    )
+
+@router.get("/available-slots", response_model=AvailableSlotsResponse)
+def get_available_slots(
+    date: str = Query(..., description="Target appointment date in YYYY-MM-DD format"),
+    pincode: Optional[str] = Query(None, description="6-digit customer pincode"),
+    branch_id: Optional[str] = Query(None, description="Servicing franchise branch ID"),
+    request_id: Optional[str] = Query(None, description="Current request ID when rescheduling"),
+    db: Session = Depends(get_db)
+):
+    return calculate_available_slots(
+        date_str=date,
+        branch_id=branch_id,
+        pincode=pincode,
+        exclude_request_id=request_id,
+        db=db
+    )
+
 @router.post("", response_model=ServiceRequestDetail)
 def create_request(payload: ServiceBookingCreate, request: Request, db: Session = Depends(get_db)):
     user = get_authenticated_user(request, db)
@@ -371,6 +532,22 @@ def create_request(payload: ServiceBookingCreate, request: Request, db: Session 
 
     if matched_branch:
         branch_id = matched_branch.id
+
+    # Validate appointment timeslot availability & cutoff
+    if payload.preferred_date and payload.preferred_slot:
+        slot_res = calculate_available_slots(
+            date_str=payload.preferred_date,
+            branch_id=branch_id,
+            pincode=pincode,
+            exclude_request_id=None,
+            db=db
+        )
+        selected_slot = next((s for s in slot_res.slots if s.slot == payload.preferred_slot), None)
+        if selected_slot and not selected_slot.available:
+            raise HTTPException(
+                status_code=400,
+                detail=f"The selected appointment slot '{payload.preferred_slot}' on {payload.preferred_date} is unavailable ({selected_slot.reason or 'Capacity reached'}). Please choose an open slot."
+            )
 
     req_num = random.randint(7850, 9999)
     new_id = f"SR-{req_num}"
@@ -475,6 +652,91 @@ def create_request(payload: ServiceBookingCreate, request: Request, db: Session 
     notify_booking_created(new_req, db)
 
     return format_request_detail(new_req, db, user=user)
+
+@router.post("/{request_id}/reschedule", response_model=ServiceRequestDetail)
+def reschedule_request(
+    request_id: str,
+    payload: RescheduleRequestPayload,
+    request: Request,
+    db: Session = Depends(get_db)
+):
+    user = get_authenticated_user(request, db)
+    req = db.query(ServiceRequestModel).filter(ServiceRequestModel.id == request_id).first()
+    if not req:
+        raise HTTPException(status_code=404, detail="Service request not found")
+
+    if user.role == "customer" and req.customer_id != user.id:
+        raise HTTPException(status_code=403, detail="You can only reschedule your own service requests")
+    elif user.role not in ("customer", "branch", "franchise", "admin"):
+        raise HTTPException(status_code=403, detail="Not authorized to reschedule this service request")
+
+    # Lock states where doorstep technician visit has already commenced or closed
+    locked_statuses = [
+        "Service In Progress",
+        "Repair in Progress",
+        "Completed",
+        "Cancelled",
+        "Closed"
+    ]
+    if req.status in locked_statuses:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Appointment cannot be rescheduled because status is '{req.status}'. Doorstep visit has already commenced or concluded."
+        )
+
+    # Validate availability of new date & slot
+    slot_res = calculate_available_slots(
+        date_str=payload.new_date,
+        branch_id=req.branch_id,
+        pincode=req.pincode,
+        exclude_request_id=req.id,
+        db=db
+    )
+    matched_slot = next((s for s in slot_res.slots if s.slot == payload.new_slot), None)
+    if not matched_slot:
+        raise HTTPException(status_code=400, detail=f"Invalid slot '{payload.new_slot}'.")
+    if not matched_slot.available:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Slot '{payload.new_slot}' on {payload.new_date} is unavailable: {matched_slot.reason or 'Slot full'}."
+        )
+
+    old_date = req.appointment_date
+    old_slot = req.appointment_slot
+
+    req.appointment_date = payload.new_date
+    req.appointment_slot = payload.new_slot
+
+    now_str = datetime.now().strftime("%d %b %Y, %I:%M %p")
+    reason_text = payload.reason.strip() if payload.reason else "Customer requested alternative doorstep slot"
+
+    # Update service timeline with reschedule notice
+    timeline = json.loads(req.timeline_json) if req.timeline_json else []
+    for step in timeline:
+        if step.get("id") in ("step_1", "step_2"):
+            desc = step.get("description", "")
+            base_desc = desc.split(" • [Rescheduled")[0]
+            step["description"] = f"{base_desc} • [Rescheduled to {payload.new_date} ({payload.new_slot})]"
+            step["timestamp"] = now_str
+            break
+
+    rescheduled_step = {
+        "id": f"reschedule_{int(datetime.now().timestamp())}",
+        "title": "Appointment Rescheduled",
+        "timestamp": now_str,
+        "description": f"Rescheduled from {old_date} ({old_slot}) to {payload.new_date} ({payload.new_slot}). Reason: {reason_text}",
+        "state": "completed"
+    }
+    timeline.append(rescheduled_step)
+
+    req.timeline_json = json.dumps(timeline)
+    db.commit()
+    db.refresh(req)
+
+    # Dispatch Brevo notification
+    notify_appointment_rescheduled(req, old_date, old_slot, db)
+
+    return format_request_detail(req, db, user=user)
 
 @router.post("/{request_id}/assign", response_model=ServiceRequestDetail)
 def assign_technician(request_id: str, payload: FranchiseAssignPayload, request: Request, db: Session = Depends(get_db)):

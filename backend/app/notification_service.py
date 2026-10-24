@@ -119,6 +119,49 @@ ServSure Customer Support Team
     """
     send_notification_email(to_email, to_name, subject, text, html, "booking_created", req.id, req.customer_id, db)
 
+def notify_appointment_rescheduled(req: ServiceRequestModel, old_date: str, old_slot: str, db: Session):
+    customer = db.query(UserModel).filter(UserModel.id == req.customer_id).first()
+    to_email = customer.email if customer else "customer@servsure.com"
+    to_name = req.customer_name or "Valued Customer"
+    subject = f"ServSure Service Rescheduled: #{req.id}"
+
+    text = f"""Hello {to_name},
+
+Your service appointment for request #{req.id} ({req.appliance_name}) has been rescheduled.
+
+Updated Appointment Details:
+- Previous Schedule: {old_date} ({old_slot})
+- New Scheduled Date: {req.appointment_date}
+- New Time Slot: {req.appointment_slot}
+- Doorstep Address: {req.customer_address}
+
+Our authorized technician will arrive during your newly confirmed time window.
+
+Best regards,
+ServSure Customer Support Team
+"""
+    html = f"""
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 12px; background: #ffffff;">
+        <div style="border-bottom: 2px solid #2563eb; padding-bottom: 12px; margin-bottom: 20px;">
+            <h2 style="color: #1e293b; margin: 0;">Appointment Rescheduled</h2>
+            <p style="color: #64748b; font-size: 14px; margin: 4px 0 0 0;">Updated Service Window Confirmed</p>
+        </div>
+        <p style="font-size: 15px; color: #334155;">Hello <strong>{to_name}</strong>,</p>
+        <p style="font-size: 14px; color: #475569;">Your service appointment for ticket <strong>#{req.id}</strong> has been successfully rescheduled.</p>
+        <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin: 20px 0;">
+            <table style="width: 100%; font-size: 14px; color: #334155;">
+                <tr><td style="padding: 6px 0; color: #64748b; width: 40%;">Ticket ID:</td><td style="font-weight: bold; color: #2563eb;">#{req.id}</td></tr>
+                <tr><td style="padding: 6px 0; color: #64748b;">Appliance:</td><td>{req.appliance_name} ({req.model_no})</td></tr>
+                <tr><td style="padding: 6px 0; color: #ef4444;">Previous Schedule:</td><td style="text-decoration: line-through; color: #64748b;">{old_date} · {old_slot}</td></tr>
+                <tr><td style="padding: 6px 0; color: #16a34a; font-weight: bold;">New Confirmed Window:</td><td style="font-weight: 700; color: #16a34a;">{req.appointment_date} · {req.appointment_slot}</td></tr>
+                <tr><td style="padding: 6px 0; color: #64748b;">Doorstep Address:</td><td>{req.customer_address}</td></tr>
+            </table>
+        </div>
+        <p style="font-size: 13px; color: #64748b;">The assigned service team has been updated with your new schedule. You can manage or track your ticket live on your ServSure Dashboard.</p>
+    </div>
+    """
+    send_notification_email(to_email, to_name, subject, text, html, "booking_rescheduled", req.id, req.customer_id, db)
+
 def notify_technician_assigned(req: ServiceRequestModel, tech: TechnicianModel, db: Session):
     customer = db.query(UserModel).filter(UserModel.id == req.customer_id).first()
     to_email = customer.email if customer else "customer@servsure.com"

@@ -287,6 +287,25 @@ class ServiceBookingCreate(BaseModel):
     longitude: Optional[float] = None
     defect_photo: Optional[str] = None
 
+class TimeSlotInfo(BaseModel):
+    slot: str
+    available: bool
+    capacity: int
+    booked: int
+    remaining: int
+    reason: Optional[str] = None
+
+class AvailableSlotsResponse(BaseModel):
+    date: str
+    branch_id: Optional[str] = None
+    branch_name: Optional[str] = None
+    slots: List[TimeSlotInfo]
+
+class RescheduleRequestPayload(BaseModel):
+    new_date: str = Field(min_length=10, max_length=10) # YYYY-MM-DD
+    new_slot: str
+    reason: Optional[str] = None
+
 class JobCardCreatePayload(BaseModel):
     work_summary: str = Field(min_length=5, max_length=2000)
     parts_used: List[JobCardPartItem] = Field(default_factory=list)
