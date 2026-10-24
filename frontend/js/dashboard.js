@@ -467,28 +467,27 @@ function renderAppliances() {
                   )}</strong></span>
                 </div>
                 <div class="mt-2 flex flex-wrap items-center gap-2">
-                  <span class="rounded-full px-2.5 py-0.5 text-[10px] font-bold ${
-                    String(appliance.warranty_status || "")
-                      .toLowerCase()
-                      .includes("active") ||
-                    String(appliance.warranty_status || "")
-                      .toLowerCase()
-                      .includes("covered") ||
-                    String(appliance.warranty_status || "")
-                      .toLowerCase()
-                      .includes("under")
-                      ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                      : "bg-slate-100 text-slate-600"
-                  }">
-                    ${escapeHtml(
-                      appliance.warranty_status || "Warranty details unavailable"
-                    )}
-                  </span>
-                  ${
-                    appliance.warranty_end_date
-                      ? `<span class="text-[11px] text-slate-500 font-medium">Valid until: <strong class="text-slate-700">${escapeHtml(appliance.warranty_end_date)}</strong></span>`
-                      : ""
-                  }
+                  ${(() => {
+                    const ws = (appliance.warranty_status || "").toLowerCase();
+                    if (ws.includes("pending")) {
+                      return `<span class="rounded-full px-2.5 py-0.5 text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">⏳ Warranty: Under Brand Verification</span>`;
+                    } else if (ws.includes("active") || ws.includes("covered") || ws.includes("under")) {
+                      return `<span class="rounded-full px-2.5 py-0.5 text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">✓ OEM Warranty Active${appliance.warranty_end_date ? ` (Valid until ${escapeHtml(appliance.warranty_end_date)})` : ''}</span>`;
+                    } else if (ws.includes("reject")) {
+                      return `
+                        <span class="rounded-full px-2.5 py-0.5 text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200" title="${escapeHtml(appliance.warranty_rejection_reason || '')}">
+                          ❌ Warranty Rejected: ${escapeHtml(appliance.warranty_rejection_reason || 'Policy discrepancy')}
+                        </span>
+                        <button type="button" class="reupload-invoice-btn inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 transition" data-id="${escapeHtml(appliance.id)}">📎 Re-upload Invoice</button>
+                      `;
+                    } else if (ws.includes("invoice required")) {
+                      return `
+                        <span class="rounded-full px-2.5 py-0.5 text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-200">📄 Invoice Required for Warranty</span>
+                        <button type="button" class="reupload-invoice-btn inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 transition" data-id="${escapeHtml(appliance.id)}">📎 Upload Invoice</button>
+                      `;
+                    }
+                    return `<span class="rounded-full px-2.5 py-0.5 text-[10px] font-bold bg-slate-100 text-slate-600">${escapeHtml(appliance.warranty_status || "Standard")}</span>`;
+                  })()}
                   ${
                     appliance.amc_active
                       ? `<span class="rounded-full px-2.5 py-0.5 text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">🛡️ AMC: ${escapeHtml(appliance.amc_plan_name || 'Active')} · Exp: ${escapeHtml(appliance.amc_end_date || '')}</span>`
@@ -525,6 +524,9 @@ function renderAppliances() {
       });
       catalog.querySelectorAll(".buy-amc-btn").forEach((btn) => {
         btn.addEventListener("click", () => openAmcModal(btn.dataset.id));
+      });
+      catalog.querySelectorAll(".reupload-invoice-btn").forEach((btn) => {
+        btn.addEventListener("click", () => window.openReuploadInvoiceModal(btn.dataset.id));
       });
     }
   }
@@ -1628,6 +1630,11 @@ window.openBookingModal = function (applianceId = "") {
 window.openAddApplianceModal = function () {
   if ($("applianceMessage")) $("applianceMessage").textContent = "";
   if ($("applianceForm")) $("applianceForm").reset();
+  if ($("newAppPurchaseDate")) {
+    const todayStr = new Date().toISOString().split("T")[0];
+    $("newAppPurchaseDate").max = todayStr;
+    $("newAppPurchaseDate").value = todayStr;
+  }
   if ($("invoiceFileNameDisplay")) $("invoiceFileNameDisplay").textContent = "No file chosen";
   if ($("invoiceUploadedNotice")) $("invoiceUploadedNotice").classList.add("hidden");
   if ($("invoiceUploadProgress")) $("invoiceUploadProgress").classList.add("hidden");
@@ -1653,6 +1660,124 @@ window.openAddApplianceModal = function () {
   }
   openDialog("applianceDialog");
 };
+
+window.openReuploadInvoiceModal = function (applianceId) {
+  const app = userAppliances.find((a) => a.id === applianceId);
+  if (!app) return;
+  if ($("reuploadMessage")) $("reuploadMessage").textContent = "";
+  if ($("reuploadInvoiceForm")) $("reuploadInvoiceForm").reset();
+  if ($("reuploadApplianceId")) $("reuploadApplianceId").value = app.id;
+  if ($("reuploadApplianceTitle")) {
+    $("reuploadApplianceTitle").textContent = `${app.brand} ${app.category} (${app.model_no || ''})`;
+  }
+  if ($("reuploadPurchaseDate")) {
+    const todayStr = new Date().toISOString().split("T")[0];
+    $("reuploadPurchaseDate").max = todayStr;
+    if (app.purchase_date) {
+      $("reuploadPurchaseDate").value = app.purchase_date;
+    } else {
+      $("reuploadPurchaseDate").value = todayStr;
+    }
+  }
+  if (app.warranty_rejection_reason) {
+    if ($("reuploadRejectionAlert")) $("reuploadRejectionAlert").classList.remove("hidden");
+    if ($("reuploadRejectionText")) $("reuploadRejectionText").textContent = app.warranty_rejection_reason;
+  } else {
+    if ($("reuploadRejectionAlert")) $("reuploadRejectionAlert").classList.add("hidden");
+  }
+  if ($("reuploadFileNameDisplay")) $("reuploadFileNameDisplay").textContent = "No file chosen";
+  if ($("reuploadSuccessNotice")) $("reuploadSuccessNotice").classList.add("hidden");
+  if ($("reuploadProgress")) $("reuploadProgress").classList.add("hidden");
+  if ($("reuploadInvoiceUrl")) $("reuploadInvoiceUrl").value = "";
+  if ($("reuploadFileBtnLabel")) $("reuploadFileBtnLabel").textContent = "Choose New Invoice";
+  openDialog("reuploadInvoiceDialog");
+};
+
+async function handleReuploadInvoiceFileUpload(event) {
+  const file = event.target.files?.[0];
+  if (!file) return;
+
+  if (file.size > 5 * 1024 * 1024) {
+    if ($("reuploadMessage")) $("reuploadMessage").textContent = "File size must be under 5MB.";
+    event.target.value = "";
+    return;
+  }
+
+  const allowedTypes = ["image/jpeg", "image/png", "image/webp", "application/pdf"];
+  if (!allowedTypes.includes(file.type) && !file.name.match(/\.(jpe?g|png|webp|pdf)$/i)) {
+    if ($("reuploadMessage")) $("reuploadMessage").textContent = "Only image (JPG, PNG, WebP) or PDF files are allowed.";
+    event.target.value = "";
+    return;
+  }
+
+  if ($("reuploadFileNameDisplay")) $("reuploadFileNameDisplay").textContent = file.name;
+  if ($("reuploadProgress")) $("reuploadProgress").classList.remove("hidden");
+  if ($("reuploadSuccessNotice")) $("reuploadSuccessNotice").classList.add("hidden");
+  if ($("reuploadMessage")) $("reuploadMessage").textContent = "";
+
+  const formData = new FormData();
+  formData.append("file", file);
+
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/uploads`, {
+      method: "POST",
+      credentials: "include",
+      headers: authHeaders(),
+      body: formData,
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || "Invoice upload failed");
+    }
+    const data = await res.json();
+    if ($("reuploadInvoiceUrl")) $("reuploadInvoiceUrl").value = data.url;
+    if ($("reuploadProgress")) $("reuploadProgress").classList.add("hidden");
+    if ($("reuploadSuccessNotice")) $("reuploadSuccessNotice").classList.remove("hidden");
+    if ($("reuploadFileBtnLabel")) $("reuploadFileBtnLabel").textContent = "Change File";
+  } catch (err) {
+    if ($("reuploadProgress")) $("reuploadProgress").classList.add("hidden");
+    if ($("reuploadMessage")) $("reuploadMessage").textContent = err.message || "Failed to upload document.";
+    event.target.value = "";
+  }
+}
+
+async function submitReuploadInvoice(event) {
+  event.preventDefault();
+  const btn = $("reuploadSubmitBtn");
+  btn.disabled = true;
+  btn.textContent = "Submitting…";
+  if ($("reuploadMessage")) $("reuploadMessage").textContent = "";
+
+  const appId = $("reuploadApplianceId")?.value;
+  const invoiceUrl = $("reuploadInvoiceUrl")?.value?.trim();
+  const purchaseDate = $("reuploadPurchaseDate")?.value?.trim() || null;
+
+  if (!invoiceUrl) {
+    if ($("reuploadMessage")) $("reuploadMessage").textContent = "Please upload a clear invoice file.";
+    btn.disabled = false;
+    btn.textContent = "Submit for Verification";
+    return;
+  }
+
+  try {
+    await readApiJson(`/api/appliances/${appId}/invoice`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        invoice_url: invoiceUrl,
+        purchase_date: purchaseDate,
+      }),
+    });
+    closeDialog("reuploadInvoiceDialog");
+    await loadDashboardData();
+    showToast("Invoice submitted! Warranty status updated to Pending Verification.", "success");
+  } catch (err) {
+    if ($("reuploadMessage")) $("reuploadMessage").textContent = err.message || "Could not submit invoice.";
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Submit for Verification";
+  }
+}
 
 window.openAddressModal = function () {
   if ($("addressMessage")) $("addressMessage").textContent = "";
@@ -1736,29 +1861,36 @@ async function submitAppliance(event) {
   const category = $("newAppCategory")?.value || "Air Conditioner";
   const serialNo = $("newAppSerial")?.value?.trim() || null;
   const invoiceUrl = $("newAppInvoiceUrl")?.value?.trim() || null;
+  const purchaseDate = $("newAppPurchaseDate")?.value?.trim() || null;
 
   if (!companyId) {
     if ($("applianceMessage")) $("applianceMessage").textContent = "Select a registered company.";
     button.disabled = false;
-    button.textContent = "Save appliance";
+    button.textContent = "Save appliance & Register Warranty";
     return;
   }
   if (!brand) {
     if ($("applianceMessage")) $("applianceMessage").textContent = "Select brand name.";
     button.disabled = false;
-    button.textContent = "Save appliance";
+    button.textContent = "Save appliance & Register Warranty";
     return;
   }
   if (!appId) {
     if ($("applianceMessage")) $("applianceMessage").textContent = "Select an appliance from the catalog.";
     button.disabled = false;
-    button.textContent = "Save appliance";
+    button.textContent = "Save appliance & Register Warranty";
     return;
   }
   if (!modelNo) {
     if ($("applianceMessage")) $("applianceMessage").textContent = "Select model number.";
     button.disabled = false;
-    button.textContent = "Save appliance";
+    button.textContent = "Save appliance & Register Warranty";
+    return;
+  }
+  if (!purchaseDate) {
+    if ($("applianceMessage")) $("applianceMessage").textContent = "Select purchase date from invoice.";
+    button.disabled = false;
+    button.textContent = "Save appliance & Register Warranty";
     return;
   }
 
@@ -1777,6 +1909,7 @@ async function submitAppliance(event) {
         model_no: modelNo,
         serial_no: serialNo,
         invoice_url: invoiceUrl,
+        purchase_date: purchaseDate,
       }),
     });
     closeDialog("applianceDialog");
@@ -1788,7 +1921,9 @@ async function submitAppliance(event) {
     await loadDashboardData();
     if ($("bookApplianceSelect")) $("bookApplianceSelect").value = appliance.id;
     showToast(
-      `${appliance.brand} ${appliance.category} added to your appliances.`,
+      invoiceUrl
+        ? `${appliance.brand} ${appliance.category} registered! Warranty submitted for OEM verification.`
+        : `${appliance.brand} ${appliance.category} registered! Upload invoice anytime to activate warranty.`,
       "success"
     );
   } catch (error) {
@@ -1798,7 +1933,7 @@ async function submitAppliance(event) {
     }
   } finally {
     button.disabled = false;
-    button.textContent = "Save appliance";
+    button.textContent = "Save appliance & Register Warranty";
   }
 }
 
@@ -2837,6 +2972,23 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
   if ($("newAppInvoiceFile")) {
     $("newAppInvoiceFile").addEventListener("change", handleInvoiceFileUpload);
+  }
+
+  // Re-upload invoice modal listeners
+  if ($("triggerReuploadFileBtn")) {
+    $("triggerReuploadFileBtn").addEventListener("click", () => $("reuploadInvoiceFile")?.click());
+  }
+  if ($("reuploadInvoiceFile")) {
+    $("reuploadInvoiceFile").addEventListener("change", handleReuploadInvoiceFileUpload);
+  }
+  if ($("reuploadInvoiceForm")) {
+    $("reuploadInvoiceForm").addEventListener("submit", submitReuploadInvoice);
+  }
+  if ($("closeReuploadInvoice")) {
+    $("closeReuploadInvoice").addEventListener("click", () => closeDialog("reuploadInvoiceDialog"));
+  }
+  if ($("cancelReuploadInvoice")) {
+    $("cancelReuploadInvoice").addEventListener("click", () => closeDialog("reuploadInvoiceDialog"));
   }
 
   // Address modal form submissions & dialog

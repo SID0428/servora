@@ -125,9 +125,12 @@ class ApplianceBase(BaseModel):
     category: str
     model_no: str
     registered_on: str
+    purchase_date: Optional[str] = None
+    warranty_months: Optional[int] = 12
     warranty_status: str
     warranty_start_date: Optional[str] = None
     warranty_end_date: Optional[str] = None
+    warranty_rejection_reason: Optional[str] = None
     amc_active: Optional[bool] = False
     amc_plan_name: Optional[str] = None
     amc_end_date: Optional[str] = None
@@ -143,6 +146,7 @@ class NewApplianceCreate(BaseModel):
     model_no: str
     serial_no: Optional[str] = None
     invoice_url: Optional[str] = None
+    purchase_date: Optional[str] = None
 
 class CompanyApplianceCreate(BaseModel):
     appliance_name: str = Field(min_length=2, max_length=128)
@@ -493,6 +497,40 @@ class WarrantyClaimSchema(BaseModel):
 class WarrantyClaimVerifyPayload(BaseModel):
     action: str = Field(pattern=r"^(approve|reject)$")
     notes: Optional[str] = None
+
+class WarrantyRegistrationVerifyPayload(BaseModel):
+    action: str = Field(pattern=r"^(approve|reject)$")
+    rejection_reason: Optional[str] = None
+    warranty_months: Optional[int] = None
+    notes: Optional[str] = None
+
+class WarrantyInvoiceReuploadPayload(BaseModel):
+    invoice_url: str
+    purchase_date: Optional[str] = None
+
+class WarrantyRegistrationItem(BaseModel):
+    id: str
+    appliance_id: str
+    user_id: str
+    customer_name: str
+    customer_phone: Optional[str] = None
+    customer_email: Optional[str] = None
+    company_id: str
+    company_name: Optional[str] = None
+    brand: str
+    category: str
+    model_no: str
+    serial_no: Optional[str] = None
+    registered_on: str
+    purchase_date: Optional[str] = None
+    warranty_months: int
+    warranty_status: str
+    warranty_start_date: Optional[str] = None
+    warranty_end_date: Optional[str] = None
+    warranty_rejection_reason: Optional[str] = None
+    invoice_url: Optional[str] = None
+    verified_at: Optional[str] = None
+    verified_by: Optional[str] = None
 
 class AMCPlanSchema(BaseModel):
     id: str

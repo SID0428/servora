@@ -13,6 +13,7 @@ from app.db.models import (
 )
 from app.schemas import (
     WarrantyClaimSchema, WarrantyClaimVerifyPayload,
+    WarrantyRegistrationItem, WarrantyRegistrationVerifyPayload,
     AMCPlanSchema, AMCSubscriptionCreatePayload, AMCSubscriptionSchema,
     JobCardPartItem
 )
@@ -119,6 +120,134 @@ def verify_warranty_claim(
         "new_status": claim.status,
         "settled_at": claim.settled_at,
         "notes": claim.claim_notes
+    }
+
+# ==========================================
+# 1B. WARRANTY REGISTRATIONS (OEM Product Registration Audit)
+# ==========================================
+
+@router.get("/registrations", response_model=List[WarrantyRegistrationItem])
+def list_warranty_registrations(
+    request: Request,
+    status: Optional[str] = None,
+    db: Session = Depends(get_db)
+):
+    user = get_authenticated_user(request, db)
+    if user.role not in ("company", "admin"):
+        raise HTTPException(status_code=403, detail="Unauthorized to view warranty registrations")
+
+    query = db.query(ApplianceModel)
+    if user.role == "company":
+        query = query.filter(
+            or_(
+                ApplianceModel.company_id == user.id,
+                ApplianceModel.brand.ilike(user.name.strip())
+            )
+        )
+
+    if status and status.lower() != "all":
+        query = query.filter(ApplianceModel.warranty_status.ilike(f"%{status}%"))
+
+    appliances = query.all()
+    results = []
+    for app in appliances:
+        customer = db.query(UserModel).filter(UserModel.id == app.user_id).first()
+        company = db.query(UserModel).filter(UserModel.id == app.company_id).first()
+        results.append(
+            WarrantyRegistrationItem(
+                id=app.id,
+                appliance_id=app.id,
+                user_id=app.user_id,
+                customer_name=customer.name if customer else "Customer",
+                customer_phone=customer.phone if customer else None,
+                customer_email=customer.email if customer else None,
+                company_id=app.company_id or (company.id if company else ""),
+                company_name=company.name if company else (app.brand or "OEM Brand"),
+                brand=app.brand,
+                category=app.category,
+                model_no=app.model_no,
+                serial_no=app.serial_no,
+                registered_on=app.registered_on,
+                purchase_date=getattr(app, "purchase_date", None),
+                warranty_months=getattr(app, "warranty_months", 12) or 12,
+                warranty_status=app.warranty_status,
+                warranty_start_date=app.warranty_start_date,
+                warranty_end_date=app.warranty_end_date,
+                warranty_rejection_reason=getattr(app, "warranty_rejection_reason", None),
+                invoice_url=app.invoice_url,
+                verified_at=app.verified_at.strftime("%d %b %Y, %I:%M %p") if getattr(app, "verified_at", None) else None,
+                verified_by=getattr(app, "verified_by", None)
+            )
+        )
+    return results
+
+@router.post("/registrations/{appliance_id}/verify")
+def verify_warranty_registration(
+    appliance_id: str,
+    payload: WarrantyRegistrationVerifyPayload,
+    request: Request,
+    db: Session = Depends(get_db)
+):
+    user = get_authenticated_user(request, db)
+    if user.role not in ("company", "admin"):
+        raise HTTPException(status_code=403, detail="Only brand/company managers can verify warranty registrations")
+
+    app = db.query(ApplianceModel).filter(ApplianceModel.id == appliance_id).first()
+    if not app:
+        raise HTTPException(status_code=404, detail="Appliance not found")
+
+    if user.role == "company" and app.company_id != user.id and (app.brand and app.brand.lower() != user.name.lower()):
+        raise HTTPException(status_code=403, detail="Not authorized to verify warranties for another brand")
+
+    now = datetime.utcnow()
+    now_str = datetime.now().strftime("%d %b %Y, %I:%M %p")
+
+    if payload.action == "approve":
+        app.warranty_status = "Active"
+        app.warranty_rejection_reason = None
+        app.verified_at = now
+        app.verified_by = user.id
+
+        if payload.warranty_months and payload.warranty_months > 0:
+            app.warranty_months = payload.warranty_months
+
+        # Recalculate end date based on purchase_date or approval date
+        base_date = None
+        if app.purchase_date:
+            for fmt in ("%Y-%m-%d", "%d %b %Y", "%d/%m/%Y", "%Y/%m/%d"):
+                try:
+                    base_date = datetime.strptime(app.purchase_date.strip(), fmt)
+                    break
+                except Exception:
+                    pass
+        if not base_date:
+            base_date = datetime.now()
+            app.purchase_date = base_date.strftime("%Y-%m-%d")
+
+        w_months = app.warranty_months or 12
+        app.warranty_start_date = base_date.strftime("%d %b %Y")
+        app.warranty_end_date = (base_date + timedelta(days=w_months * 30)).strftime("%d %b %Y")
+
+    elif payload.action == "reject":
+        app.warranty_status = "Rejected"
+        app.warranty_rejection_reason = payload.rejection_reason or payload.notes or "Invoice verification failed (illegible document or mismatched serial/model)"
+        app.verified_at = now
+        app.verified_by = user.id
+
+    db.commit()
+    db.refresh(app)
+
+    return {
+        "status": "success",
+        "appliance_id": app.id,
+        "warranty_status": app.warranty_status,
+        "warranty_start_date": app.warranty_start_date,
+        "warranty_end_date": app.warranty_end_date,
+        "warranty_months": app.warranty_months,
+        "rejection_reason": app.warranty_rejection_reason,
+        "warranty_rejection_reason": app.warranty_rejection_reason,
+        "verified_at": now_str,
+        "verified_by": user.name
     }
 
 # ==========================================

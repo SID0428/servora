@@ -185,6 +185,98 @@
     </div>
   </dialog>
 
+  <!-- Warranty Registration Verification Modal for Company Admin -->
+  <dialog id="warrantyVerificationDialog" class="w-[min(94vw,680px)] rounded-3xl border-0 p-0 shadow-2xl overflow-hidden bg-white">
+    <div class="p-6 space-y-4">
+      <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+        <div class="flex items-center gap-2.5">
+          <span class="text-2xl">🛡️</span>
+          <div>
+            <h3 class="font-display text-base font-bold text-slate-900" id="verifyModalTitle">Audit Warranty Registration</h3>
+            <p class="text-xs text-slate-400">Verify customer purchase invoice, model, and serial number to activate OEM warranty.</p>
+          </div>
+        </div>
+        <button type="button" id="closeWarrantyVerifyDialog" class="rounded-xl p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700 text-lg leading-none" aria-label="Close">✕</button>
+      </div>
+
+      <input type="hidden" id="verifyApplianceId" value="">
+
+      <!-- Grid: Left side details, Right side invoice preview -->
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <!-- Details Card -->
+        <div class="space-y-3 bg-slate-50 p-4 rounded-2xl border border-slate-100 text-xs">
+          <div>
+            <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Customer Information</span>
+            <div class="font-bold text-slate-800 text-sm mt-0.5" id="verifyCustomerName">—</div>
+            <div class="text-slate-500 font-medium mt-0.5" id="verifyCustomerContact">—</div>
+          </div>
+
+          <div class="pt-2 border-t border-slate-200/60">
+            <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Registered Appliance</span>
+            <div class="font-bold text-slate-800 text-sm mt-0.5" id="verifyApplianceName">—</div>
+            <div class="text-slate-600 mt-0.5">Model: <strong id="verifyModelNo" class="text-slate-800 font-mono">—</strong></div>
+            <div class="text-slate-600 mt-0.5">Serial: <strong id="verifySerialNo" class="text-slate-800 font-mono">—</strong></div>
+          </div>
+
+          <div class="pt-2 border-t border-slate-200/60">
+            <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Purchase & Coverage</span>
+            <div class="text-slate-600 mt-0.5">Purchase Date: <strong id="verifyPurchaseDate" class="text-slate-800">—</strong></div>
+            <div class="mt-1 flex items-center gap-2">
+              <label class="text-slate-600 font-medium">Warranty Duration:</label>
+              <input type="number" id="verifyWarrantyMonths" min="1" max="120" value="12" class="w-16 px-2 py-1 text-xs font-bold border border-slate-200 rounded-lg bg-white text-slate-800 text-center">
+              <span class="text-slate-500 text-[11px]">Months</span>
+            </div>
+            <div class="mt-1 text-[11px] text-slate-500">Calculated Expiry: <strong id="verifyCalculatedEnd" class="text-slate-700">—</strong></div>
+          </div>
+        </div>
+
+        <!-- Invoice Preview Card -->
+        <div class="space-y-2 bg-slate-50 p-4 rounded-2xl border border-slate-100 flex flex-col justify-between">
+          <div>
+            <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Purchase Invoice</span>
+            <div id="verifyInvoiceContainer" class="mt-2 min-h-[170px] rounded-xl border border-slate-200 bg-white flex flex-col items-center justify-center p-3 text-center overflow-hidden">
+              <img id="verifyInvoiceImg" src="" alt="Invoice Preview" class="max-h-40 object-contain rounded-lg shadow-xs hidden cursor-pointer" onclick="window.open(this.src, '_blank')">
+              <div id="verifyInvoicePdfWrap" class="hidden space-y-2">
+                <span class="text-3xl block">📄</span>
+                <span class="text-xs font-semibold text-slate-700 block">PDF Invoice Document</span>
+                <a id="verifyInvoicePdfLink" href="#" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 text-blue-700 border border-blue-200 rounded-xl text-xs font-bold hover:bg-blue-100 transition">Open Full PDF ↗</a>
+              </div>
+              <div id="verifyInvoiceEmpty" class="text-slate-400 text-xs">No invoice attached by customer</div>
+            </div>
+          </div>
+          <div class="text-[10px] text-slate-400 text-center">Click image or button to view high-resolution document</div>
+        </div>
+      </div>
+
+      <!-- Rejection Reason Selector -->
+      <div id="verifyRejectionWrap" class="p-3 bg-rose-50 border border-rose-100 rounded-2xl space-y-2">
+        <label class="block text-xs font-semibold text-rose-900">
+          Reason for Rejection <span class="text-slate-400 font-normal">(Required if rejecting)</span>
+          <select id="verifyRejectionSelect" class="mt-1 w-full rounded-xl border border-rose-200 px-3 py-1.5 text-xs bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-rose-500/20">
+            <option value="">-- Choose reason --</option>
+            <option value="Invoice document is blurry or unreadable">Invoice document is blurry or unreadable</option>
+            <option value="Purchase date on invoice is older than standard warranty period">Purchase date on invoice is older than standard warranty period</option>
+            <option value="Model number on invoice does not match registered model">Model number on invoice does not match registered model</option>
+            <option value="Serial number on invoice is missing or mismatched">Serial number on invoice is missing or mismatched</option>
+            <option value="Invoice is missing retailer GST or business stamp">Invoice is missing retailer GST or business stamp</option>
+            <option value="Other">Other (custom note)</option>
+          </select>
+        </label>
+        <input type="text" id="verifyCustomReason" placeholder="Enter specific reason for customer..." class="hidden w-full rounded-xl border border-rose-200 px-3 py-1.5 text-xs bg-white text-slate-700">
+      </div>
+
+      <p id="verifyModalMessage" class="min-h-4 text-xs font-semibold text-rose-600" role="status"></p>
+
+      <div class="pt-3 border-t border-slate-100 flex items-center justify-between">
+        <button type="button" class="px-4 py-2 rounded-xl text-slate-600 hover:bg-slate-100 text-xs font-bold transition" id="cancelWarrantyVerify">Cancel</button>
+        <div class="flex items-center gap-2">
+          <button type="button" class="px-4 py-2 rounded-xl bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100 text-xs font-bold transition" id="verifyRejectBtn">❌ Reject Registration</button>
+          <button type="button" class="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition shadow-sm" id="verifyApproveBtn">✓ Approve OEM Warranty</button>
+        </div>
+      </div>
+    </div>
+  </dialog>
+
   <!-- OpenStreetMap Route Map Modal for Technician & Ops -->
   <dialog id="techMapDialog" class="w-[min(94vw,720px)] rounded-3xl border-0 p-0 shadow-2xl overflow-hidden bg-white">
     <div class="p-5 sm:p-6 space-y-3">

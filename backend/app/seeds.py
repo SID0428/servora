@@ -58,6 +58,21 @@ def seed_database(db: Session):
     if "invoice_url" not in appliance_columns:
         with engine.begin() as connection:
             connection.execute(text("ALTER TABLE appliances ADD COLUMN invoice_url TEXT NULL"))
+    if "purchase_date" not in appliance_columns:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE appliances ADD COLUMN purchase_date DATE NULL"))
+    if "warranty_months" not in appliance_columns:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE appliances ADD COLUMN warranty_months INTEGER NULL DEFAULT 12"))
+    if "warranty_rejection_reason" not in appliance_columns:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE appliances ADD COLUMN warranty_rejection_reason TEXT NULL"))
+    if "verified_at" not in appliance_columns:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE appliances ADD COLUMN verified_at DATETIME NULL"))
+    if "verified_by" not in appliance_columns:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE appliances ADD COLUMN verified_by VARCHAR(64) NULL"))
 
     req_columns = {column["name"] for column in inspect(engine).get_columns("service_requests")}
     if "pincode" not in req_columns:

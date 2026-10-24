@@ -4,8 +4,8 @@ PRODUCTION-GRADE TECHNICAL ARCHITECTURE & DEVELOPER ONBOARDING MANUAL
 ================================================================================
 File: documentation.txt
 Platform: ServSure (formerly Servora)
-Version: 1.2.0 (Production Release - Technician Portal Customer PII Privacy After Service Completion)
-Last Updated: October 24, 2026 (15:07 IST)
+Version: 1.3.0 (Production Release - Unified Appliance & Brand OEM Warranty Verification Flow)
+Last Updated: October 24, 2026 (17:10 IST)
 Repository: https://github.com/SID0428/servora.git
 
 Welcome to ServSure! This manual is the definitive, authoritative reference
@@ -360,9 +360,14 @@ All database entities are defined in `backend/app/db/models.py`:
     - `id`: String(64), Primary Key.
     - `user_id`: String(64), ForeignKey("users.id", CASCADE).
     - `company_id`: String(64), Nullable: True.
-    - `brand`, `model_number`, `serial_number`, `category`, `purchase_date`.
-    - `warranty_status`: String(32) ("Active", "Expired").
+    - `brand`, `model_no`, `serial_no`, `category`, `appliance_name`.
+    - `purchase_date`: Date, Nullable: True (Original purchase date from invoice).
+    - `warranty_months`: Integer, Default: 12 (Standard catalog or brand approved duration).
+    - `warranty_status`: String(32) ("Pending Verification", "Active", "Rejected", "Invoice Required", "Expired").
     - `warranty_start_date`, `warranty_end_date`: String(32).
+    - `warranty_rejection_reason`: Text, Nullable: True (Brand rejection audit note).
+    - `verified_at`: DateTime, Nullable: True.
+    - `verified_by`: String(64), Nullable: True (User ID of brand reviewer).
     - `amc_active`: Boolean, Default: False.
     - `amc_plan_name`, `amc_end_date`: String(64).
     - `invoice_url`: Text.
@@ -677,8 +682,11 @@ Request Headers:
   - Returns `{ "brands": ["..."], "appliances": [{ "id", "appliance_name", "brand", "category", "model_numbers": [...], "warranty_months": 12 }] }`
   - Used for cascading dropdowns in customer registration flow.
 - `POST /api/appliances`:
-  - Body: `{ "company_id": "comp_1", "brand": "Crompton", "category": "Air Conditioner", "appliance_name": "Inverter Split AC 1.5 Ton", "model_no": "CRO-AC15-INV", "serial_no": "SN-2026-9921", "invoice_url": "/uploads/inv_123.pdf" }`
-  - Validates company selection and registers customer appliance with configured warranty duration and attached purchase invoice.
+  - Body: `{ "company_id": "comp_1", "brand": "Crompton", "category": "Air Conditioner", "appliance_name": "Inverter Split AC 1.5 Ton", "model_no": "CRO-AC15-INV", "serial_no": "SN-2026-9921", "invoice_url": "data:image/png;base64,...", "purchase_date": "2025-01-15" }`
+  - Validates company selection and registers customer appliance. Automatically queries `CompanyApplianceCatalogModel` to assign standard warranty months (default 12), sets `warranty_start_date` and `warranty_end_date` relative to `purchase_date`, and sets `warranty_status` to `"Pending Verification"` (or `"Invoice Required"` if invoice is missing). Single-step registration covers both appliance registration and warranty initiation.
+- `PUT /api/appliances/{appliance_id}/invoice`:
+  - Body: `{ "invoice_url": "data:image/png;base64,...", "purchase_date": "2025-01-15" }`
+  - Allows customer to re-upload clear invoice or correct purchase date if rejected by OEM or previously missing. Automatically resets `warranty_status` to `"Pending Verification"` and clears `warranty_rejection_reason`.
 - `GET /api/appliances/{appliance_id}/warranty`: Real-time warranty validation status.
 
 5.8. Spare Parts & End-to-End Inventory Supply Chain (`/api/inventory`)
@@ -736,6 +744,15 @@ Request Headers:
 
 5.9. Warranty Claims & AMC Subscriptions (`/api/warranty-amc`)
 --------------------------------------------------------------
+- `GET /api/warranty-amc/registrations`:
+  - Query: `?status=all|Pending Verification|Active|Rejected`
+  - Returns customer appliance warranty registrations queued for the authenticated brand/company.
+  - Response: list of `{ id, user_id, customer_name, customer_email, customer_phone, company_id, brand, category, model_no, serial_no, registered_on, purchase_date, warranty_months, warranty_status, warranty_start_date, warranty_end_date, warranty_rejection_reason, invoice_url, verified_at, verified_by }`.
+- `POST /api/warranty-amc/registrations/{appliance_id}/verify`:
+  - Body: `{ "action": "approve" | "reject", "warranty_months": 24, "rejection_reason": "...", "notes": "..." }`
+  - Brand OEM review endpoint.
+  - Approve action: Sets `warranty_status = "Active"`, overrides warranty months if specified, recalculates `warranty_start_date` and `warranty_end_date` from purchase date, logs `verified_at` and `verified_by`.
+  - Reject action: Sets `warranty_status = "Rejected"`, records `warranty_rejection_reason` for customer visibility, logs `verified_at` and `verified_by`.
 - `GET /api/warranty-amc/claims`: List warranty reimbursement claims.
 - `POST /api/warranty-amc/claims`: Submit parts and labor warranty claim for completed ticket.
 - `PUT /api/warranty-amc/claims/{claim_id}`: Company approves or rejects warranty reimbursement.
@@ -1028,6 +1045,41 @@ were identified between the initial rough draft documentation and the actual cod
        - openTicketDetailModal() Customer Information Card: Shows privacy-protected placeholders
          when piiRedacted condition is true (null phone + Completed + technician role).
        - openTechRouteMap(): Map subtitle uses "Customer Doorstep" instead of customer_name.
+
+15. Discrepancy: Unified Customer Appliance Registration & Brand OEM Warranty Verification / Claim Workflow
+   - Initial Draft / Early Iteration:
+     Appliance registration and warranty claiming were disconnected and manual. Customers had to add an appliance
+     and then separately initiate or verify warranty. Invoices were optional text links, without purchase date
+     tracking, and there was no brand verification queue. If an invoice was illegible or rejected, customers had
+     no workflow to re-upload clear proof, leading to disputed warranty claims and out-of-pocket charges.
+   - Reality in Code:
+     1. Single-Step Customer Registration & Warranty Activation:
+        Integrated purchase date input (`#newAppPurchaseDate`) into Step 5 of the Customer Appliance registration modal
+        (`customer-dashboard.html`). When submitted, the backend (`POST /api/appliances`) looks up `warranty_months`
+        from the company's catalog (`CompanyApplianceCatalogModel`), automatically calculates `warranty_start_date`
+        and `warranty_end_date` relative to the purchase date, and sets `warranty_status = "Pending Verification"`
+        (or `"Invoice Required"` if invoice upload was skipped). Customers never have to fill in details twice.
+     2. Brand Company Verification Hub (`ops-dashboard.js` & `company-dashboard.html`):
+        The OEM Company Portal Warranty Claims view features a dual-subtab layout:
+        - `[📋 Customer Registrations (N)]`: Live queue of customer appliance registrations under review.
+        - `[🛡️ Service Claims (M)]`: Franchise parts and labor warranty reimbursement claims.
+        Company administrators can click "Review & Verify" to open a split-pane modal (`#warrantyVerificationDialog`)
+        displaying full customer details, model and serial numbers, purchase date, and an inline zoomable invoice image/PDF preview.
+     3. Brand OEM Decision & Duration Override:
+        - Approval: Company can verify serial match, adjust warranty duration (`warranty_months`), and approve.
+          Warranty status is updated to `"Active"` and warranty end date is recalculated.
+        - Rejection: Company can reject with standardized reasons (Illegible Document, Serial Mismatch, Expired Period,
+          Invoice Fraud) or custom notes. Warranty status updates to `"Rejected"` with `warranty_rejection_reason` saved.
+     4. Customer Re-Upload Resolution Flow (`dashboard.js` & `customer-dashboard.html`):
+        Rejected appliances display an amber/red pill badge with the exact rejection reason and an active
+        "Re-upload Clear Invoice" button. Clicking opens `#reuploadInvoiceDialog` allowing customers to upload a clear
+        replacement invoice or adjust the purchase date via `PUT /api/appliances/{appliance_id}/invoice`. Submission
+        immediately clears the rejection reason and resets status to `"Pending Verification"`, re-queuing the appliance for OEM review.
+     5. End-to-End Service Requests & Claims:
+        When creating service requests (`POST /api/requests`), the backend checks if `warranty_status == "Active"`
+        and the request date is within `warranty_end_date`. If valid, `is_under_warranty` is set to `True`, inspection fee
+        is zeroed (`Rs. 0`), repair estimates are marked zero-customer-payable, and completed repairs trigger
+        franchise reimbursement claims via `WarrantyClaimModel` directly to the brand manufacturer.
 
 ================================================================================
 End of Documentation

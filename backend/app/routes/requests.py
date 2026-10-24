@@ -421,7 +421,14 @@ def create_request(payload: ServiceBookingCreate, request: Request, db: Session 
         if appliance_rec.amc_active:
             is_warranty = True
         elif appliance_rec.warranty_status and ("under" in appliance_rec.warranty_status.lower() or "active" in appliance_rec.warranty_status.lower()):
-            is_warranty = True
+            if appliance_rec.warranty_end_date:
+                try:
+                    end_dt = datetime.strptime(appliance_rec.warranty_end_date.strip(), "%d %b %Y")
+                    is_warranty = datetime.now() <= end_dt
+                except Exception:
+                    is_warranty = True
+            else:
+                is_warranty = True
 
     new_req = ServiceRequestModel(
         id=new_id,

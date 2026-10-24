@@ -113,6 +113,8 @@ let companyCustomers = [];
 let franchiseCustomers = [];
 let franchiseInventory = [];
 let companyWarrantyClaims = [];
+let companyWarrantyRegistrations = [];
+let companyWarrantySubTab = "registrations"; // "registrations" or "claims"
 let companySparesCatalog = [];
 let companyPartRequests = [];
 let franchisePartRequests = [];
@@ -156,6 +158,7 @@ try {
     franchiseCustomers = getUserCache("servsure_cache_franchise_customers");
     franchiseInventory = getUserCache("servsure_cache_inventory");
     companyWarrantyClaims = getUserCache("servsure_cache_claims");
+    companyWarrantyRegistrations = getUserCache("servsure_cache_warranty_registrations");
     companySparesCatalog = getUserCache("servsure_cache_catalog");
     companyPartRequests = getUserCache("servsure_cache_part_requests");
     franchisePartRequests = getUserCache("servsure_cache_part_requests_franchise");
@@ -2991,17 +2994,24 @@ function initRestockModalEvents() {
 // ==========================================
 async function loadCompanyWarrantyClaims() {
   try {
-    companyWarrantyClaims = await generalApi("/api/warranty-amc/claims");
-    try { localStorage.setItem("servora_cache_claims", JSON.stringify(companyWarrantyClaims)); } catch {}
+    const [claims, registrations] = await Promise.all([
+      generalApi("/api/warranty-amc/claims").catch(() => []),
+      generalApi("/api/warranty-amc/registrations").catch(() => []),
+    ]);
+    companyWarrantyClaims = claims || [];
+    companyWarrantyRegistrations = registrations || [];
+    setUserCache("servsure_cache_claims", companyWarrantyClaims);
+    setUserCache("servsure_cache_warranty_registrations", companyWarrantyRegistrations);
     renderCompanyWarrantyClaims();
   } catch (error) {
     companyWarrantyClaims = [];
+    companyWarrantyRegistrations = [];
     renderCompanyWarrantyClaims();
     if ($("requestRows")) {
       $("requestRows").innerHTML = `<tr><td class="empty-row" colspan="7">${safe(error.message)}. Check your company session and try again.</td></tr>`;
     }
-    if ($("requestCount")) $("requestCount").textContent = "Could not load warranty claims";
-    showToast(`Warranty claims could not load: ${error.message}`, "error");
+    if ($("requestCount")) $("requestCount").textContent = "Could not load warranty data";
+    showToast(`Warranty data could not load: ${error.message}`, "error");
   }
 }
 
@@ -3015,37 +3025,166 @@ function renderCompanyWarrantyClaims() {
   setHidden("pageContent", false);
   setHidden("metricGrid", true);
 
-  if ($("tableTitle")) $("tableTitle").textContent = "OEM Warranty Reimbursement Claims";
-  if ($("tableSubtitle")) $("tableSubtitle").textContent = "Audit and settle warranty claims raised by franchise branches for in-warranty repairs.";
-  if ($("sidePanelTitle")) $("sidePanelTitle").textContent = "Claims audit";
-
-  const pendingCount = companyWarrantyClaims.filter((c) => c.status === "Pending Review").length;
+  const pendingRegs = companyWarrantyRegistrations.filter((r) => (r.warranty_status || "").toLowerCase().includes("pending"));
+  const pendingClaims = companyWarrantyClaims.filter((c) => c.status === "Pending Review");
   const totalClaimAmount = companyWarrantyClaims.reduce((acc, c) => acc + (c.claim_amount || 0), 0);
 
+  if ($("tableTitle")) {
+    $("tableTitle").innerHTML = `
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 w-full">
+        <div>
+          <span>OEM Warranty Management</span>
+          <p class="text-xs text-slate-500 font-normal mt-0.5">Audit customer appliance warranty registrations and settle franchise repair reimbursement claims.</p>
+        </div>
+        <div class="flex items-center gap-2">
+          <div class="inline-flex rounded-xl bg-slate-100 p-1 border border-slate-200">
+            <button type="button" id="tabWarrantyRegs" class="px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${companyWarrantySubTab === 'registrations' ? 'bg-white text-blue-600 shadow-xs' : 'text-slate-600 hover:text-slate-900'}">
+              📋 Customer Registrations (${companyWarrantyRegistrations.length})
+              ${pendingRegs.length > 0 ? `<span class="px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-amber-500 text-white">${pendingRegs.length}</span>` : ''}
+            </button>
+            <button type="button" id="tabWarrantyClaims" class="px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${companyWarrantySubTab === 'claims' ? 'bg-white text-blue-600 shadow-xs' : 'text-slate-600 hover:text-slate-900'}">
+              🛡️ Service Claims (${companyWarrantyClaims.length})
+              ${pendingClaims.length > 0 ? `<span class="px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-rose-500 text-white">${pendingClaims.length}</span>` : ''}
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+  if ($("tableSubtitle")) $("tableSubtitle").textContent = "";
+
+  $("tabWarrantyRegs")?.addEventListener("click", () => {
+    companyWarrantySubTab = "registrations";
+    renderCompanyWarrantyClaims();
+  });
+  $("tabWarrantyClaims")?.addEventListener("click", () => {
+    companyWarrantySubTab = "claims";
+    renderCompanyWarrantyClaims();
+  });
+
+  if ($("sidePanelTitle")) $("sidePanelTitle").textContent = "Warranty summary";
   if ($("healthContent")) {
     $("healthContent").innerHTML = `
       <div class="space-y-2.5">
         <div class="p-3 bg-white rounded-xl border border-slate-100 flex items-center justify-between">
-          <span class="text-xs text-slate-500 font-medium">Total claims received:</span>
-          <strong class="text-sm font-bold text-slate-800">${companyWarrantyClaims.length}</strong>
+          <span class="text-xs text-slate-500 font-medium">Customer registrations:</span>
+          <strong class="text-sm font-bold text-slate-800">${companyWarrantyRegistrations.length}</strong>
         </div>
-        <div class="p-3 ${pendingCount > 0 ? 'bg-amber-50 border-amber-200' : 'bg-emerald-50 border-emerald-200'} rounded-xl border flex items-center justify-between">
-          <span class="text-xs ${pendingCount > 0 ? 'text-amber-800' : 'text-emerald-800'} font-semibold">Pending review:</span>
-          <strong class="text-sm font-bold ${pendingCount > 0 ? 'text-amber-700' : 'text-emerald-700'}">${pendingCount} claims</strong>
+        <div class="p-3 ${pendingRegs.length > 0 ? 'bg-amber-50 border-amber-200' : 'bg-emerald-50 border-emerald-200'} rounded-xl border flex items-center justify-between">
+          <span class="text-xs ${pendingRegs.length > 0 ? 'text-amber-800' : 'text-emerald-800'} font-semibold">Pending activation audit:</span>
+          <strong class="text-sm font-bold ${pendingRegs.length > 0 ? 'text-amber-700' : 'text-emerald-700'}">${pendingRegs.length} units</strong>
         </div>
         <div class="p-3 bg-blue-50 border border-blue-100 rounded-xl flex items-center justify-between">
-          <span class="text-xs text-blue-800 font-semibold">Total claims value:</span>
-          <strong class="text-sm font-bold text-blue-700 font-display">₹${totalClaimAmount.toFixed(2)}</strong>
+          <span class="text-xs text-blue-800 font-semibold">Service repair claims:</span>
+          <strong class="text-sm font-bold text-blue-700 font-display">₹${totalClaimAmount.toFixed(2)} (${companyWarrantyClaims.length})</strong>
         </div>
       </div>
     `;
   }
   if ($("activityContent")) {
-    $("activityContent").innerHTML = `<div class="section-empty text-xs leading-relaxed">Under SRS §6.9 (FR-WAR-003), consumer pays ₹0.00 for repairs during warranty. Parts reimbursement is approved and credited to the servicing franchise here.</div>`;
+    $("activityContent").innerHTML = `<div class="section-empty text-xs leading-relaxed">Under ServSure Warranty Policy, customer registration with purchase invoice triggers OEM verification. Valid claims from franchise branches are settled at zero consumer cost.</div>`;
   }
-  if ($("bottomTitle")) $("bottomTitle").textContent = "OEM Reimbursement";
-  if ($("bottomSubtitle")) $("bottomSubtitle").textContent = "Warranty policy & parts settlement";
+  if ($("bottomTitle")) $("bottomTitle").textContent = "Warranty Compliance";
+  if ($("bottomSubtitle")) $("bottomSubtitle").textContent = "Audit guidelines & parts reimbursement";
 
+  const query = $("requestSearch") ? $("requestSearch").value.trim().toLowerCase() : "";
+
+  // -------------------------------------------------------------
+  // SUBTAB 1: CUSTOMER APPLIANCE & WARRANTY REGISTRATIONS
+  // -------------------------------------------------------------
+  if (companyWarrantySubTab === "registrations") {
+    if ($("requestSearch")) $("requestSearch").placeholder = "Search registrations by customer, model, serial, or status";
+    if ($("requestHead")) {
+      $("requestHead").innerHTML = [
+        "Customer",
+        "Appliance & Brand",
+        "Model & Serial",
+        "Purchase Date",
+        "Invoice",
+        "Warranty Status",
+        "Action"
+      ].map((label) => `<th>${safe(label)}</th>`).join("");
+    }
+
+    const filtered = companyWarrantyRegistrations.filter((item) =>
+      [
+        item.customer_name,
+        item.customer_phone,
+        item.brand,
+        item.category,
+        item.model_no,
+        item.serial_no,
+        item.warranty_status
+      ]
+        .join(" ")
+        .toLowerCase()
+        .includes(query)
+    );
+
+    if ($("requestRows")) {
+      $("requestRows").innerHTML = filtered.length
+        ? filtered
+            .map((item) => {
+              const ws = (item.warranty_status || "").toLowerCase();
+              let statusBadge = "";
+              if (ws.includes("active")) {
+                statusBadge = `<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">✓ Active (${safe(item.warranty_end_date || '')})</span>`;
+              } else if (ws.includes("pending")) {
+                statusBadge = `<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-50 text-amber-800 border border-amber-200">⏳ Pending Verification</span>`;
+              } else if (ws.includes("reject")) {
+                statusBadge = `<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-rose-50 text-rose-800 border border-rose-200" title="${safe(item.warranty_rejection_reason || '')}">✕ Rejected</span>`;
+              } else {
+                statusBadge = `<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-slate-100 text-slate-700">📄 Invoice Required</span>`;
+              }
+
+              const invoiceLink = item.invoice_url
+                ? `<a href="${safe(item.invoice_url)}" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-1 text-xs font-semibold text-blue-600 hover:underline"><span>📎</span> View Document</a>`
+                : `<span class="text-xs text-slate-400">None attached</span>`;
+
+              const actionBtn = `<button type="button" class="table-action font-semibold text-blue-600 hover:text-blue-800 flex items-center gap-1" data-verify-appliance-id="${safe(item.appliance_id || item.id)}"><span>🔍</span> Audit & Verify →</button>`;
+
+              return `
+                <tr>
+                  <td>
+                    <strong class="text-slate-900 block font-semibold">${safe(item.customer_name)}</strong>
+                    <small class="text-slate-400">${safe(item.customer_phone || item.customer_email || '—')}</small>
+                  </td>
+                  <td>
+                    <span class="font-bold text-slate-800">${safe(item.brand)} ${safe(item.category)}</span>
+                  </td>
+                  <td>
+                    <span class="font-mono text-slate-800 block">${safe(item.model_no || '—')}</span>
+                    <small class="text-slate-400 font-mono">SN: ${safe(item.serial_no || 'Not registered')}</small>
+                  </td>
+                  <td>
+                    <span class="text-xs font-medium text-slate-700">${safe(item.purchase_date || item.registered_on || '—')}</span>
+                  </td>
+                  <td>${invoiceLink}</td>
+                  <td>${statusBadge}</td>
+                  <td>${actionBtn}</td>
+                </tr>
+              `;
+            })
+            .join("")
+        : `<tr><td class="empty-row" colspan="7">${query ? "No warranty registrations match your search." : "No customer appliance warranty registrations found."}</td></tr>`;
+    }
+
+    if ($("requestCount")) {
+      $("requestCount").textContent = `${filtered.length} registration${filtered.length === 1 ? "" : "s"} shown`;
+    }
+
+    document.querySelectorAll("[data-verify-appliance-id]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        window.openWarrantyVerificationModal(btn.dataset.verifyApplianceId);
+      });
+    });
+    return;
+  }
+
+  // -------------------------------------------------------------
+  // SUBTAB 2: SERVICE REPAIR REIMBURSEMENT CLAIMS
+  // -------------------------------------------------------------
+  if ($("requestSearch")) $("requestSearch").placeholder = "Search claims by ID, branch, appliance, or status";
   if ($("requestHead")) {
     $("requestHead").innerHTML = [
       "Claim ID",
@@ -3057,9 +3196,6 @@ function renderCompanyWarrantyClaims() {
       "Action"
     ].map((label) => `<th>${safe(label)}</th>`).join("");
   }
-
-  const query = $("requestSearch") ? $("requestSearch").value.trim().toLowerCase() : "";
-  if ($("requestSearch")) $("requestSearch").placeholder = "Search claims by ID, branch, appliance, or status";
 
   const filtered = companyWarrantyClaims.filter((item) =>
     [item.id, item.request_id, item.branch_name, item.appliance_name, item.status]
@@ -3112,6 +3248,170 @@ function renderCompanyWarrantyClaims() {
       const claim = companyWarrantyClaims.find((c) => c.id === btn.dataset.reviewClaimId);
       if (claim) openClaimReviewModal(claim);
     });
+  });
+}
+
+window.openWarrantyVerificationModal = function (applianceId) {
+  const reg = companyWarrantyRegistrations.find((r) => (r.appliance_id === applianceId || r.id === applianceId));
+  if (!reg) return;
+
+  const dialog = $("warrantyVerificationDialog");
+  if (!dialog) return;
+
+  if ($("verifyApplianceId")) $("verifyApplianceId").value = reg.appliance_id || reg.id;
+  if ($("verifyCustomerName")) $("verifyCustomerName").textContent = reg.customer_name || "Customer";
+  if ($("verifyCustomerContact")) {
+    $("verifyCustomerContact").textContent = [
+      reg.customer_phone ? `📞 ${reg.customer_phone}` : "",
+      reg.customer_email ? `✉️ ${reg.customer_email}` : ""
+    ].filter(Boolean).join(" · ") || "No direct contact provided";
+  }
+  if ($("verifyApplianceName")) $("verifyApplianceName").textContent = `${reg.brand} ${reg.category}`;
+  if ($("verifyModelNo")) $("verifyModelNo").textContent = reg.model_no || "—";
+  if ($("verifySerialNo")) $("verifySerialNo").textContent = reg.serial_no || "Not registered";
+  if ($("verifyPurchaseDate")) $("verifyPurchaseDate").textContent = reg.purchase_date || reg.registered_on || "—";
+
+  const durationInput = $("verifyWarrantyMonths");
+  if (durationInput) durationInput.value = reg.warranty_months || 12;
+
+  const updateCalculatedExpiry = () => {
+    const months = parseInt(durationInput?.value, 10) || 12;
+    let baseDate = new Date();
+    if (reg.purchase_date) {
+      const parsed = new Date(reg.purchase_date);
+      if (!isNaN(parsed.getTime())) baseDate = parsed;
+    }
+    const expDate = new Date(baseDate.getTime() + months * 30 * 24 * 60 * 60 * 1000);
+    if ($("verifyCalculatedEnd")) {
+      $("verifyCalculatedEnd").textContent = expDate.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+    }
+  };
+  updateCalculatedExpiry();
+  if (durationInput) durationInput.oninput = updateCalculatedExpiry;
+
+  // Invoice preview
+  const imgEl = $("verifyInvoiceImg");
+  const pdfWrap = $("verifyInvoicePdfWrap");
+  const pdfLink = $("verifyInvoicePdfLink");
+  const emptyEl = $("verifyInvoiceEmpty");
+
+  if (reg.invoice_url) {
+    if (emptyEl) emptyEl.classList.add("hidden");
+    const isPdf = reg.invoice_url.toLowerCase().endsWith(".pdf") || reg.invoice_url.toLowerCase().includes(".pdf");
+    if (isPdf) {
+      if (imgEl) imgEl.classList.add("hidden");
+      if (pdfWrap) pdfWrap.classList.remove("hidden");
+      if (pdfLink) pdfLink.href = reg.invoice_url;
+    } else {
+      if (pdfWrap) pdfWrap.classList.add("hidden");
+      if (imgEl) {
+        imgEl.src = reg.invoice_url;
+        imgEl.classList.remove("hidden");
+      }
+    }
+  } else {
+    if (imgEl) imgEl.classList.add("hidden");
+    if (pdfWrap) pdfWrap.classList.add("hidden");
+    if (emptyEl) emptyEl.classList.remove("hidden");
+  }
+
+  // Rejection wrap reset
+  if ($("verifyRejectionSelect")) $("verifyRejectionSelect").value = "";
+  if ($("verifyCustomReason")) {
+    $("verifyCustomReason").value = "";
+    $("verifyCustomReason").classList.add("hidden");
+  }
+  if ($("verifyModalMessage")) $("verifyModalMessage").textContent = "";
+
+  if (typeof dialog.showModal === "function") dialog.showModal();
+  else dialog.hidden = false;
+};
+
+function initWarrantyVerificationDialogEvents() {
+  const dialog = $("warrantyVerificationDialog");
+  if (!dialog) return;
+
+  $("closeWarrantyVerifyDialog")?.addEventListener("click", () => {
+    if (typeof dialog.close === "function") dialog.close();
+    else dialog.hidden = true;
+  });
+  $("cancelWarrantyVerify")?.addEventListener("click", () => {
+    if (typeof dialog.close === "function") dialog.close();
+    else dialog.hidden = true;
+  });
+
+  $("verifyRejectionSelect")?.addEventListener("change", (e) => {
+    if (e.target.value === "Other") {
+      $("verifyCustomReason")?.classList.remove("hidden");
+    } else {
+      $("verifyCustomReason")?.classList.add("hidden");
+    }
+  });
+
+  $("verifyApproveBtn")?.addEventListener("click", async () => {
+    const applianceId = $("verifyApplianceId")?.value;
+    const months = parseInt($("verifyWarrantyMonths")?.value, 10) || 12;
+    if (!applianceId) return;
+
+    const btn = $("verifyApproveBtn");
+    btn.disabled = true;
+    btn.textContent = "Approving…";
+    if ($("verifyModalMessage")) $("verifyModalMessage").textContent = "";
+
+    try {
+      await generalApi(`/api/warranty-amc/registrations/${encodeURIComponent(applianceId)}/verify`, {
+        method: "POST",
+        body: JSON.stringify({
+          action: "approve",
+          warranty_months: months
+        })
+      });
+      if (typeof dialog.close === "function") dialog.close();
+      else dialog.hidden = true;
+      showToast("✓ Warranty approved! Status is now Active.", "success");
+      await loadCompanyWarrantyClaims();
+    } catch (err) {
+      if ($("verifyModalMessage")) $("verifyModalMessage").textContent = err.message || "Failed to approve warranty.";
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "✓ Approve OEM Warranty";
+    }
+  });
+
+  $("verifyRejectBtn")?.addEventListener("click", async () => {
+    const applianceId = $("verifyApplianceId")?.value;
+    const sel = $("verifyRejectionSelect")?.value;
+    const custom = $("verifyCustomReason")?.value?.trim();
+    const reason = sel === "Other" ? custom : sel;
+
+    if (!reason) {
+      if ($("verifyModalMessage")) $("verifyModalMessage").textContent = "Please select or enter a reason for rejecting the registration.";
+      return;
+    }
+
+    const btn = $("verifyRejectBtn");
+    btn.disabled = true;
+    btn.textContent = "Rejecting…";
+    if ($("verifyModalMessage")) $("verifyModalMessage").textContent = "";
+
+    try {
+      await generalApi(`/api/warranty-amc/registrations/${encodeURIComponent(applianceId)}/verify`, {
+        method: "POST",
+        body: JSON.stringify({
+          action: "reject",
+          rejection_reason: reason
+        })
+      });
+      if (typeof dialog.close === "function") dialog.close();
+      else dialog.hidden = true;
+      showToast("Warranty registration rejected. Customer can re-upload document.", "info");
+      await loadCompanyWarrantyClaims();
+    } catch (err) {
+      if ($("verifyModalMessage")) $("verifyModalMessage").textContent = err.message || "Failed to reject registration.";
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "❌ Reject Registration";
+    }
   });
 }
 
@@ -6425,6 +6725,7 @@ function initEvents() {
   // Phase 2 Modals (Warehouse Restock, Warranty Claim Review, Branch Deep-Dive & Customer Deep-Dive)
   initRestockModalEvents();
   initClaimReviewModalEvents();
+  initWarrantyVerificationDialogEvents();
   initBranchDetailModalEvents();
   initCustomerDetailModalEvents();
 }
