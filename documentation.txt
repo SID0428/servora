@@ -4,8 +4,8 @@ PRODUCTION-GRADE TECHNICAL ARCHITECTURE & DEVELOPER ONBOARDING MANUAL
 ================================================================================
 File: documentation.txt
 Platform: ServSure (formerly Servora)
-Version: 1.7.0 (Production Release - Dynamic Timeslot Capacity Management & Appointment Rescheduling Engine)
-Last Updated: October 24, 2026 (23:45 IST)
+Version: 1.7.1 (Production Release - Dynamic Timeslot Capacity, Customer Reschedule & Script AST Audit)
+Last Updated: October 25, 2026 (00:45 IST)
 Repository: https://github.com/SID0428/servora.git
 
 Welcome to ServSure! This manual is the definitive, authoritative reference
@@ -1268,6 +1268,20 @@ were identified between the initial rough draft documentation and the actual cod
           serial number is bound to the replaced part line item and `PartSerialNumberModel.status` transitions to `"installed"`.
         - Both customer (`dashboard.js`) and operations (`ops-dashboard.js`) tax invoice generators render the unique
           Part Serial Number directly underneath each replaced part row (e.g. `Inverter Compressor [PART-LG-COMP01] · S/N: SN-LG-COMP-9841`).
+
+19. Discrepancy: ESM Module Syntax Failure & Unhydrated Operations Portals
+   - Initial State / Observed Issue:
+     When opening or refreshing technician, franchise, company, or admin portals, the page was frozen in an unhydrated HTML state
+     (empty navigation sidebar under "WORKSPACE", profile displaying default "ServSure user Workspace", and requests table stuck on "Loading service requests...").
+   - Root Cause:
+     A duplicate code fragment in `openOpsReceiptModal` (around line 5711 of `ops-dashboard.js`) contained a premature closing brace `};`
+     followed by an orphaned `} else {` block. Because browsers load `ops-dashboard.js` as `<script type="module">`, any JavaScript
+     `SyntaxError` causes the browser to reject and halt script execution during initial evaluation before `initOpsApp`, `buildNav`, or `setProfile` could run.
+     Additionally, in `dashboard.js`, `export function numberToWordsIndian(num)` was nested inside an `if` block, violating ES module specifications.
+   - Resolution:
+     1. Removed the duplicated syntax chunk in `openOpsReceiptModal` in `frontend/js/ops-dashboard.js`.
+     2. Refactored `numberToWordsIndian(num)` in `frontend/js/dashboard.js` to module-level export before modal functions.
+     3. Validated all frontend JavaScript files using `node --check --input-type=module` and automated VM browser simulation across all 4 operational roles (`admin`, `company`, `franchise`, `technician`).
 
 ================================================================================
 End of Documentation

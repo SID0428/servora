@@ -2623,6 +2623,23 @@ window.openReopenModal = function(requestId) {
   }
 };
 
+export function numberToWordsIndian(num) {
+  if (isNaN(num) || num <= 0) return "Zero Rupees Only";
+  const a = ['', 'One ', 'Two ', 'Three ', 'Four ', 'Five ', 'Six ', 'Seven ', 'Eight ', 'Nine ', 'Ten ', 'Eleven ', 'Twelve ', 'Thirteen ', 'Fourteen ', 'Fifteen ', 'Sixteen ', 'Seventeen ', 'Eighteen ', 'Nineteen '];
+  const b = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
+  const n = ('000000000' + Math.floor(num)).substr(-9).match(/^(\d{2})(\d{2})(\d{2})(\d{1})(\d{2})$/);
+  if (!n) return 'Indian Rupees Only';
+  let str = '';
+  str += (Number(n[1]) != 0) ? (a[Number(n[1])] || b[n[1][0]] + ' ' + a[n[1][1]]) + 'Crore ' : '';
+  str += (Number(n[2]) != 0) ? (a[Number(n[2])] || b[n[2][0]] + ' ' + a[n[2][1]]) + 'Lakh ' : '';
+  str += (Number(n[3]) != 0) ? (a[Number(n[3])] || b[n[3][0]] + ' ' + a[n[3][1]]) + 'Thousand ' : '';
+  str += (Number(n[4]) != 0) ? (a[Number(n[4])] || b[n[4][0]] + ' ' + a[n[4][1]]) + 'Hundred ' : '';
+  str += (Number(n[5]) != 0) ? ((str != '') ? 'and ' : '') + (a[Number(n[5])] || b[n[5][0]] + ' ' + a[n[5][1]]) : '';
+  const paise = Math.round((num - Math.floor(num)) * 100);
+  let paiseStr = paise > 0 ? ` and ${paise}/100 Paise` : '';
+  return `Indian Rupees ${str.trim()}${paiseStr} Only`;
+}
+
 window.openReceiptModal = async function(requestId, showPrevious = false) {
   const reqId = requestId || selectedRequestId;
   if (!reqId) return;
@@ -2657,25 +2674,8 @@ window.openReceiptModal = async function(requestId, showPrevious = false) {
 
       if ($("receiptSwitchTab1") && $("receiptSwitchTab2")) {
         if (showPrevious) {
-          $("receiptSwitchTab1").className = "px-3 py-1.5 rounded-lg font-bold text-xs transition bg-blue-600 text-white shadow-2xs";
-          $("receiptSwitchTab2").className = "px-3 py-1.5 rounded-lg font-bold text-xs transition text-slate-600 hover:text-slate-900";
-export function numberToWordsIndian(num) {
-  if (isNaN(num) || num <= 0) return "Zero Rupees Only";
-  const a = ['', 'One ', 'Two ', 'Three ', 'Four ', 'Five ', 'Six ', 'Seven ', 'Eight ', 'Nine ', 'Ten ', 'Eleven ', 'Twelve ', 'Thirteen ', 'Fourteen ', 'Fifteen ', 'Sixteen ', 'Seventeen ', 'Eighteen ', 'Nineteen '];
-  const b = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
-  const n = ('000000000' + Math.floor(num)).substr(-9).match(/^(\d{2})(\d{2})(\d{2})(\d{1})(\d{2})$/);
-  if (!n) return 'Indian Rupees Only';
-  let str = '';
-  str += (Number(n[1]) != 0) ? (a[Number(n[1])] || b[n[1][0]] + ' ' + a[n[1][1]]) + 'Crore ' : '';
-  str += (Number(n[2]) != 0) ? (a[Number(n[2])] || b[n[2][0]] + ' ' + a[n[2][1]]) + 'Lakh ' : '';
-  str += (Number(n[3]) != 0) ? (a[Number(n[3])] || b[n[3][0]] + ' ' + a[n[3][1]]) + 'Thousand ' : '';
-  str += (Number(n[4]) != 0) ? (a[Number(n[4])] || b[n[4][0]] + ' ' + a[n[4][1]]) + 'Hundred ' : '';
-  str += (Number(n[5]) != 0) ? ((str != '') ? 'and ' : '') + (a[Number(n[5])] || b[n[5][0]] + ' ' + a[n[5][1]]) : '';
-  const paise = Math.round((num - Math.floor(num)) * 100);
-  let paiseStr = paise > 0 ? ` and ${paise}/100 Paise` : '';
-  return `Indian Rupees ${str.trim()}${paiseStr} Only`;
-}
-
+          $("receiptSwitchTab1").className = "px-3 py-1.5 font-mono font-bold text-xs transition bg-black text-white";
+          $("receiptSwitchTab2").className = "px-3 py-1.5 font-mono font-bold text-xs transition border border-black text-black bg-white hover:bg-neutral-100";
         } else {
           $("receiptSwitchTab1").className = "px-3 py-1.5 font-mono font-bold text-xs transition border border-black text-black bg-white hover:bg-neutral-100";
           $("receiptSwitchTab2").className = "px-3 py-1.5 font-mono font-bold text-xs transition bg-black text-white";

@@ -5708,13 +5708,6 @@ window.openOpsReceiptModal = async function(requestId, showPrevious = false) {
     if ($("opsReceiptCustSigImg")) $("opsReceiptCustSigImg").classList.add("hidden");
     if ($("opsReceiptCustSigText")) $("opsReceiptCustSigText").textContent = "Settled & verified via Completion OTP";
   }
-};
-    $("opsReceiptCustSigImg").classList.remove("hidden");
-    if ($("opsReceiptCustSigText")) $("opsReceiptCustSigText").textContent = "Digitally signed by Customer";
-  } else {
-    if ($("opsReceiptCustSigImg")) $("opsReceiptCustSigImg").classList.add("hidden");
-    if ($("opsReceiptCustSigText")) $("opsReceiptCustSigText").textContent = "Settled & verified via Completion OTP";
-  }
 
   dialog.showModal();
 };
