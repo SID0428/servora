@@ -4,8 +4,8 @@ PRODUCTION-GRADE TECHNICAL ARCHITECTURE & DEVELOPER ONBOARDING MANUAL
 ================================================================================
 File: documentation.txt
 Platform: ServSure (formerly Servora)
-Version: 1.5.0 (Production Release - Authentic Black & White Commercial Tax Invoice Format)
-Last Updated: October 24, 2026 (21:40 IST)
+Version: 1.6.0 (Production Release - Automated Serialized Spare Parts Requisition & Traceability Engine)
+Last Updated: October 24, 2026 (22:55 IST)
 Repository: https://github.com/SID0428/servora.git
 
 Welcome to ServSure! This manual is the definitive, authoritative reference
@@ -24,7 +24,7 @@ TABLE OF CONTENTS
    3.2. Operational Access Control & Cascading Deactivation Rules
    3.3. Static Multi-Portal Routing & Role Guards
    3.4. Background Workers (Render Keep-Alive & SLA Engine)
-4. DATABASE MODELS & RELATIONAL SCHEMA (25 MODELS)
+4. DATABASE MODELS & RELATIONAL SCHEMA (26 MODELS)
 5. CORE API & USAGE REFERENCE
    5.1. Authentication, Sessions & Profile (/api/auth)
    5.2. Platform Administration (/api/admin)
@@ -287,7 +287,7 @@ Portal UI Cleanliness & Universal Settings Removal:
 
 
 ================================================================================
-4. DATABASE MODELS & RELATIONAL SCHEMA (24 MODELS)
+4. DATABASE MODELS & RELATIONAL SCHEMA (26 MODELS)
 ================================================================================
 All database entities are defined in `backend/app/db/models.py`:
 
@@ -494,9 +494,13 @@ All database entities are defined in `backend/app/db/models.py`:
     - `branch_id`: String(64), ForeignKey("company_branches.id", ondelete="CASCADE"), Index: True.
     - `part_id`: String(64), ForeignKey("spare_parts.id", ondelete="CASCADE"), Index: True.
     - `quantity`: Integer, Nullable: False (Units requested by franchise).
-    - `status`: String(32), Default: "Pending", Nullable: False ("Pending", "Sent", "Cancelled").
+    - `status`: String(32), Default: "Pending", Nullable: False ("Pending", "Sent", "Assigned", "Part Requested", "Part Requested but Out of Stock", "Cancelled").
     - `notes`: Text, Nullable: True (Requisition reason or priority notes).
     - `requested_by`: String(128), Nullable: True (Branch manager or authorized staff name).
+    - `request_id`: String(64), ForeignKey("service_requests.id", ondelete="SET NULL"), Index: True, Nullable: True (Service ticket requiring this part).
+    - `technician_id`: String(64), ForeignKey("technicians.id", ondelete="SET NULL"), Index: True, Nullable: True (Field technician requesting or assigned).
+    - `technician_name`: String(128), Nullable: True (Technician name at time of request).
+    - `stock_status_at_request`: String(32), Default: "in_stock", Nullable: False ("in_stock", "out_of_stock").
     - `created_at`: DateTime, Default: datetime.utcnow, Nullable: False.
     - `sent_at`: DateTime, Nullable: True (Timestamp when Company dispatched items).
     - `sent_by`: String(128), Nullable: True (Company manager who approved and dispatched).
@@ -525,6 +529,20 @@ All database entities are defined in `backend/app/db/models.py`:
     - `consumables_covered`: Boolean, Default: False, Nullable: False (Whether gas refill, filters, rubber seals are covered).
     - `terms_and_conditions`: Text, Nullable: True (Grandfathered legal policy text and audit criteria).
     - `is_active`: Boolean, Default: True, Nullable: False.
+    - `created_at`: DateTime, Default: datetime.utcnow, Nullable: False.
+
+26. `PartSerialNumberModel` (`part_serial_numbers` table):
+    - `id`: String(64), Primary Key (e.g. `psn_...`).
+    - `serial_number`: String(64), Unique, Indexed, Nullable: False (e.g. `SN-LG-COMP-9841`).
+    - `part_id`: String(64), ForeignKey("spare_parts.id", ondelete="CASCADE"), Index: True, Nullable: False.
+    - `branch_id`: String(64), ForeignKey("company_branches.id", ondelete="CASCADE"), Index: True, Nullable: False.
+    - `company_id`: String(64), ForeignKey("users.id", ondelete="SET NULL"), Index: True, Nullable: True.
+    - `assigned_tech_id`: String(64), ForeignKey("technicians.id", ondelete="SET NULL"), Index: True, Nullable: True.
+    - `assigned_tech_name`: String(128), Nullable: True.
+    - `request_id`: String(64), ForeignKey("service_requests.id", ondelete="SET NULL"), Index: True, Nullable: True.
+    - `status`: String(32), Default: "in_stock", Nullable: False ("in_stock", "assigned_to_tech", "installed", "returned").
+    - `assigned_at`: DateTime, Nullable: True (Timestamp when assigned to technician).
+    - `installed_at`: DateTime, Nullable: True (Timestamp when installed in customer appliance via Job Card).
     - `created_at`: DateTime, Default: datetime.utcnow, Nullable: False.
 
 
@@ -759,8 +777,23 @@ Request Headers:
   - Validates company stock >= requested quantity (returns HTTP 400 with helpful prompt if insufficient).
   - Decrements company warehouse stock in `spare_parts.stock_quantity`.
   - Increments franchise warehouse stock in `franchise_inventory.quantity_available`.
-  - Updates request status to `"Sent"` with `sent_at` and `sent_by`.
-  - Records dual audit transactions in `inventory_transactions` (`transfer_out` and `stock_in`).
+- `GET /api/inventory/serialized-parts`:
+  - Query parameters: `?branch_id=...&part_id=...&status=all|in_stock|assigned_to_tech|installed|returned&technician_id=...&request_id=...`
+  - Returns individual serialized inventory units traceable from factory receipt through branch allocation to customer appliance installation.
+  - Automatically filters by authenticated franchise branch or technician assignments.
+  - Response Schema: `List[PartSerialNumberSchema]` (`id`, `serial_number`, `part_id`, `part_name`, `part_code`, `category`, `unit_price`, `hsn_code`, `branch_id`, `branch_name`, `company_id`, `assigned_tech_id`, `assigned_tech_name`, `request_id`, `customer_name`, `appliance_name`, `status`, `assigned_at`, `installed_at`, `created_at`).
+- `POST /api/inventory/serialized-parts/assign`:
+  - Body: `{ "serial_number": "SN-LG-COMP-9841", "request_id": "SR-7845", "technician_id": "tech_1", "technician_name": "Ramesh Kumar" }`
+  - Franchise allocation engine:
+    1. Validates that the serialized unit exists in `part_serial_numbers` with `status == "in_stock"`.
+    2. Transitions unit status to `"assigned_to_tech"`, recording `assigned_at`, `assigned_tech_id`, and `request_id`.
+    3. Decrements franchise branch warehouse stock in `franchise_inventory.quantity_available`.
+    4. Logs transaction in `inventory_transactions` (`transaction_type="tech_dispatch"`).
+    5. Updates `part_requests.status` to `"Assigned"`.
+    6. Automatically advances service ticket status to `"Part Assigned to Technician"` and updates live timeline step 4 with authorized doorstep installation text.
+- `POST /api/inventory/serialized-parts/create`:
+  - Body: `{ "serial_number": "SN-LG-COMP-9841", "part_id": "part_123", "branch_id": "branch_1" }`
+  - Registers a new serialized unit into the branch warehouse inventory (`status="in_stock"`).
 - `GET /api/inventory/franchise`: List parts currently stocked in franchise branch warehouse.
 - `POST /api/inventory/transactions`: Record stock movements or technician job consumption.
 
@@ -793,8 +826,22 @@ Request Headers:
 -----------------------------------------------------
 - `GET /api/estimates`: List repair estimates for tickets.
 - `POST /api/estimates`: Technician or franchise creates digital quote for parts and labor.
-- `POST /api/estimates/{estimate_id}/approve`: Customer approves estimate for repair to commence.
-- `POST /api/estimates/{estimate_id}/decline`: Customer declines estimate.
+- `POST /api/requests/{request_id}/estimate/respond`:
+  - Body: `{ "action": "approve" | "reject", "customer_notes": "..." }`
+  - When customer approves an estimate containing replacement spare parts:
+    1. Evaluates local franchise warehouse stock in `franchise_inventory.quantity_available`.
+    2. Automatically dispatches a `PartRequestModel` under the assigned technician's name and ID, tied directly to the service ticket (`request_id`).
+    3. State transition rules:
+       - **All Parts in Stock at Franchise**:
+         - Service request transitions to **`Part Requested`**.
+         - Requisition recorded with `stock_status_at_request = "in_stock"`.
+         - Customer tracking shows sky-blue banner: `"⏳ Parts Requested from Local Inventory · In stock at franchise branch. Ready for technician allocation."`
+       - **Parts Out of Stock at Franchise**:
+         - Service request transitions to **`Part Requested but Out of Stock`**.
+         - Requisition recorded with `stock_status_at_request = "out_of_stock"`.
+         - Customer tracking shows rose alert banner: `"⚠️ Part Requested but Out of Stock · Requisition routed to Brand OEM warehouse for expedited transit."`
+         - Technician card displays `"⚠️ Part Out of Stock with Franchise"` warning with a 1-click `"📦 Requisition from Brand OEM"` button (`techIndentBrandPart`).
+    4. Advances timeline step 4 (`Repair & Parts Allocation`) with complete real-time tracking details.
 
 5.11. Multi-Tier SLA Escalations (`/api/escalations`)
 ----------------------------------------------------
@@ -1164,11 +1211,43 @@ were identified between the initial rough draft documentation and the actual cod
         - Statutory declaration: "We declare that this invoice shows the actual price of the goods & services described..."
         - 7-Day Free Warranty Revisit and OEM spare parts warranty terms.
         - Dual bordered boxes for Customer OTP Verification Acknowledgement and Franchise Authorized Signatory.
-     4. Cross-Portal Consistency:
-        - Applied across all 5 portals: Customer Portal (`#receiptModal` in `customer-dashboard.html`), Field Technician (`#opsReceiptDialog` in `technician-dashboard.html`),
-          Franchise Partner (`#opsReceiptDialog` in `franchise-dashboard.html`), Company OEM (`#opsReceiptDialog` in `company-dashboard.html`),
-          and Platform Administrator (`#opsReceiptDialog` in `admin-dashboard.html`).
-        - `@media print` stylesheets optimized so clicking `"Print / Download PDF"` generates an authentic, razor-sharp black-and-white physical invoice.
+18. Discrepancy: Serialized Spare Parts Requisition, Inventory Evaluation & Doorstep Traceability Workflow
+   - Initial State / Early Iteration:
+     Estimates with parts did not automatically route spare part requisitions to the local franchise branch.
+     Technicians had to manually check physical stock, there was no visibility in the customer portal if parts were
+     out of stock, and individual components lacked unique unit serial number tracking throughout their lifecycle.
+   - Reality in Code:
+     1. Automated Requisition & Franchise Stock Evaluation (`estimates.py`):
+        - When customer approves an estimate containing spare parts via `respond_to_estimate`, the backend
+          immediately queries the local franchise inventory (`FranchiseInventoryModel.quantity_available`).
+        - Automatically creates `PartRequestModel` under the assigned technician's name and ID, tied to the ticket.
+        - If all parts are in stock at the franchise warehouse:
+          - Ticket status transitions to `"Part Requested"`.
+          - Requisition status set to `"in_stock"`.
+          - Customer tracking portal displays sky-blue status banner: `"⏳ Parts Requested from Local Inventory"`.
+        - If any required part is out of stock at the franchise:
+          - Ticket status transitions to `"Part Requested but Out of Stock"`.
+          - Requisition status set to `"out_of_stock"`.
+          - Customer tracking portal displays clear rose alert banner: `"⚠️ Part Requested but Out of Stock · Requisition routed to Brand OEM warehouse for expedited transit."`
+          - Technician portal displays `"⚠️ Part Out of Stock with Franchise"` warning with a 1-click `"📦 Requisition from Brand OEM"` button (`techIndentBrandPart`).
+     2. Serialized Register & Franchise Allocation Engine (`models.py` & `inventory.py`):
+        - Implemented `PartSerialNumberModel` (`part_serial_numbers` table) for individual component traceability.
+        - Franchise Inventory UI (`franchise-dashboard.html` & `ops-dashboard.js`) upgraded to 4 subtabs:
+          - `📦 Warehouse Stock`: Branch inventory with reorder thresholds and manual Stock-In.
+          - `👨‍🔧 Tech Requisitions`: Real-time queue of technician part requests with stock status and 1-click `"🏷️ Assign Serial No →"` modal.
+          - `🏷️ Serialized Parts`: Complete inventory register tracking every serialized unit (`in_stock`, `assigned_to_tech`, `installed`, `returned`).
+          - `🚚 OEM Orders`: Central manufacturer restock requisitions and fulfillment history.
+        - When franchise allocates a serialized unit via `POST /api/inventory/serialized-parts/assign`:
+          - Serial unit status advances to `"assigned_to_tech"`, logging technician ID and ticket ID.
+          - Franchise branch inventory decrements by 1 unit.
+          - Requisition status transitions to `"Assigned"`.
+          - Service ticket status advances to `"Part Assigned to Technician"`.
+          - Timeline step 4 updates with authorized doorstep installation text.
+     3. Doorstep Installation & Monochrome Tax Invoice Display:
+        - When technician submits the digital Job Card (`POST /api/requests/{request_id}/job-card`), the assigned
+          serial number is bound to the replaced part line item and `PartSerialNumberModel.status` transitions to `"installed"`.
+        - Both customer (`dashboard.js`) and operations (`ops-dashboard.js`) tax invoice generators render the unique
+          Part Serial Number directly underneath each replaced part row (e.g. `Inverter Compressor [PART-LG-COMP01] · S/N: SN-LG-COMP-9841`).
 
 ================================================================================
 End of Documentation

@@ -200,6 +200,7 @@ class JobCardPartItem(BaseModel):
     is_covered: Optional[bool] = False
     coverage_type: Optional[str] = "oem_warranty" # oem_warranty or customer_billable
     non_coverage_reason: Optional[str] = None
+    serial_number: Optional[str] = None
 
 class JobCardResponse(BaseModel):
     id: str
@@ -429,6 +430,10 @@ class PartRequestCreatePayload(BaseModel):
     part_id: str
     quantity: int = Field(ge=1)
     notes: Optional[str] = None
+    request_id: Optional[str] = None
+    technician_id: Optional[str] = None
+    technician_name: Optional[str] = None
+    stock_status_at_request: Optional[str] = "in_stock"
 
 class PartRequestResponseSchema(BaseModel):
     id: str
@@ -445,9 +450,46 @@ class PartRequestResponseSchema(BaseModel):
     status: str
     notes: Optional[str] = None
     requested_by: Optional[str] = None
+    request_id: Optional[str] = None
+    technician_id: Optional[str] = None
+    technician_name: Optional[str] = None
+    stock_status_at_request: Optional[str] = "in_stock"
     created_at: str
     sent_at: Optional[str] = None
     sent_by: Optional[str] = None
+
+class PartSerialNumberSchema(BaseModel):
+    id: str
+    serial_number: str
+    part_id: str
+    part_name: Optional[str] = None
+    part_code: Optional[str] = None
+    category: Optional[str] = None
+    unit_price: Optional[float] = None
+    hsn_code: Optional[str] = None
+    branch_id: str
+    branch_name: Optional[str] = None
+    company_id: Optional[str] = None
+    assigned_tech_id: Optional[str] = None
+    assigned_tech_name: Optional[str] = None
+    request_id: Optional[str] = None
+    customer_name: Optional[str] = None
+    appliance_name: Optional[str] = None
+    status: str # in_stock, assigned_to_tech, installed, returned
+    assigned_at: Optional[str] = None
+    installed_at: Optional[str] = None
+    created_at: str
+
+class PartSerialNumberAssignPayload(BaseModel):
+    serial_number: str
+    technician_id: str
+    technician_name: Optional[str] = None
+    request_id: str
+
+class PartSerialNumberCreatePayload(BaseModel):
+    part_id: str
+    serial_numbers: List[str]
+    branch_id: Optional[str] = None
 
 class FranchiseInventoryItemSchema(BaseModel):
     id: str
@@ -634,6 +676,7 @@ class EstimatePartItem(BaseModel):
     is_covered: Optional[bool] = False
     coverage_type: Optional[str] = "oem_warranty" # oem_warranty or customer_billable
     non_coverage_reason: Optional[str] = None
+    serial_number: Optional[str] = None
 
 class EstimateCreatePayload(BaseModel):
     parts: List[EstimatePartItem] = Field(default_factory=list)

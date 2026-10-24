@@ -119,10 +119,11 @@ let companyWarrantySubTab = "registrations"; // "registrations", "claims", or "p
 let companySparesCatalog = [];
 let companyPartRequests = [];
 let franchisePartRequests = [];
+let franchiseSerializedParts = [];
 let allCatalogParts = [];
 let companyTechnicians = [];
 let companyInventorySubTab = "stock"; // "stock" or "requests"
-let franchiseInventorySubTab = "stock"; // "stock" or "requests"
+let franchiseInventorySubTab = "stock"; // "stock", "tech-reqs", "serialized", or "requests"
 let user = initialUser;
 
 const getUserCache = (key, fallback = "[]") => {
@@ -2701,23 +2702,27 @@ function initCustomerDetailModalEvents() {
 async function loadFranchiseInventory() {
   try {
     const branchId = user?.branch_id || user?.id || "me";
-    const [invData, reqsData, catalogData] = await Promise.all([
+    const [invData, reqsData, catalogData, serializedData] = await Promise.all([
       generalApi(`/api/inventory/branch/${encodeURIComponent(branchId)}`),
       generalApi("/api/inventory/part-requests"),
-      generalApi("/api/inventory/parts")
+      generalApi("/api/inventory/parts"),
+      generalApi(`/api/inventory/serialized-parts?branch_id=${encodeURIComponent(branchId)}`)
     ]);
     franchiseInventory = invData || [];
     franchisePartRequests = reqsData || [];
     allCatalogParts = catalogData || [];
+    franchiseSerializedParts = serializedData || [];
     try {
       localStorage.setItem("servora_cache_inventory", JSON.stringify(franchiseInventory));
       localStorage.setItem("servora_cache_part_requests_franchise", JSON.stringify(franchisePartRequests));
       localStorage.setItem("servora_cache_catalog_all", JSON.stringify(allCatalogParts));
+      localStorage.setItem("servora_cache_serialized_parts", JSON.stringify(franchiseSerializedParts));
     } catch {}
     renderFranchiseInventory();
   } catch (error) {
     franchiseInventory = [];
     franchisePartRequests = [];
+    franchiseSerializedParts = [];
     renderFranchiseInventory();
     showToast(`Inventory could not load: ${error.message}`, "error");
   }
@@ -2735,26 +2740,34 @@ function renderFranchiseInventory() {
 
   const pendingCount = franchisePartRequests.filter((r) => r.status === "Pending").length;
   const receivedCount = franchisePartRequests.filter((r) => r.status === "Sent").length;
+  const techReqsCount = franchisePartRequests.filter((r) => r.request_id || r.technician_name).length;
+  const inStockSerialCount = franchiseSerializedParts.filter((s) => s.status === "in_stock").length;
 
   if ($("tableTitle")) {
     $("tableTitle").innerHTML = `
       <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 w-full">
         <div>
           <span>Franchise Inventory & Spares</span>
-          <p class="text-xs text-slate-500 font-normal mt-0.5">Track branch stock on hand, restock parts, and request components from company warehouse.</p>
+          <p class="text-xs text-slate-500 font-normal mt-0.5">Track branch warehouse stock, assign serialized parts to technicians, and order restocks from OEM.</p>
         </div>
         <div class="flex items-center gap-2">
           <div class="inline-flex rounded-xl bg-slate-100 p-1 border border-slate-200">
             <button type="button" id="tabFranchiseStock" class="px-3 py-1.5 rounded-lg text-xs font-bold transition ${franchiseInventorySubTab === 'stock' ? 'bg-white text-blue-600 shadow-xs' : 'text-slate-600 hover:text-slate-900'}">
               📦 Warehouse Stock (${franchiseInventory.length})
             </button>
+            <button type="button" id="tabFranchiseTechReqs" class="px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${franchiseInventorySubTab === 'tech-reqs' ? 'bg-white text-blue-600 shadow-xs' : 'text-slate-600 hover:text-slate-900'}">
+              👨‍🔧 Tech Requisitions (${techReqsCount})
+            </button>
+            <button type="button" id="tabFranchiseSerialized" class="px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${franchiseInventorySubTab === 'serialized' ? 'bg-white text-blue-600 shadow-xs' : 'text-slate-600 hover:text-slate-900'}">
+              🏷️ Serialized Parts (${inStockSerialCount} ready)
+            </button>
             <button type="button" id="tabFranchiseRequests" class="px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${franchiseInventorySubTab === 'requests' ? 'bg-white text-blue-600 shadow-xs' : 'text-slate-600 hover:text-slate-900'}">
-              📋 Requisitions & Received History (${franchisePartRequests.length})
+              🚚 OEM Orders (${franchisePartRequests.length})
               ${receivedCount > 0 ? `<span class="px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-emerald-600 text-white">${receivedCount}</span>` : ''}
             </button>
           </div>
           <button type="button" id="openRequestPartBtn" class="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs flex items-center gap-1 shadow-xs transition">
-            <span>＋</span> Request Stock from Company
+            <span>＋</span> Request Stock from OEM
           </button>
         </div>
       </div>
@@ -2764,6 +2777,14 @@ function renderFranchiseInventory() {
 
   $("tabFranchiseStock")?.addEventListener("click", () => {
     franchiseInventorySubTab = "stock";
+    renderFranchiseInventory();
+  });
+  $("tabFranchiseTechReqs")?.addEventListener("click", () => {
+    franchiseInventorySubTab = "tech-reqs";
+    renderFranchiseInventory();
+  });
+  $("tabFranchiseSerialized")?.addEventListener("click", () => {
+    franchiseInventorySubTab = "serialized";
     renderFranchiseInventory();
   });
   $("tabFranchiseRequests")?.addEventListener("click", () => {
@@ -2856,8 +2877,169 @@ function renderFranchiseInventory() {
         openRestockModal(btn.dataset.restockBtn, btn.dataset.partName, btn.dataset.branchId);
       });
     });
+  } else if (franchiseInventorySubTab === "tech-reqs") {
+    // Subtab 2: Technician Requisitions
+    if ($("requestSearch")) $("requestSearch").placeholder = "Search requisitions by ticket ID, technician, or part name";
+    if ($("requestHead")) {
+      $("requestHead").innerHTML = [
+        "Ticket / Req ID",
+        "Technician",
+        "Required Part",
+        "Stock Status",
+        "Requisition Status",
+        "Requested On",
+        "Action"
+      ].map((label) => `<th>${safe(label)}</th>`).join("");
+    }
+
+    const techReqs = franchisePartRequests.filter((r) => r.request_id || r.technician_name || r.technician_id);
+    const listToFilter = techReqs.length > 0 ? techReqs : franchisePartRequests;
+
+    const filtered = listToFilter.filter((item) =>
+      [item.id, item.request_id, item.part_name, item.part_code, item.technician_name, item.requested_by, item.status]
+        .join(" ")
+        .toLowerCase()
+        .includes(query)
+    );
+
+    if ($("requestRows")) {
+      $("requestRows").innerHTML = filtered.length
+        ? filtered
+            .map((req) => {
+              const isAssigned = req.status === "Assigned";
+              const isOutOfStock = req.stock_status_at_request === "out_of_stock";
+
+              const stockStatusBadge = isOutOfStock
+                ? `<span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-50 text-rose-800 border border-rose-200">⚠️ Out of Stock</span>`
+                : `<span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">✓ In Stock</span>`;
+
+              const reqStatusBadge = isAssigned
+                ? `<span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-900 border border-emerald-300">✓ Serial Assigned</span>`
+                : req.status === "Part Requested but Out of Stock"
+                ? `<span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-100 text-rose-900 border border-rose-300">⚠️ Out of Stock</span>`
+                : req.status === "Part Requested"
+                ? `<span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-sky-100 text-sky-900 border border-sky-300">⏳ Part Requested</span>`
+                : `<span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-50 text-amber-800 border border-amber-200">${safe(req.status)}</span>`;
+
+              const actionBtn = isAssigned
+                ? `<span class="text-xs font-semibold text-emerald-600">✓ Unit Allocated</span>`
+                : `<button type="button" class="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-xs transition flex items-center gap-1" data-assign-serial-btn="${safe(req.id)}" data-ticket-id="${safe(req.request_id || '')}" data-part-id="${safe(req.part_id)}" data-part-name="${safe(req.part_name)}" data-tech-id="${safe(req.technician_id || '')}" data-tech-name="${safe(req.technician_name || '')}">
+                    <span>🏷️</span> Assign Serial No →
+                  </button>`;
+
+              return `
+                <tr class="${isAssigned ? 'bg-emerald-50/20' : 'bg-white'}">
+                  <td>
+                    ${req.request_id ? `<strong class="font-mono text-blue-600 block font-bold text-xs">${safe(req.request_id)}</strong><small class="text-slate-400 font-mono text-[10px]">${safe(req.id)}</small>` : `<span class="font-mono font-bold text-blue-600 text-xs">${safe(req.id)}</span>`}
+                  </td>
+                  <td>
+                    <strong class="text-slate-900 block font-semibold text-xs">${safe(req.technician_name || req.requested_by || "Assigned Tech")}</strong>
+                    <small class="text-slate-400 block">${safe(req.notes || "")}</small>
+                  </td>
+                  <td>
+                    <strong class="text-slate-800 block text-xs font-semibold">${safe(req.part_name)}</strong>
+                    <span class="font-mono text-[11px] text-blue-600 font-bold">${safe(req.part_code)}</span>
+                  </td>
+                  <td>${stockStatusBadge}</td>
+                  <td>${reqStatusBadge}</td>
+                  <td><span class="text-xs text-slate-600">${safe(req.created_at || "—")}</span></td>
+                  <td>${actionBtn}</td>
+                </tr>
+              `;
+            })
+            .join("")
+        : `<tr><td class="empty-row" colspan="7">${query ? "No technician requisitions match your search." : "No technician part requisitions submitted yet."}</td></tr>`;
+    }
+
+    if ($("requestCount")) {
+      $("requestCount").textContent = `${filtered.length} requisition${filtered.length === 1 ? "" : "s"} shown`;
+    }
+
+    document.querySelectorAll("[data-assign-serial-btn]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        openAssignSerialModal(
+          btn.dataset.assignSerialBtn,
+          btn.dataset.ticketId,
+          btn.dataset.partId,
+          btn.dataset.partName,
+          btn.dataset.techId,
+          btn.dataset.techName
+        );
+      });
+    });
+  } else if (franchiseInventorySubTab === "serialized") {
+    // Subtab 3: Serialized Parts Register
+    if ($("requestSearch")) $("requestSearch").placeholder = "Search serialized parts by serial number, part name, or technician";
+    if ($("requestHead")) {
+      $("requestHead").innerHTML = [
+        "Part Serial Number (S/N)",
+        "Part Name & Code",
+        "Status",
+        "Assigned Technician",
+        "Linked Ticket / Customer",
+        "Date Logged",
+        "Action"
+      ].map((label) => `<th>${safe(label)}</th>`).join("");
+    }
+
+    const filtered = franchiseSerializedParts.filter((item) =>
+      [item.serial_number, item.part_name, item.part_code, item.assigned_tech_name, item.customer_name, item.request_id, item.status]
+        .join(" ")
+        .toLowerCase()
+        .includes(query)
+    );
+
+    if ($("requestRows")) {
+      $("requestRows").innerHTML = filtered.length
+        ? filtered
+            .map((item) => {
+              let statusBadge = "";
+              if (item.status === "in_stock") {
+                statusBadge = `<span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">✓ In Stock (Ready)</span>`;
+              } else if (item.status === "assigned_to_tech") {
+                statusBadge = `<span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-blue-50 text-blue-800 border border-blue-200">👨‍🔧 Assigned to Tech</span>`;
+              } else if (item.status === "installed") {
+                statusBadge = `<span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-purple-50 text-purple-800 border border-purple-200">✅ Installed in Appliance</span>`;
+              } else {
+                statusBadge = `<span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-slate-100 text-slate-700">${safe(item.status)}</span>`;
+              }
+
+              const ticketInfo = item.request_id
+                ? `<strong class="font-mono text-xs text-blue-700 block">${safe(item.request_id)}</strong><small class="text-slate-500 block">${safe(item.customer_name || "")} ${item.appliance_name ? `(${safe(item.appliance_name)})` : ''}</small>`
+                : `<span class="text-slate-400 text-xs">—</span>`;
+
+              const actionBtn = item.status === "in_stock"
+                ? `<button type="button" class="table-action font-semibold text-blue-600 hover:text-blue-800" onclick="openAssignSerialModal('', '', '${safe(item.part_id)}', '${safe(item.part_name)}', '', '', '${safe(item.serial_number)}')">Assign →</button>`
+                : `<span class="text-slate-400 text-xs">—</span>`;
+
+              return `
+                <tr>
+                  <td>
+                    <span class="font-mono font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-lg border border-blue-200 text-xs block">${safe(item.serial_number)}</span>
+                  </td>
+                  <td>
+                    <strong class="text-slate-900 block font-semibold text-xs">${safe(item.part_name)}</strong>
+                    <span class="font-mono text-[11px] text-slate-500 font-bold">${safe(item.part_code)}</span>
+                  </td>
+                  <td>${statusBadge}</td>
+                  <td>
+                    <span class="text-xs ${item.assigned_tech_name ? 'font-semibold text-slate-800' : 'text-slate-400'}">${safe(item.assigned_tech_name || "Unassigned")}</span>
+                  </td>
+                  <td>${ticketInfo}</td>
+                  <td><span class="text-xs text-slate-600">${safe(item.assigned_at || item.installed_at || item.created_at || "—")}</span></td>
+                  <td>${actionBtn}</td>
+                </tr>
+              `;
+            })
+            .join("")
+        : `<tr><td class="empty-row" colspan="7">${query ? "No serialized parts match your search." : "No serialized parts registered yet."}</td></tr>`;
+    }
+
+    if ($("requestCount")) {
+      $("requestCount").textContent = `${filtered.length} serialized unit${filtered.length === 1 ? "" : "s"} shown`;
+    }
   } else {
-    // Requisitions & Received History
+    // Subtab 4: OEM Orders & Restocks
     if ($("requestSearch")) $("requestSearch").placeholder = "Search requisitions by ID, part name, or status";
     if ($("requestHead")) {
       $("requestHead").innerHTML = [
@@ -2910,7 +3092,7 @@ function renderFranchiseInventory() {
               `;
             })
             .join("")
-        : `<tr><td class="empty-row" colspan="7">${query ? "No requisitions match your search." : "No part requisitions requested yet. Click 'Request Stock from Company' to place your first order."}</td></tr>`;
+        : `<tr><td class="empty-row" colspan="7">${query ? "No requisitions match your search." : "No part requisitions requested yet. Click 'Request Stock from OEM' to place your first order."}</td></tr>`;
     }
 
     if ($("requestCount")) {
@@ -2936,6 +3118,175 @@ function openRestockModal(partId, partName, branchId) {
   else modal.hidden = false;
 }
 window.openRestockModal = openRestockModal;
+
+function openAssignSerialModal(reqId, ticketId, partId, partName, techId, techName, preselectedSerial = "") {
+  const modal = $("assignSerialModal");
+  if (!modal) return;
+  if ($("assignRequestId")) $("assignRequestId").value = reqId || "";
+  if ($("assignPartId")) $("assignPartId").value = partId || "";
+  if ($("assignTechId")) $("assignTechId").value = techId || "";
+  if ($("assignTechName")) $("assignTechName").value = techName || "";
+
+  if ($("assignTicketBadge")) $("assignTicketBadge").textContent = ticketId || reqId || "General Service";
+  if ($("assignTechBadge")) $("assignTechBadge").textContent = techName || "Assigned Technician";
+  if ($("assignPartBadge")) $("assignPartBadge").textContent = partName || "Spare Part";
+  if ($("assignSerialFormMsg")) $("assignSerialFormMsg").textContent = "";
+
+  // Populate serial number select with in-stock serial numbers for this part
+  const select = $("assignSerialSelect");
+  if (select) {
+    const available = franchiseSerializedParts.filter(s => s.part_id === partId && s.status === "in_stock");
+    if (available.length > 0) {
+      select.innerHTML = `<option value="">-- Choose available serial number (${available.length} in stock) --</option>` +
+        available.map(s => `<option value="${safe(s.serial_number)}" ${s.serial_number === preselectedSerial ? 'selected' : ''}>${safe(s.serial_number)} (${safe(s.part_name || partName)})</option>`).join("");
+    } else {
+      select.innerHTML = `<option value="">No pre-registered serials in stock for this part</option>`;
+    }
+  }
+
+  const manualInput = $("assignSerialManual");
+  if (manualInput) {
+    manualInput.value = preselectedSerial || "";
+  }
+
+  if (typeof modal.showModal === "function") modal.showModal();
+  else modal.hidden = false;
+}
+window.openAssignSerialModal = openAssignSerialModal;
+
+function initAssignSerialModalEvents() {
+  const modal = $("assignSerialModal");
+  if (!modal) return;
+
+  $("closeAssignSerialModalBtn")?.addEventListener("click", () => {
+    if (typeof modal.close === "function") modal.close();
+    else modal.hidden = true;
+  });
+  $("cancelAssignSerialBtn")?.addEventListener("click", () => {
+    if (typeof modal.close === "function") modal.close();
+    else modal.hidden = true;
+  });
+
+  $("assignSerialForm")?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const reqId = $("assignRequestId")?.value;
+    const ticketId = $("assignTicketBadge")?.textContent?.trim() !== "—" ? $("assignTicketBadge")?.textContent?.trim() : "";
+    const partId = $("assignPartId")?.value;
+    const techId = $("assignTechId")?.value;
+    const techName = $("assignTechName")?.value;
+    const selectedSerial = $("assignSerialSelect")?.value?.trim();
+    const manualSerial = $("assignSerialManual")?.value?.trim().toUpperCase();
+
+    const serialNumber = manualSerial || selectedSerial;
+    if (!serialNumber) {
+      if ($("assignSerialFormMsg")) $("assignSerialFormMsg").textContent = "Please select or enter a serial number.";
+      return;
+    }
+
+    const effectiveTicketId = ticketId && ticketId !== "General Service" ? ticketId : reqId;
+    if (!effectiveTicketId) {
+      if ($("assignSerialFormMsg")) $("assignSerialFormMsg").textContent = "No valid service ticket ID associated with this requisition.";
+      return;
+    }
+
+    const submitBtn = $("submitAssignSerialBtn");
+    if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = "Assigning Serial…"; }
+
+    try {
+      // If manualSerial was entered and is not already registered in PartSerialNumberModel,
+      // create it first via /api/inventory/serialized-parts/create
+      const existing = franchiseSerializedParts.find(s => s.serial_number && s.serial_number.toUpperCase() === serialNumber);
+      if (!existing) {
+        await generalApi("/api/inventory/serialized-parts/create", {
+          method: "POST",
+          body: JSON.stringify({
+            serial_number: serialNumber,
+            part_id: partId,
+            branch_id: user?.branch_id || user?.id || "me"
+          })
+        });
+      }
+
+      // Assign the serialized part to technician and ticket
+      await generalApi("/api/inventory/serialized-parts/assign", {
+        method: "POST",
+        body: JSON.stringify({
+          serial_number: serialNumber,
+          request_id: effectiveTicketId,
+          technician_id: techId || user?.id,
+          technician_name: techName || user?.name
+        })
+      });
+
+      showToast(`Serial #${serialNumber} assigned to ${techName || 'technician'} for ticket #${effectiveTicketId}!`);
+      if (typeof modal.close === "function") modal.close();
+      else modal.hidden = true;
+      await loadFranchiseInventory();
+    } catch (err) {
+      if ($("assignSerialFormMsg")) $("assignSerialFormMsg").textContent = err.message || "Failed to assign serial number.";
+      showToast(err.message || "Failed to assign serial number", "error");
+    } finally {
+      if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = "✓ Confirm Serial Assignment"; }
+    }
+  });
+}
+window.initAssignSerialModalEvents = initAssignSerialModalEvents;
+
+async function techIndentBrandPart(requestId) {
+  try {
+    const sr = requests.find(r => r.id === requestId);
+    const est = sr?.estimate || {};
+    const parts = est.parts || [];
+
+    let confirmMsg = `Indent out-of-stock parts from Brand OEM for ticket ${requestId}?`;
+    if (parts.length > 0) {
+      confirmMsg += `\nParts: ${parts.map(p => `${p.part_name || p.name} (Qty: ${p.quantity || 1})`).join(", ")}`;
+    }
+
+    if (!confirm(confirmMsg)) return;
+
+    showToast("Submitting Brand OEM requisition…", "info");
+
+    if (parts.length > 0) {
+      for (const p of parts) {
+        await generalApi("/api/inventory/part-requests", {
+          method: "POST",
+          body: JSON.stringify({
+            part_id: p.part_id || p.id,
+            quantity: p.quantity || 1,
+            request_id: requestId,
+            technician_id: user?.id,
+            technician_name: user?.name,
+            stock_status_at_request: "out_of_stock",
+            notes: `Urgent technician doorstep indent for service request #${requestId}. Appliance: ${sr?.appliance_name || ''}`
+          })
+        });
+      }
+    } else {
+      const allParts = await generalApi("/api/inventory/parts");
+      const defaultPart = allParts[0];
+      if (defaultPart) {
+        await generalApi("/api/inventory/part-requests", {
+          method: "POST",
+          body: JSON.stringify({
+            part_id: defaultPart.id,
+            quantity: 1,
+            request_id: requestId,
+            technician_id: user?.id,
+            technician_name: user?.name,
+            stock_status_at_request: "out_of_stock",
+            notes: `Urgent technician doorstep indent for service request #${requestId}.`
+          })
+        });
+      }
+    }
+    showToast("Requisition dispatched to Brand OEM warehouse. Customer notified.");
+    await loadRequests();
+  } catch (err) {
+    showToast(err.message || "Failed to submit requisition", "error");
+  }
+}
+window.techIndentBrandPart = techIndentBrandPart;
 
 function initRestockModalEvents() {
   const modal = $("restockModal");
@@ -4566,6 +4917,12 @@ function renderStatusBadge(item) {
     } else {
       badgeHtml = `<span class="status-pill completed">✓ Completed</span>`;
     }
+  } else if (item.status === "Part Requested but Out of Stock" || item.status_badge === "Part Requested but Out of Stock") {
+    badgeHtml = `<span class="status-pill bg-rose-100 text-rose-800 border border-rose-300">⚠️ Part Out of Stock</span>`;
+  } else if (item.status === "Part Requested" || item.status_badge === "Part Requested") {
+    badgeHtml = `<span class="status-pill bg-sky-100 text-sky-800 border border-sky-300">📦 Part Requested</span>`;
+  } else if (item.status === "Part Assigned to Technician" || item.status_badge === "Part Assigned to Technician" || item.status_badge === "Part Assigned") {
+    badgeHtml = `<span class="status-pill bg-emerald-100 text-emerald-800 border border-emerald-300">✓ Part Assigned</span>`;
   } else if (item.status === "Estimate Pending Approval" || item.status_badge === "Estimate Pending") {
     badgeHtml = `<span class="status-pill bg-amber-100 text-amber-800 border border-amber-300">⏳ Estimate Pending</span>`;
   } else if (item.status === "Estimate Rejected" || item.status_badge === "Estimate Rejected") {
@@ -4728,6 +5085,27 @@ function renderRequests() {
             </span>
             <button type="button" class="px-3.5 py-1.5 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold text-xs transition" onclick="openTechEstimateModal('${safe(item.id)}')">
               📝 View Estimate
+            </button>
+          ` : (item.status === 'Part Requested but Out of Stock' || item.status_badge === 'Part Requested but Out of Stock') ? `
+            <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-rose-50 text-rose-800 border border-rose-200 text-xs font-semibold">
+              ⚠️ Part Out of Stock with Franchise
+            </span>
+            <button type="button" class="px-3.5 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-semibold text-xs shadow-sm transition flex items-center gap-1.5" onclick="techIndentBrandPart('${safe(item.id)}')">
+              📦 Requisition from Brand OEM
+            </button>
+          ` : (item.status === 'Part Requested' || item.status_badge === 'Part Requested') ? `
+            <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-sky-50 text-sky-800 border border-sky-200 text-xs font-semibold">
+              ⏳ Part Requested (In Stock · Awaiting Branch Allocation)
+            </span>
+            <button type="button" class="px-3.5 py-1.5 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold text-xs transition" onclick="openTechEstimateModal('${safe(item.id)}')">
+              📝 View Estimate
+            </button>
+          ` : (item.status === 'Part Assigned to Technician' || item.status_badge === 'Part Assigned to Technician' || item.status_badge === 'Part Assigned') ? `
+            <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200 text-xs font-semibold">
+              ✓ Serialized Part Allocated
+            </span>
+            <button type="button" class="px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs shadow-sm transition flex items-center gap-1.5" onclick="openOpsJobCardModal('${safe(item.id)}')">
+              📋 Job Card & Complete
             </button>
           ` : item.status === 'Repair in Progress' ? `
             <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200 text-xs font-semibold">
@@ -5264,7 +5642,8 @@ window.openOpsReceiptModal = async function(requestId, showPrevious = false) {
           <tr class="border-b border-black/20">
             <td class="py-2 px-2.5 border-r border-black/40 text-center font-mono">${idx + 3}</td>
             <td class="py-2 px-2.5 border-r border-black/40 font-medium text-black">
-              ${safe(p.part_name)}
+              ${safe(p.part_name)} ${p.part_code ? `<span class="font-mono text-[10px] text-neutral-600">[${safe(p.part_code)}]</span>` : ''}
+              ${p.serial_number ? `<span class="text-[10px] text-neutral-900 block font-mono font-bold tracking-tight">S/N: ${safe(p.serial_number)}</span>` : ''}
               <span class="text-[10px] text-neutral-600 block font-mono font-normal">Genuine OEM Component</span>
             </td>
             <td class="py-2 px-2.5 border-r border-black/40 text-center font-mono">${safe(hsn)}</td>
@@ -5801,7 +6180,7 @@ function recalculateOpsJobCardTotals() {
   if ($("opsCalcOemClaim")) $("opsCalcOemClaim").textContent = `₹${oemClaimTotal.toFixed(2)} (${isReqWarranty ? 'Claimed to OEM' : 'Customer Payable'})`;
 }
 
-function addOpsPartRow(name = "", qty = 1, price = 0, isCovered = null, reason = "") {
+function addOpsPartRow(name = "", qty = 1, price = 0, isCovered = null, reason = "", serialNumber = "") {
   const container = $("opsPartsContainer");
   if (!container) return;
 
@@ -5819,8 +6198,9 @@ function addOpsPartRow(name = "", qty = 1, price = 0, isCovered = null, reason =
     <div id="${rowId}" class="ops-part-row flex flex-col sm:flex-row sm:items-center gap-2 p-2.5 bg-slate-50 rounded-xl border border-slate-200">
       <div class="flex items-center gap-2 flex-1 min-w-0">
         <input type="text" placeholder="Part description (e.g. Capacitor 45uF)" value="${safe(name)}" required class="part-name flex-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs bg-white">
-        <input type="number" min="1" max="50" value="${qty}" class="part-qty w-14 rounded-lg border border-slate-200 px-2 py-1.5 text-xs text-center bg-white">
-        <input type="number" min="0" step="10" placeholder="₹ Price" value="${price}" class="part-price w-20 rounded-lg border border-slate-200 px-2 py-1.5 text-xs text-right bg-white">
+        <input type="text" placeholder="S/N (e.g. SN-COMP-9841)" value="${safe(serialNumber)}" class="part-sn w-32 rounded-lg border border-slate-200 px-2 py-1.5 text-[11px] font-mono bg-white text-slate-800" title="Part Serial Number">
+        <input type="number" min="1" max="50" value="${qty}" class="part-qty w-12 rounded-lg border border-slate-200 px-2 py-1.5 text-xs text-center bg-white">
+        <input type="number" min="0" step="10" placeholder="₹ Price" value="${price}" class="part-price w-16 rounded-lg border border-slate-200 px-2 py-1.5 text-xs text-right bg-white">
       </div>
       <div class="flex items-center justify-between sm:justify-end gap-2 shrink-0">
         <select class="part-coverage rounded-lg border border-slate-200 px-2 py-1.5 text-[11px] bg-white font-medium ${isCovered ? 'text-emerald-700' : 'text-slate-700'}">
@@ -5895,7 +6275,7 @@ window.openOpsJobCardModal = async function(requestId) {
     if ($("opsJcWorkSummary")) $("opsJcWorkSummary").value = existingJc.work_summary || "";
     if ($("opsJcLaborCost")) $("opsJcLaborCost").value = existingJc.labor_cost;
     if (Array.isArray(existingJc.parts_used)) {
-      existingJc.parts_used.forEach(p => addOpsPartRow(p.part_name, p.quantity, p.unit_price, p.is_covered, p.non_coverage_reason));
+      existingJc.parts_used.forEach(p => addOpsPartRow(p.part_name, p.quantity, p.unit_price, p.is_covered, p.non_coverage_reason, p.serial_number || ''));
     }
     recalculateOpsJobCardTotals();
 
@@ -5926,6 +6306,22 @@ window.openOpsJobCardModal = async function(requestId) {
     if ($("opsCustomerSigReadout")) $("opsCustomerSigReadout").classList.add("hidden");
     if ($("opsOtpSection")) $("opsOtpSection").classList.remove("hidden");
     if ($("saveOpsJcBtn")) $("saveOpsJcBtn").textContent = "Generate & Complete Job";
+
+    // Auto-populate parts from allocated serialized parts or customer estimate
+    try {
+      const snRes = await fetch(`${API_BASE_URL}/api/inventory/serialized-parts?request_id=${encodeURIComponent(requestId)}`, { headers: jsonHeaders(), credentials: "include" });
+      const snParts = snRes.ok ? await snRes.json() : [];
+      if (snParts && snParts.length > 0) {
+        snParts.forEach(sp => addOpsPartRow(sp.part_name, 1, sp.unit_price || 0, req.is_under_warranty, "", sp.serial_number));
+      } else {
+        const estRes = await fetch(`${API_BASE_URL}/api/requests/${encodeURIComponent(requestId)}/estimate`, { headers: jsonHeaders(), credentials: "include" });
+        const estData = estRes.ok ? await estRes.json() : null;
+        if (estData && Array.isArray(estData.parts) && estData.parts.length > 0) {
+          estData.parts.forEach(p => addOpsPartRow(p.part_name, p.quantity || 1, p.unit_price || 0, p.is_covered, p.non_coverage_reason, p.serial_number || ''));
+        }
+      }
+    } catch (e) {}
+
     recalculateOpsJobCardTotals();
   }
 };
@@ -5958,6 +6354,7 @@ async function submitOpsJobCard(e) {
   if (container) {
     container.querySelectorAll(".ops-part-row").forEach(row => {
       const name = row.querySelector(".part-name")?.value.trim();
+      const sn = row.querySelector(".part-sn")?.value.trim() || null;
       const qty = parseInt(row.querySelector(".part-qty")?.value || "1", 10);
       const price = parseFloat(row.querySelector(".part-price")?.value || "0");
       const isPartCovered = (row.querySelector(".part-coverage")?.value === "covered");
@@ -5969,7 +6366,8 @@ async function submitOpsJobCard(e) {
           total_price: (qty || 1) * (price || 0),
           is_covered: isPartCovered,
           coverage_type: isPartCovered ? "OEM_WARRANTY" : "CUSTOMER_PAYABLE",
-          non_coverage_reason: isPartCovered ? null : (anyConsumable(name) ? "Consumable / Wear & Tear" : "Non-warranty item")
+          non_coverage_reason: isPartCovered ? null : (anyConsumable(name) ? "Consumable / Wear & Tear" : "Non-warranty item"),
+          serial_number: sn
         });
       }
     });
@@ -7092,6 +7490,7 @@ function initEvents() {
 
   // Phase 2 Modals (Warehouse Restock, Warranty Claim Review, Branch Deep-Dive & Customer Deep-Dive)
   initRestockModalEvents();
+  initAssignSerialModalEvents();
   initClaimReviewModalEvents();
   initWarrantyVerificationDialogEvents();
   initWarrantyPolicyDialogEvents();

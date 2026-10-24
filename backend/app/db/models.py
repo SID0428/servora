@@ -247,9 +247,29 @@ class PartRequestModel(Base):
     status = Column(String(32), nullable=False, default="Pending") # Pending, Sent, Cancelled
     notes = Column(Text, nullable=True)
     requested_by = Column(String(128), nullable=True)
+    request_id = Column(String(64), ForeignKey("service_requests.id", ondelete="SET NULL"), nullable=True, index=True)
+    technician_id = Column(String(64), ForeignKey("technicians.id", ondelete="SET NULL"), nullable=True, index=True)
+    technician_name = Column(String(128), nullable=True)
+    stock_status_at_request = Column(String(32), default="in_stock", nullable=False)
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
     sent_at = Column(DateTime, nullable=True)
     sent_by = Column(String(128), nullable=True)
+
+class PartSerialNumberModel(Base):
+    __tablename__ = "part_serial_numbers"
+
+    id = Column(String(64), primary_key=True, index=True) # e.g. PSN-98412
+    serial_number = Column(String(64), unique=True, index=True, nullable=False) # e.g. SN-COMP-98412
+    part_id = Column(String(64), ForeignKey("spare_parts.id", ondelete="CASCADE"), nullable=False, index=True)
+    branch_id = Column(String(64), ForeignKey("company_branches.id", ondelete="CASCADE"), nullable=False, index=True)
+    company_id = Column(String(64), ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
+    assigned_tech_id = Column(String(64), ForeignKey("technicians.id", ondelete="SET NULL"), nullable=True, index=True)
+    assigned_tech_name = Column(String(128), nullable=True)
+    request_id = Column(String(64), ForeignKey("service_requests.id", ondelete="SET NULL"), nullable=True, index=True)
+    status = Column(String(32), nullable=False, default="in_stock") # in_stock, assigned_to_tech, installed, returned
+    assigned_at = Column(DateTime, nullable=True)
+    installed_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
 
 class FranchiseInventoryModel(Base):
     __tablename__ = "franchise_inventories"

@@ -1,9 +1,13 @@
 import json
+import uuid
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from app.db.session import get_db
-from app.db.models import ServiceRequestModel, EstimateModel, TechnicianModel, UserModel, ApplianceModel, SparePartModel
+from app.db.models import (
+    ServiceRequestModel, EstimateModel, TechnicianModel, UserModel, ApplianceModel,
+    SparePartModel, PartRequestModel, FranchiseInventoryModel, CompanyBranchModel, BranchTechnicianModel
+)
 from app.schemas import (
     EstimateCreatePayload,
     EstimateResponse,
@@ -198,17 +202,119 @@ def respond_to_estimate(
         est.customer_remarks = payload.remarks or "Approved by customer"
         est.responded_at = now_str
 
-        req.status = "Repair in Progress"
-        req.status_badge = "In Progress"
+        # Parse parts from estimate
+        parts_list = json.loads(est.parts_json) if est.parts_json else []
 
-        for step in timeline:
-            if step.get("id") == "step_estimate":
-                step["state"] = "completed"
-                step["timestamp"] = now_str
-                step["description"] = f"Customer approved estimate of ₹{est.total_estimate:.2f}. Repair authorized."
-            elif step.get("id") == "step_4":
-                step["state"] = "current"
-                step["description"] = "Parts replacement and repair in progress after customer estimate approval."
+        if parts_list:
+            # Resolve technician and branch
+            tech_id = est.technician_id or req.technician_id
+            tech_name = est.technician_name
+            if not tech_name and tech_id:
+                tech_obj = db.query(TechnicianModel).filter(TechnicianModel.id == tech_id).first()
+                tech_name = tech_obj.name if tech_obj else "Field Technician"
+            elif not tech_name:
+                tech_name = "Field Technician"
+
+            branch_id = req.branch_id
+            if not branch_id and tech_id:
+                bt = db.query(BranchTechnicianModel).filter(BranchTechnicianModel.technician_id == tech_id).first()
+                if bt:
+                    branch_id = bt.branch_id
+            if not branch_id:
+                first_branch = db.query(CompanyBranchModel).first()
+                branch_id = first_branch.id if first_branch else "branch_1"
+            req.branch_id = branch_id
+
+            has_out_of_stock = False
+            part_descriptions = []
+
+            for p in parts_list:
+                part_name = p.get("part_name", "")
+                part_code = p.get("part_code", "")
+                part_id = p.get("part_id", "")
+                p_qty = p.get("quantity", 1)
+
+                part_obj = None
+                if part_id:
+                    part_obj = db.query(SparePartModel).filter(SparePartModel.id == part_id).first()
+                if not part_obj and part_code:
+                    part_obj = db.query(SparePartModel).filter(SparePartModel.part_code == part_code).first()
+                if not part_obj and part_name:
+                    part_obj = db.query(SparePartModel).filter(SparePartModel.name.ilike(f"%{part_name}%")).first()
+
+                inv = None
+                qty_avail = 0
+                if part_obj:
+                    inv = db.query(FranchiseInventoryModel).filter(
+                        FranchiseInventoryModel.branch_id == branch_id,
+                        FranchiseInventoryModel.part_id == part_obj.id
+                    ).first()
+                    qty_avail = inv.quantity_available if inv else 0
+
+                is_in_stock = (qty_avail >= p_qty)
+                if not is_in_stock:
+                    has_out_of_stock = True
+
+                part_descriptions.append(f"{part_name} (Qty: {p_qty})")
+
+                # Automatically create part request for franchise under technician name
+                comp_id = (part_obj.company_id if part_obj else None) or req.company_id or "company_1"
+                part_db_id = part_obj.id if part_obj else (part_id or f"part_misc_{uuid.uuid4().hex[:6]}")
+
+                existing_pr = db.query(PartRequestModel).filter(
+                    PartRequestModel.request_id == req.id,
+                    PartRequestModel.part_id == part_db_id
+                ).first()
+
+                if not existing_pr:
+                    pr = PartRequestModel(
+                        id=f"REQ-{uuid.uuid4().hex[:8].upper()}",
+                        company_id=comp_id,
+                        branch_id=branch_id,
+                        part_id=part_db_id,
+                        quantity=p_qty,
+                        status="Pending",
+                        notes=f"Service Requisition for {req.id} ({req.appliance_name} - {req.issue}) · Customer: {req.customer_name}",
+                        requested_by=f"{tech_name} ({tech_id or 'Technician'})",
+                        request_id=req.id,
+                        technician_id=tech_id,
+                        technician_name=tech_name,
+                        stock_status_at_request="in_stock" if is_in_stock else "out_of_stock",
+                        created_at=datetime.utcnow()
+                    )
+                    db.add(pr)
+
+            parts_str = ", ".join(part_descriptions)
+            if has_out_of_stock:
+                req.status = "Part Requested but Out of Stock"
+                req.status_badge = "Part Requested but Out of Stock"
+                desc = f"Parts requisition automatically sent to franchise under technician {tech_name} ({parts_str}). One or more required parts are currently out of stock at franchise; brand OEM supply requisition initiated."
+            else:
+                req.status = "Part Requested"
+                req.status_badge = "Part Requested"
+                desc = f"Parts requisition automatically sent to franchise under technician {tech_name} ({parts_str}). In-stock at branch, awaiting serialized unit allocation."
+
+            for step in timeline:
+                if step.get("id") == "step_estimate":
+                    step["state"] = "completed"
+                    step["timestamp"] = now_str
+                    step["description"] = f"Customer approved estimate of ₹{est.total_estimate:.2f}."
+                elif step.get("id") == "step_4":
+                    step["state"] = "current"
+                    step["timestamp"] = now_str
+                    step["description"] = desc
+
+        else:
+            req.status = "Repair in Progress"
+            req.status_badge = "In Progress"
+            for step in timeline:
+                if step.get("id") == "step_estimate":
+                    step["state"] = "completed"
+                    step["timestamp"] = now_str
+                    step["description"] = f"Customer approved estimate of ₹{est.total_estimate:.2f}. Repair authorized."
+                elif step.get("id") == "step_4":
+                    step["state"] = "current"
+                    step["description"] = "Repair and service overhaul in progress."
 
     elif payload.action == "reject":
         est.status = "rejected"

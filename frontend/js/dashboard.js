@@ -214,6 +214,15 @@ function statusClasses(status) {
   if (normalized.includes("complete")) {
     return "bg-emerald-50 text-emerald-700 border border-emerald-100";
   }
+  if (normalized.includes("out of stock")) {
+    return "bg-rose-50 text-rose-700 border border-rose-200";
+  }
+  if (normalized.includes("part assigned")) {
+    return "bg-emerald-50 text-emerald-700 border border-emerald-200";
+  }
+  if (normalized.includes("part request")) {
+    return "bg-sky-50 text-sky-700 border border-sky-200";
+  }
   if (
     normalized.includes("progress") ||
     normalized.includes("way") ||
@@ -1395,6 +1404,51 @@ function populateTracking(request) {
         .catch(() => {});
     } else {
       $("trackingEstimateBanner").classList.add("hidden");
+    }
+  }
+
+  // Spare Part Requisition & Assignment Banner (FR-INV-007)
+  if ($("trackingPartStatusBanner")) {
+    const st = (request.status || "").toLowerCase();
+    const bg = (request.status_badge || "").toLowerCase();
+    if (st.includes("out of stock") || bg.includes("out of stock")) {
+      $("trackingPartStatusBanner").classList.remove("hidden");
+      $("trackingPartStatusBanner").className = "rounded-2xl border border-rose-300 bg-rose-50/90 p-4 shadow-sm";
+      if ($("trackingPartStatusIcon")) $("trackingPartStatusIcon").textContent = "⚠️";
+      if ($("trackingPartStatusTitle")) $("trackingPartStatusTitle").textContent = "Part Requested but Out of Stock";
+      if ($("trackingPartStatusBadge")) {
+        $("trackingPartStatusBadge").textContent = "Out of Stock with Franchise";
+        $("trackingPartStatusBadge").className = "text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-200 text-rose-900 border border-rose-300";
+      }
+      if ($("trackingPartStatusDesc")) {
+        $("trackingPartStatusDesc").textContent = "The required replacement spare part is currently out of stock at your local franchise branch. An expedited supply requisition has been automatically placed with the Brand OEM warehouse. We are tracking shipment delivery.";
+      }
+    } else if (st.includes("part assigned") || bg.includes("part assigned")) {
+      $("trackingPartStatusBanner").classList.remove("hidden");
+      $("trackingPartStatusBanner").className = "rounded-2xl border border-emerald-300 bg-emerald-50/90 p-4 shadow-sm";
+      if ($("trackingPartStatusIcon")) $("trackingPartStatusIcon").textContent = "✅";
+      if ($("trackingPartStatusTitle")) $("trackingPartStatusTitle").textContent = "Part Assigned to Technician";
+      if ($("trackingPartStatusBadge")) {
+        $("trackingPartStatusBadge").textContent = "Unit Allocated";
+        $("trackingPartStatusBadge").className = "text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-200 text-emerald-900 border border-emerald-300";
+      }
+      if ($("trackingPartStatusDesc")) {
+        $("trackingPartStatusDesc").textContent = "The certified replacement part has been allocated by the franchise branch to your assigned technician. Technician is ready for doorstep installation.";
+      }
+    } else if (st.includes("part request") || bg.includes("part request")) {
+      $("trackingPartStatusBanner").classList.remove("hidden");
+      $("trackingPartStatusBanner").className = "rounded-2xl border border-sky-300 bg-sky-50/90 p-4 shadow-sm";
+      if ($("trackingPartStatusIcon")) $("trackingPartStatusIcon").textContent = "📦";
+      if ($("trackingPartStatusTitle")) $("trackingPartStatusTitle").textContent = "Spare Part Requested";
+      if ($("trackingPartStatusBadge")) {
+        $("trackingPartStatusBadge").textContent = "In Stock · Pending Dispatch";
+        $("trackingPartStatusBadge").className = "text-[10px] font-bold px-2 py-0.5 rounded-full bg-sky-200 text-sky-900 border border-sky-300";
+      }
+      if ($("trackingPartStatusDesc")) {
+        $("trackingPartStatusDesc").textContent = "Technician has requested the required parts from the local franchise branch. The part is available in stock and is being assigned to the technician.";
+      }
+    } else {
+      $("trackingPartStatusBanner").classList.add("hidden");
     }
   }
 
@@ -2708,6 +2762,7 @@ export function numberToWordsIndian(num) {
             <td class="py-2 px-2.5 border-r border-black/40 text-center font-mono">${(laborCost > 0 ? 3 : 2) + idx}</td>
             <td class="py-2 px-2.5 border-r border-black/40 font-medium text-black">
               ${escapeHtml(p.part_name)} ${p.part_code ? `<span class="font-mono text-[10px] text-neutral-600">[${escapeHtml(p.part_code)}]</span>` : ''}
+              ${p.serial_number ? `<span class="text-[10px] text-neutral-900 block font-mono font-bold tracking-tight">S/N: ${escapeHtml(p.serial_number)}</span>` : ''}
               <span class="text-[10px] text-neutral-600 block font-normal font-mono">Genuine OEM Replacement Part</span>
             </td>
             <td class="py-2 px-2.5 border-r border-black/40 text-center font-mono">${escapeHtml(hsn)}</td>

@@ -23,7 +23,8 @@ from app.db.models import (
     WarrantyClaimModel,
     AMCSubscriptionModel,
     EstimateModel,
-    EscalationModel
+    EscalationModel,
+    PartSerialNumberModel
 )
 from app.notification_service import (
     notify_booking_created,
@@ -763,6 +764,28 @@ def create_job_card(request_id: str, payload: JobCardCreatePayload, request: Req
             p_dict["coverage_type"] = "customer_billable"
             p_dict["non_coverage_reason"] = getattr(p, "non_coverage_reason", None) or ("Consumable / Wear & Tear" if any(w in (p.part_name or "").lower() for w in ["gas", "filter", "seal"]) else "Out of Warranty / Excluded")
             customer_parts_cost += p_total
+
+        # Serial number tracking
+        sn = getattr(p, "serial_number", None) or p_dict.get("serial_number")
+        if not sn:
+            allocated_psn = db.query(PartSerialNumberModel).filter(
+                PartSerialNumberModel.request_id == req.id,
+                PartSerialNumberModel.status.in_(["assigned_to_tech", "installed"])
+            ).first()
+            if allocated_psn:
+                sn = allocated_psn.serial_number
+        p_dict["serial_number"] = sn
+
+        if sn:
+            psn_rec = db.query(PartSerialNumberModel).filter(
+                PartSerialNumberModel.serial_number == sn.strip().upper()
+            ).first()
+            if psn_rec:
+                psn_rec.status = "installed"
+                psn_rec.installed_at = datetime.utcnow()
+                psn_rec.request_id = req.id
+                if tech_id:
+                    psn_rec.assigned_tech_id = tech_id
 
         parts_used_list.append(p_dict)
 

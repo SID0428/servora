@@ -1,4 +1,5 @@
 import uuid
+import json
 from datetime import datetime
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Request, Query
@@ -8,13 +9,15 @@ from sqlalchemy import or_
 from app.db.session import get_db
 from app.db.models import (
     UserModel, SparePartModel, PartRequestModel, FranchiseInventoryModel,
-    InventoryTransactionModel, CompanyBranchModel
+    InventoryTransactionModel, CompanyBranchModel, PartSerialNumberModel,
+    TechnicianModel, ServiceRequestModel
 )
 from app.schemas import (
     SparePartSchema, SparePartCreatePayload,
     CompanyPartCreatePayload, CompanyPartUpdatePayload, CompanyStockUpdatePayload,
     PartRequestCreatePayload, PartRequestResponseSchema,
-    FranchiseInventoryItemSchema, StockMovementPayload
+    FranchiseInventoryItemSchema, StockMovementPayload,
+    PartSerialNumberSchema, PartSerialNumberAssignPayload, PartSerialNumberCreatePayload
 )
 from app.security import get_authenticated_user
 
@@ -350,9 +353,29 @@ def create_part_request(
         status="Pending",
         notes=payload.notes,
         requested_by=f"{user.name} ({branch.branch_name})",
+        request_id=payload.request_id,
+        technician_id=payload.technician_id or (user.id if user.role == "technician" else None),
+        technician_name=payload.technician_name or (user.name if user.role == "technician" else None),
+        stock_status_at_request=payload.stock_status_at_request or "in_stock",
         created_at=datetime.utcnow()
     )
     db.add(req_obj)
+
+    # If linked to a service request, update service request state if out of stock
+    if payload.request_id:
+        sr = db.query(ServiceRequestModel).filter(ServiceRequestModel.id == payload.request_id).first()
+        if sr and payload.stock_status_at_request == "out_of_stock":
+            sr.status = "Part Requested but Out of Stock"
+            sr.status_badge = "Part Requested but Out of Stock"
+            now_str = datetime.now().strftime("%d %b %Y, %I:%M %p")
+            timeline = json.loads(sr.timeline_json) if sr.timeline_json else []
+            for step in timeline:
+                if step.get("id") == "step_4":
+                    step["state"] = "current"
+                    step["timestamp"] = now_str
+                    step["description"] = f"Part {part.name} requested by technician {req_obj.technician_name or user.name}, but out of stock at branch. OEM supply order placed."
+            sr.timeline_json = json.dumps(timeline)
+
     db.commit()
     db.refresh(req_obj)
 
@@ -373,6 +396,10 @@ def create_part_request(
         status=req_obj.status,
         notes=req_obj.notes,
         requested_by=req_obj.requested_by,
+        request_id=req_obj.request_id,
+        technician_id=req_obj.technician_id,
+        technician_name=req_obj.technician_name,
+        stock_status_at_request=req_obj.stock_status_at_request,
         created_at=req_obj.created_at.strftime("%d %b %Y, %I:%M %p"),
         sent_at=None,
         sent_by=None
@@ -408,6 +435,13 @@ def list_part_requests(
         ).first()
         branch_id = branch.id if branch else user.id
         query = query.filter(PartRequestModel.branch_id == branch_id)
+    elif user.role == "technician":
+        query = query.filter(
+            or_(
+                PartRequestModel.technician_id == user.id,
+                PartRequestModel.requested_by.ilike(f"%{user.name}%")
+            )
+        )
 
     if status and status.lower() != "all":
         query = query.filter(PartRequestModel.status.ilike(status))
@@ -432,6 +466,10 @@ def list_part_requests(
                 status=req_obj.status,
                 notes=req_obj.notes,
                 requested_by=req_obj.requested_by,
+                request_id=req_obj.request_id,
+                technician_id=req_obj.technician_id,
+                technician_name=req_obj.technician_name,
+                stock_status_at_request=getattr(req_obj, "stock_status_at_request", "in_stock"),
                 created_at=req_obj.created_at.strftime("%d %b %Y, %I:%M %p") if req_obj.created_at else "",
                 sent_at=req_obj.sent_at.strftime("%d %b %Y, %I:%M %p") if req_obj.sent_at else None,
                 sent_by=req_obj.sent_by
@@ -521,6 +559,36 @@ def send_part_request(
     )
     db.add(txn_in)
 
+    # 5. Automatically generate serialized units for franchise stock
+    for _ in range(req_obj.quantity):
+        brand_prefix = (part.brand[:3] if part.brand else "OEM").upper()
+        new_sn = f"SN-{brand_prefix}-{uuid.uuid4().hex[:6].upper()}"
+        psn = PartSerialNumberModel(
+            id=f"PSN-{uuid.uuid4().hex[:8].upper()}",
+            serial_number=new_sn,
+            part_id=part.id,
+            branch_id=req_obj.branch_id,
+            company_id=req_obj.company_id,
+            status="in_stock",
+            created_at=datetime.utcnow()
+        )
+        db.add(psn)
+
+    # 6. If request was linked to a service request awaiting out of stock part, transition to "Part Requested"
+    if req_obj.request_id:
+        sr = db.query(ServiceRequestModel).filter(ServiceRequestModel.id == req_obj.request_id).first()
+        if sr and sr.status == "Part Requested but Out of Stock":
+            sr.status = "Part Requested"
+            sr.status_badge = "Part Requested"
+            now_str = datetime.now().strftime("%d %b %Y, %I:%M %p")
+            timeline = json.loads(sr.timeline_json) if sr.timeline_json else []
+            for step in timeline:
+                if step.get("id") == "step_4":
+                    step["state"] = "current"
+                    step["timestamp"] = now_str
+                    step["description"] = f"Part {part.name} dispatched by Brand OEM to local branch '{branch_name}'. Part received and ready for technician assignment."
+            sr.timeline_json = json.dumps(timeline)
+
     db.commit()
     db.refresh(req_obj)
 
@@ -541,6 +609,10 @@ def send_part_request(
         status=req_obj.status,
         notes=req_obj.notes,
         requested_by=req_obj.requested_by,
+        request_id=req_obj.request_id,
+        technician_id=req_obj.technician_id,
+        technician_name=req_obj.technician_name,
+        stock_status_at_request=getattr(req_obj, "stock_status_at_request", "in_stock"),
         created_at=req_obj.created_at.strftime("%d %b %Y, %I:%M %p"),
         sent_at=req_obj.sent_at.strftime("%d %b %Y, %I:%M %p") if req_obj.sent_at else None,
         sent_by=req_obj.sent_by
@@ -655,3 +727,294 @@ def record_stock_movement(
         "quantity_available": inv.quantity_available,
         "is_low_stock": inv.quantity_available <= inv.reorder_level
     }
+
+# ==========================================
+# Serialized Spare Parts & Allocation Engine
+# ==========================================
+
+@router.get("/serialized-parts", response_model=List[PartSerialNumberSchema])
+def list_serialized_parts(
+    branch_id: Optional[str] = None,
+    part_id: Optional[str] = None,
+    status: Optional[str] = None,
+    technician_id: Optional[str] = None,
+    request_id: Optional[str] = None,
+    request: Request = None,
+    db: Session = Depends(get_db)
+):
+    user = get_authenticated_user(request, db)
+    query = db.query(PartSerialNumberModel, SparePartModel, CompanyBranchModel).join(
+        SparePartModel, PartSerialNumberModel.part_id == SparePartModel.id
+    ).join(
+        CompanyBranchModel, PartSerialNumberModel.branch_id == CompanyBranchModel.id
+    )
+
+    if user.role in ("branch", "franchise"):
+        branch = db.query(CompanyBranchModel).filter(
+            or_(CompanyBranchModel.id == user.id, CompanyBranchModel.email == user.email)
+        ).first()
+        b_id = branch.id if branch else user.id
+        query = query.filter(PartSerialNumberModel.branch_id == b_id)
+    elif user.role == "technician":
+        query = query.filter(
+            or_(
+                PartSerialNumberModel.assigned_tech_id == user.id,
+                PartSerialNumberModel.assigned_tech_name.ilike(f"%{user.name}%")
+            )
+        )
+    elif branch_id:
+        query = query.filter(PartSerialNumberModel.branch_id == branch_id)
+
+    if part_id:
+        query = query.filter(PartSerialNumberModel.part_id == part_id)
+    if status and status.lower() != "all":
+        query = query.filter(PartSerialNumberModel.status == status)
+    if technician_id:
+        query = query.filter(PartSerialNumberModel.assigned_tech_id == technician_id)
+    if request_id:
+        query = query.filter(PartSerialNumberModel.request_id == request_id)
+
+    results = query.order_by(PartSerialNumberModel.created_at.desc()).all()
+
+    sr_ids = [psn.request_id for psn, _, _ in results if psn.request_id]
+    sr_map = {}
+    if sr_ids:
+        srs = db.query(ServiceRequestModel).filter(ServiceRequestModel.id.in_(sr_ids)).all()
+        sr_map = {s.id: s for s in srs}
+
+    items = []
+    for psn, part, branch in results:
+        sr = sr_map.get(psn.request_id) if psn.request_id else None
+        items.append(
+            PartSerialNumberSchema(
+                id=psn.id,
+                serial_number=psn.serial_number,
+                part_id=part.id,
+                part_name=part.name,
+                part_code=part.part_code,
+                category=part.category,
+                unit_price=part.unit_price,
+                hsn_code=part.hsn_code,
+                branch_id=branch.id,
+                branch_name=branch.branch_name,
+                company_id=psn.company_id or part.company_id,
+                assigned_tech_id=psn.assigned_tech_id,
+                assigned_tech_name=psn.assigned_tech_name,
+                request_id=psn.request_id,
+                customer_name=sr.customer_name if sr else None,
+                appliance_name=sr.appliance_name if sr else None,
+                status=psn.status,
+                assigned_at=psn.assigned_at.strftime("%d %b %Y, %I:%M %p") if psn.assigned_at else None,
+                installed_at=psn.installed_at.strftime("%d %b %Y, %I:%M %p") if psn.installed_at else None,
+                created_at=psn.created_at.strftime("%d %b %Y, %I:%M %p") if psn.created_at else ""
+            )
+        )
+    return items
+
+@router.post("/serialized-parts/assign", response_model=PartSerialNumberSchema)
+def assign_serialized_part(
+    payload: PartSerialNumberAssignPayload,
+    request: Request,
+    db: Session = Depends(get_db)
+):
+    user = get_authenticated_user(request, db)
+    if user.role not in ("branch", "franchise", "admin", "company"):
+        raise HTTPException(status_code=403, detail="Only franchise branch managers or platform admins can assign parts to technicians")
+
+    psn = db.query(PartSerialNumberModel).filter(
+        PartSerialNumberModel.serial_number == payload.serial_number.strip().upper()
+    ).first()
+    if not psn:
+        raise HTTPException(status_code=404, detail=f"Serial Number '{payload.serial_number}' not found")
+
+    if psn.status != "in_stock":
+        raise HTTPException(status_code=400, detail=f"Serial Number '{payload.serial_number}' is not available in stock (Current status: {psn.status})")
+
+    req = db.query(ServiceRequestModel).filter(ServiceRequestModel.id == payload.request_id).first()
+    if not req:
+        raise HTTPException(status_code=404, detail="Service request not found")
+
+    tech_id = payload.technician_id
+    tech_name = payload.technician_name
+    if not tech_name:
+        tech_obj = db.query(TechnicianModel).filter(TechnicianModel.id == tech_id).first()
+        tech_name = tech_obj.name if tech_obj else tech_id
+
+    part = db.query(SparePartModel).filter(SparePartModel.id == psn.part_id).first()
+    part_name = part.name if part else "Spare Part"
+
+    now = datetime.utcnow()
+    now_str = datetime.now().strftime("%d %b %Y, %I:%M %p")
+
+    # 1. Update Serialized Part status
+    psn.assigned_tech_id = tech_id
+    psn.assigned_tech_name = tech_name
+    psn.request_id = req.id
+    psn.status = "assigned_to_tech"
+    psn.assigned_at = now
+
+    # 2. Update Franchise Warehouse Inventory count
+    inv = db.query(FranchiseInventoryModel).filter(
+        FranchiseInventoryModel.branch_id == psn.branch_id,
+        FranchiseInventoryModel.part_id == psn.part_id
+    ).first()
+    if inv:
+        inv.quantity_available = max(0, inv.quantity_available - 1)
+
+    # 3. Record Inventory Transaction
+    txn = InventoryTransactionModel(
+        id=f"TXN-{uuid.uuid4().hex[:8].upper()}",
+        branch_id=psn.branch_id,
+        part_id=psn.part_id,
+        transaction_type="tech_dispatch",
+        quantity=1,
+        reference_id=req.id,
+        performed_by=f"{user.name} ({user.role})",
+        notes=f"Assigned serialized unit {psn.serial_number} to {tech_name} for ticket {req.id}"
+    )
+    db.add(txn)
+
+    # 4. Update PartRequestModel if exists for this request & part
+    pr = db.query(PartRequestModel).filter(
+        PartRequestModel.request_id == req.id,
+        PartRequestModel.part_id == psn.part_id
+    ).first()
+    if pr:
+        pr.status = "Assigned"
+
+    # 5. Transition Service Request Status to "Part Assigned to Technician"
+    req.status = "Part Assigned to Technician"
+    req.status_badge = "Part Assigned to Technician"
+
+    timeline = json.loads(req.timeline_json) if req.timeline_json else []
+    for step in timeline:
+        if step.get("id") == "step_4":
+            step["state"] = "current"
+            step["timestamp"] = now_str
+            step["description"] = f"Part {part_name} (S/N: {psn.serial_number}) assigned to technician {tech_name} by franchise. Doorstep installation authorized."
+    req.timeline_json = json.dumps(timeline)
+
+    db.commit()
+    db.refresh(psn)
+    db.refresh(req)
+
+    branch = db.query(CompanyBranchModel).filter(CompanyBranchModel.id == psn.branch_id).first()
+
+    return PartSerialNumberSchema(
+        id=psn.id,
+        serial_number=psn.serial_number,
+        part_id=part.id if part else psn.part_id,
+        part_name=part.name if part else "",
+        part_code=part.part_code if part else "",
+        category=part.category if part else "",
+        unit_price=part.unit_price if part else 0.0,
+        hsn_code=part.hsn_code if part else "8418",
+        branch_id=psn.branch_id,
+        branch_name=branch.branch_name if branch else psn.branch_id,
+        company_id=psn.company_id,
+        assigned_tech_id=psn.assigned_tech_id,
+        assigned_tech_name=psn.assigned_tech_name,
+        request_id=psn.request_id,
+        customer_name=req.customer_name,
+        appliance_name=req.appliance_name,
+        status=psn.status,
+        assigned_at=psn.assigned_at.strftime("%d %b %Y, %I:%M %p") if psn.assigned_at else None,
+        installed_at=None,
+        created_at=psn.created_at.strftime("%d %b %Y, %I:%M %p") if psn.created_at else ""
+    )
+
+@router.post("/serialized-parts/create", response_model=List[PartSerialNumberSchema])
+def create_serialized_parts(
+    payload: PartSerialNumberCreatePayload,
+    request: Request,
+    db: Session = Depends(get_db)
+):
+    user = get_authenticated_user(request, db)
+    if user.role not in ("branch", "franchise", "company", "admin"):
+        raise HTTPException(status_code=403, detail="Unauthorized to add serialized parts")
+
+    branch_id = payload.branch_id
+    if not branch_id:
+        if user.role in ("branch", "franchise"):
+            branch = db.query(CompanyBranchModel).filter(
+                or_(CompanyBranchModel.id == user.id, CompanyBranchModel.email == user.email)
+            ).first()
+            branch_id = branch.id if branch else user.id
+        else:
+            first_br = db.query(CompanyBranchModel).first()
+            branch_id = first_br.id if first_br else "branch_1"
+
+    part = db.query(SparePartModel).filter(SparePartModel.id == payload.part_id).first()
+    if not part:
+        raise HTTPException(status_code=404, detail="Spare part not found")
+
+    created = []
+    now = datetime.utcnow()
+    for sn in payload.serial_numbers:
+        sn_clean = sn.strip().upper()
+        if not sn_clean:
+            continue
+        exists = db.query(PartSerialNumberModel).filter(PartSerialNumberModel.serial_number == sn_clean).first()
+        if exists:
+            continue
+        item = PartSerialNumberModel(
+            id=f"PSN-{uuid.uuid4().hex[:8].upper()}",
+            serial_number=sn_clean,
+            part_id=part.id,
+            branch_id=branch_id,
+            company_id=part.company_id,
+            status="in_stock",
+            created_at=now
+        )
+        db.add(item)
+        created.append(item)
+
+    if created:
+        inv = db.query(FranchiseInventoryModel).filter(
+            FranchiseInventoryModel.branch_id == branch_id,
+            FranchiseInventoryModel.part_id == part.id
+        ).first()
+        if not inv:
+            inv = FranchiseInventoryModel(
+                id=f"inv_{uuid.uuid4().hex[:10]}",
+                branch_id=branch_id,
+                part_id=part.id,
+                quantity_available=0,
+                reorder_level=5
+            )
+            db.add(inv)
+        inv.quantity_available += len(created)
+        inv.last_restocked_at = now
+
+        txn = InventoryTransactionModel(
+            id=f"TXN-{uuid.uuid4().hex[:8].upper()}",
+            branch_id=branch_id,
+            part_id=part.id,
+            transaction_type="stock_in",
+            quantity=len(created),
+            performed_by=f"{user.name} ({user.role})",
+            notes=f"Registered {len(created)} new serialized units for {part.name}"
+        )
+        db.add(txn)
+
+    db.commit()
+
+    branch = db.query(CompanyBranchModel).filter(CompanyBranchModel.id == branch_id).first()
+    return [
+        PartSerialNumberSchema(
+            id=it.id,
+            serial_number=it.serial_number,
+            part_id=part.id,
+            part_name=part.name,
+            part_code=part.part_code,
+            category=part.category,
+            unit_price=part.unit_price,
+            hsn_code=part.hsn_code,
+            branch_id=branch_id,
+            branch_name=branch.branch_name if branch else branch_id,
+            company_id=it.company_id,
+            status=it.status,
+            created_at=it.created_at.strftime("%d %b %Y, %I:%M %p")
+        )
+        for it in created
+    ]

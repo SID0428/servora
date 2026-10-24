@@ -9,7 +9,7 @@ from app.db.models import (
     SparePartModel, PartRequestModel, FranchiseInventoryModel, InventoryTransactionModel,
     WarrantyClaimModel, AMCPlanModel, AMCSubscriptionModel,
     EstimateModel, EscalationModel, NotificationLogModel, AuthOtpModel,
-    CompanyApplianceCatalogModel, CompanyWarrantyPolicyModel
+    CompanyApplianceCatalogModel, CompanyWarrantyPolicyModel, PartSerialNumberModel
 )
 
 def seed_database(db: Session):
@@ -186,6 +186,20 @@ def seed_database(db: Session):
     if "customer_parts_cost" not in jc_columns:
         with engine.begin() as connection:
             connection.execute(text("ALTER TABLE job_cards ADD COLUMN customer_parts_cost FLOAT DEFAULT 0.0"))
+
+    pr_columns = {column["name"] for column in inspect(engine).get_columns("part_requests")}
+    if "request_id" not in pr_columns:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE part_requests ADD COLUMN request_id VARCHAR(64) NULL"))
+    if "technician_id" not in pr_columns:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE part_requests ADD COLUMN technician_id VARCHAR(64) NULL"))
+    if "technician_name" not in pr_columns:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE part_requests ADD COLUMN technician_name VARCHAR(128) NULL"))
+    if "stock_status_at_request" not in pr_columns:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE part_requests ADD COLUMN stock_status_at_request VARCHAR(32) NOT NULL DEFAULT 'in_stock'"))
 
     # 1. Seed Operational Users if not present
     if not db.query(UserModel).filter(UserModel.role != "customer").first():
@@ -429,6 +443,61 @@ def seed_database(db: Session):
             )
         ]
         db.add_all(txns)
+        db.commit()
+
+    # 6c. Seed Serialized Parts (FR-INV-007)
+    if not db.query(PartSerialNumberModel).first():
+        serials = [
+            PartSerialNumberModel(
+                id="PSN-LG-01",
+                serial_number="SN-LG-COMP-9841",
+                part_id="part_lg_comp01",
+                branch_id="branch_1",
+                company_id="company_lg",
+                status="in_stock"
+            ),
+            PartSerialNumberModel(
+                id="PSN-LG-02",
+                serial_number="SN-LG-COMP-9842",
+                part_id="part_lg_comp01",
+                branch_id="branch_1",
+                company_id="company_lg",
+                status="in_stock"
+            ),
+            PartSerialNumberModel(
+                id="PSN-CRM-01",
+                serial_number="SN-CRM-CAP-4101",
+                part_id="part_crm_cap01",
+                branch_id="branch_1",
+                company_id="company_crompton",
+                status="in_stock"
+            ),
+            PartSerialNumberModel(
+                id="PSN-CRM-02",
+                serial_number="SN-CRM-CAP-4102",
+                part_id="part_crm_cap01",
+                branch_id="branch_1",
+                company_id="company_crompton",
+                status="in_stock"
+            ),
+            PartSerialNumberModel(
+                id="PSN-THM-01",
+                serial_number="SN-UNV-THM-8011",
+                part_id="part_unv_thm01",
+                branch_id="branch_1",
+                company_id=None,
+                status="in_stock"
+            ),
+            PartSerialNumberModel(
+                id="PSN-THM-02",
+                serial_number="SN-UNV-THM-8012",
+                part_id="part_unv_thm01",
+                branch_id="branch_1",
+                company_id=None,
+                status="in_stock"
+            ),
+        ]
+        db.add_all(serials)
         db.commit()
 
     # 7. Seed AMC Packages (Phase 2 FR-WAR-005)
