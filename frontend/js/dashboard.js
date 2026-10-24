@@ -405,6 +405,7 @@ function renderAppliances() {
                   </p>
                   <p class="text-[11px] text-slate-400 mt-0.5">
                     Registered: ${escapeHtml(registeredText)}
+                    ${appliance.invoice_url ? `· <a href="${escapeHtml(appliance.invoice_url)}" target="_blank" rel="noopener noreferrer" class="text-blue-600 font-semibold hover:underline" onclick="event.stopPropagation();">📄 Invoice</a>` : ""}
                   </p>
                 </div>
               </div>
@@ -493,6 +494,11 @@ function renderAppliances() {
                       ? `<span class="rounded-full px-2.5 py-0.5 text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">🛡️ AMC: ${escapeHtml(appliance.amc_plan_name || 'Active')} · Exp: ${escapeHtml(appliance.amc_end_date || '')}</span>`
                       : ""
                   }
+                  ${
+                    appliance.invoice_url
+                      ? `<a href="${escapeHtml(appliance.invoice_url)}" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 transition">📄 View Invoice ↗</a>`
+                      : ""
+                  }
                 </div>
               </div>
             </div>
@@ -523,6 +529,8 @@ function renderAppliances() {
     }
   }
 }
+
+let currentCompanyCatalog = { brands: [], appliances: [] };
 
 function renderCompanyOptions() {
   const select = $("newAppCompany");
@@ -557,6 +565,191 @@ function renderCompanyOptions() {
     $("applianceCompanyHelp").textContent = registeredCompanies.length
       ? "Choose the company associated with this appliance."
       : "A ServSure registered company must be available before you can register an appliance.";
+  }
+}
+
+async function onApplianceCompanyChange() {
+  const companyId = $("newAppCompany")?.value;
+  const brandSelect = $("newAppBrand");
+  const brandHelp = $("applianceBrandHelp");
+  const appSelect = $("newApplianceName");
+  const modelSelect = $("newAppModel");
+  const categoryInput = $("newAppCategory");
+
+  // Reset downstream fields
+  if (brandSelect) {
+    brandSelect.innerHTML = `<option value="">Loading brands…</option>`;
+    brandSelect.disabled = true;
+    brandSelect.className = "mt-1.5 w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500";
+  }
+  if (brandHelp) brandHelp.textContent = "";
+  if (appSelect) {
+    appSelect.innerHTML = `<option value="">Select brand first…</option>`;
+    appSelect.disabled = true;
+    appSelect.className = "mt-1.5 w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500";
+  }
+  if (modelSelect) {
+    modelSelect.innerHTML = `<option value="">Select appliance first…</option>`;
+    modelSelect.disabled = true;
+    modelSelect.className = "mt-1.5 w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500";
+  }
+  if (categoryInput) categoryInput.value = "";
+
+  if (!companyId) {
+    if (brandSelect) {
+      brandSelect.innerHTML = `<option value="">Choose company first…</option>`;
+    }
+    return;
+  }
+
+  try {
+    const catalogData = await readApiJson(`/api/appliances/catalog?company_id=${encodeURIComponent(companyId)}`);
+    currentCompanyCatalog = catalogData || { brands: [], appliances: [] };
+    const brands = currentCompanyCatalog.brands || [];
+
+    if (brands.length > 1) {
+      // Multiple brands: customer selects brand
+      brandSelect.innerHTML = `<option value="">Select Brand</option>${brands.map((b) => `<option value="${escapeHtml(b)}">${escapeHtml(b)}</option>`).join("")}`;
+      brandSelect.disabled = false;
+      brandSelect.className = "mt-1.5 w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500";
+      if (brandHelp) brandHelp.textContent = "This company operates multiple brands. Select the specific brand of your appliance.";
+    } else {
+      // Single brand or default company name: auto-select automatically
+      const singleBrand = brands[0] || currentCompanyCatalog.company_name || "OEM";
+      brandSelect.innerHTML = `<option value="${escapeHtml(singleBrand)}" selected>${escapeHtml(singleBrand)}</option>`;
+      brandSelect.disabled = false;
+      brandSelect.className = "mt-1.5 w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm bg-slate-100 text-slate-700 font-semibold cursor-not-allowed";
+      if (brandHelp) brandHelp.textContent = "Brand automatically selected from company profile.";
+      onApplianceBrandChange();
+    }
+  } catch (err) {
+    if (brandSelect) brandSelect.innerHTML = `<option value="">Could not load catalog</option>`;
+    if ($("applianceMessage")) $("applianceMessage").textContent = `Could not load company catalog: ${err.message}`;
+  }
+}
+
+function onApplianceBrandChange() {
+  const selectedBrand = $("newAppBrand")?.value;
+  const appSelect = $("newApplianceName");
+  const modelSelect = $("newAppModel");
+  const categoryInput = $("newAppCategory");
+
+  if (modelSelect) {
+    modelSelect.innerHTML = `<option value="">Select appliance first…</option>`;
+    modelSelect.disabled = true;
+    modelSelect.className = "mt-1.5 w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500";
+  }
+  if (categoryInput) categoryInput.value = "";
+
+  if (!selectedBrand || !currentCompanyCatalog.appliances) {
+    if (appSelect) {
+      appSelect.innerHTML = `<option value="">Select brand first…</option>`;
+      appSelect.disabled = true;
+      appSelect.className = "mt-1.5 w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500";
+    }
+    return;
+  }
+
+  // Filter appliances matching brand
+  const matchingApps = currentCompanyCatalog.appliances.filter((a) => !a.brand || a.brand.toLowerCase() === selectedBrand.toLowerCase());
+  const listToRender = matchingApps.length ? matchingApps : currentCompanyCatalog.appliances;
+
+  if (appSelect) {
+    if (listToRender.length === 0) {
+      appSelect.innerHTML = `<option value="">No appliances added by this company yet</option>`;
+      appSelect.disabled = true;
+      appSelect.className = "mt-1.5 w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500";
+    } else {
+      appSelect.innerHTML = `<option value="">Select an appliance</option>${listToRender.map((a) => `<option value="${escapeHtml(a.id)}">${escapeHtml(a.appliance_name)} (${escapeHtml(a.category)})</option>`).join("")}`;
+      appSelect.disabled = false;
+      appSelect.className = "mt-1.5 w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500";
+    }
+  }
+}
+
+function onApplianceNameChange() {
+  const appId = $("newApplianceName")?.value;
+  const modelSelect = $("newAppModel");
+  const categoryInput = $("newAppCategory");
+
+  if (!appId || !currentCompanyCatalog.appliances) {
+    if (modelSelect) {
+      modelSelect.innerHTML = `<option value="">Select appliance first…</option>`;
+      modelSelect.disabled = true;
+      modelSelect.className = "mt-1.5 w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500";
+    }
+    if (categoryInput) categoryInput.value = "";
+    return;
+  }
+
+  const selectedCatalogItem = currentCompanyCatalog.appliances.find((a) => a.id === appId);
+  if (!selectedCatalogItem) return;
+
+  if (categoryInput) {
+    categoryInput.value = selectedCatalogItem.category || "Air Conditioner";
+  }
+
+  const models = selectedCatalogItem.model_numbers || [];
+  if (modelSelect) {
+    if (models.length === 0) {
+      modelSelect.innerHTML = `<option value="">No model numbers listed</option>`;
+      modelSelect.disabled = true;
+      modelSelect.className = "mt-1.5 w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500";
+    } else {
+      modelSelect.innerHTML = `<option value="">Select Model Number</option>${models.map((m) => `<option value="${escapeHtml(m)}">${escapeHtml(m)}</option>`).join("")}`;
+      modelSelect.disabled = false;
+      modelSelect.className = "mt-1.5 w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500";
+    }
+  }
+}
+
+async function handleInvoiceFileUpload(event) {
+  const file = event.target.files?.[0];
+  if (!file) return;
+
+  // Max 5MB
+  if (file.size > 5 * 1024 * 1024) {
+    if ($("applianceMessage")) $("applianceMessage").textContent = "File size must be under 5MB.";
+    event.target.value = "";
+    return;
+  }
+
+  const allowedTypes = ["image/jpeg", "image/png", "image/webp", "application/pdf"];
+  if (!allowedTypes.includes(file.type) && !file.name.match(/\.(jpe?g|png|webp|pdf)$/i)) {
+    if ($("applianceMessage")) $("applianceMessage").textContent = "Only image (JPG, PNG, WebP) or PDF files are allowed.";
+    event.target.value = "";
+    return;
+  }
+
+  if ($("invoiceFileNameDisplay")) $("invoiceFileNameDisplay").textContent = file.name;
+  if ($("invoiceUploadProgress")) $("invoiceUploadProgress").classList.remove("hidden");
+  if ($("invoiceUploadedNotice")) $("invoiceUploadedNotice").classList.add("hidden");
+  if ($("applianceMessage")) $("applianceMessage").textContent = "";
+
+  const formData = new FormData();
+  formData.append("file", file);
+
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/uploads`, {
+      method: "POST",
+      credentials: "include",
+      headers: authHeaders(),
+      body: formData,
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || "Invoice upload failed");
+    }
+    const data = await res.json();
+    if ($("newAppInvoiceUrl")) $("newAppInvoiceUrl").value = data.url;
+    if ($("invoiceUploadProgress")) $("invoiceUploadProgress").classList.add("hidden");
+    if ($("invoiceUploadedNotice")) $("invoiceUploadedNotice").classList.remove("hidden");
+    if ($("invoiceBtnLabel")) $("invoiceBtnLabel").textContent = "Change File";
+    showToast("Invoice file uploaded successfully.", "success");
+  } catch (err) {
+    if ($("invoiceUploadProgress")) $("invoiceUploadProgress").classList.add("hidden");
+    if ($("applianceMessage")) $("applianceMessage").textContent = `Upload failed: ${err.message}`;
+    if ($("invoiceFileNameDisplay")) $("invoiceFileNameDisplay").textContent = "Upload failed";
   }
 }
 
@@ -1434,6 +1627,30 @@ window.openBookingModal = function (applianceId = "") {
 
 window.openAddApplianceModal = function () {
   if ($("applianceMessage")) $("applianceMessage").textContent = "";
+  if ($("applianceForm")) $("applianceForm").reset();
+  if ($("invoiceFileNameDisplay")) $("invoiceFileNameDisplay").textContent = "No file chosen";
+  if ($("invoiceUploadedNotice")) $("invoiceUploadedNotice").classList.add("hidden");
+  if ($("invoiceUploadProgress")) $("invoiceUploadProgress").classList.add("hidden");
+  if ($("newAppInvoiceUrl")) $("newAppInvoiceUrl").value = "";
+  if ($("invoiceBtnLabel")) $("invoiceBtnLabel").textContent = "Choose Invoice File";
+  const brandSelect = $("newAppBrand");
+  if (brandSelect) {
+    brandSelect.innerHTML = `<option value="">Choose company first…</option>`;
+    brandSelect.disabled = true;
+    brandSelect.className = "mt-1.5 w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500";
+  }
+  const appSelect = $("newApplianceName");
+  if (appSelect) {
+    appSelect.innerHTML = `<option value="">Select brand first…</option>`;
+    appSelect.disabled = true;
+    appSelect.className = "mt-1.5 w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500";
+  }
+  const modelSelect = $("newAppModel");
+  if (modelSelect) {
+    modelSelect.innerHTML = `<option value="">Select appliance first…</option>`;
+    modelSelect.disabled = true;
+    modelSelect.className = "mt-1.5 w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500";
+  }
   openDialog("applianceDialog");
 };
 
@@ -1512,34 +1729,62 @@ async function submitAppliance(event) {
   button.textContent = "Saving…";
   if ($("applianceMessage")) $("applianceMessage").textContent = "";
 
-  if (
-    !registeredCompanies.some(
-      (company) => company.id === $("newAppCompany").value
-    )
-  ) {
-    if ($("applianceMessage")) {
-      $("applianceMessage").textContent =
-        "Select a company registered on ServSure before saving.";
-    }
-    button.disabled = registeredCompanies.length === 0;
+  const companyId = $("newAppCompany")?.value;
+  const brand = $("newAppBrand")?.value?.trim();
+  const appId = $("newApplianceName")?.value;
+  const modelNo = $("newAppModel")?.value?.trim();
+  const category = $("newAppCategory")?.value || "Air Conditioner";
+  const serialNo = $("newAppSerial")?.value?.trim() || null;
+  const invoiceUrl = $("newAppInvoiceUrl")?.value?.trim() || null;
+
+  if (!companyId) {
+    if ($("applianceMessage")) $("applianceMessage").textContent = "Select a registered company.";
+    button.disabled = false;
     button.textContent = "Save appliance";
     return;
   }
+  if (!brand) {
+    if ($("applianceMessage")) $("applianceMessage").textContent = "Select brand name.";
+    button.disabled = false;
+    button.textContent = "Save appliance";
+    return;
+  }
+  if (!appId) {
+    if ($("applianceMessage")) $("applianceMessage").textContent = "Select an appliance from the catalog.";
+    button.disabled = false;
+    button.textContent = "Save appliance";
+    return;
+  }
+  if (!modelNo) {
+    if ($("applianceMessage")) $("applianceMessage").textContent = "Select model number.";
+    button.disabled = false;
+    button.textContent = "Save appliance";
+    return;
+  }
+
+  const catalogItem = currentCompanyCatalog.appliances?.find((a) => a.id === appId);
+  const applianceName = catalogItem ? catalogItem.appliance_name : "";
 
   try {
     const appliance = await readApiJson("/api/appliances", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        company_id: $("newAppCompany").value,
-        category: $("newAppCategory").value,
-        brand: $("newAppBrand").value.trim(),
-        model_no: $("newAppModel").value.trim(),
-        serial_no: $("newAppSerial").value.trim(),
+        company_id: companyId,
+        brand: brand,
+        category: category,
+        appliance_name: applianceName,
+        model_no: modelNo,
+        serial_no: serialNo,
+        invoice_url: invoiceUrl,
       }),
     });
     closeDialog("applianceDialog");
     $("applianceForm").reset();
+    if ($("invoiceFileNameDisplay")) $("invoiceFileNameDisplay").textContent = "No file chosen";
+    if ($("invoiceUploadedNotice")) $("invoiceUploadedNotice").classList.add("hidden");
+    if ($("newAppInvoiceUrl")) $("newAppInvoiceUrl").value = "";
+    if ($("invoiceBtnLabel")) $("invoiceBtnLabel").textContent = "Choose Invoice File";
     await loadDashboardData();
     if ($("bookApplianceSelect")) $("bookApplianceSelect").value = appliance.id;
     showToast(
@@ -2576,6 +2821,23 @@ document.addEventListener("DOMContentLoaded", async () => {
     $("cancelAppliance").addEventListener("click", () =>
       closeDialog("applianceDialog")
     );
+
+  // Cascading appliance catalog & invoice upload listeners
+  if ($("newAppCompany")) {
+    $("newAppCompany").addEventListener("change", onApplianceCompanyChange);
+  }
+  if ($("newAppBrand")) {
+    $("newAppBrand").addEventListener("change", onApplianceBrandChange);
+  }
+  if ($("newApplianceName")) {
+    $("newApplianceName").addEventListener("change", onApplianceNameChange);
+  }
+  if ($("triggerInvoiceUploadBtn")) {
+    $("triggerInvoiceUploadBtn").addEventListener("click", () => $("newAppInvoiceFile")?.click());
+  }
+  if ($("newAppInvoiceFile")) {
+    $("newAppInvoiceFile").addEventListener("change", handleInvoiceFileUpload);
+  }
 
   // Address modal form submissions & dialog
   if ($("editAddressBtn")) {

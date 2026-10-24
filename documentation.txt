@@ -4,8 +4,8 @@ PRODUCTION-GRADE TECHNICAL ARCHITECTURE & DEVELOPER ONBOARDING MANUAL
 ================================================================================
 File: documentation.txt
 Platform: ServSure (formerly Servora)
-Version: 1.1.5 (Production Release - First-Time Setup Activation & Account Creation/Password Timestamps)
-Last Updated: October 23, 2026 (22:25 IST)
+Version: 1.1.6 (Production Release - Company Appliance Catalog, Cascading Registration & Purchase Invoice Upload)
+Last Updated: October 24, 2026 (10:55 IST)
 Repository: https://github.com/SID0428/servora.git
 
 Welcome to ServSure! This manual is the definitive, authoritative reference
@@ -24,7 +24,7 @@ TABLE OF CONTENTS
    3.2. Operational Access Control & Cascading Deactivation Rules
    3.3. Static Multi-Portal Routing & Role Guards
    3.4. Background Workers (Render Keep-Alive & SLA Engine)
-4. DATABASE MODELS & RELATIONAL SCHEMA (23 MODELS)
+4. DATABASE MODELS & RELATIONAL SCHEMA (24 MODELS)
 5. CORE API & USAGE REFERENCE
    5.1. Authentication, Sessions & Profile (/api/auth)
    5.2. Platform Administration (/api/admin)
@@ -287,7 +287,7 @@ Portal UI Cleanliness & Universal Settings Removal:
 
 
 ================================================================================
-4. DATABASE MODELS & RELATIONAL SCHEMA (23 MODELS)
+4. DATABASE MODELS & RELATIONAL SCHEMA (24 MODELS)
 ================================================================================
 All database entities are defined in `backend/app/db/models.py`:
 
@@ -489,6 +489,17 @@ All database entities are defined in `backend/app/db/models.py`:
     - `sent_at`: DateTime, Nullable: True (Timestamp when Company dispatched items).
     - `sent_by`: String(128), Nullable: True (Company manager who approved and dispatched).
 
+24. `CompanyApplianceCatalogModel` (`company_appliances` table):
+    - `id`: String(64), Primary Key (e.g., `capp_...`).
+    - `company_id`: String(64), ForeignKey("users.id", ondelete="CASCADE"), Index: True.
+    - `appliance_name`: String(128), Nullable: False (e.g., "Inverter Split AC 1.5 Ton").
+    - `brand`: String(128), Nullable: False (Brand or company name).
+    - `category`: String(64), Nullable: False (e.g., "Air Conditioner", "Refrigerator").
+    - `model_numbers`: Text, Nullable: False (JSON list of supported model variant strings).
+    - `warranty_months`: Integer, Default: 12, Nullable: False.
+    - `description`: Text, Nullable: True (Appliance highlights or specifications).
+    - `created_at`: DateTime, Default: datetime.utcnow, Nullable: False.
+
 
 ================================================================================
 5. CORE API & USAGE REFERENCE
@@ -605,6 +616,15 @@ Request Headers:
 - `PUT /api/company/technicians/{technician_id}/access`:
   - Body: `{ "is_active": false }`
   - Toggles technician portal access and revokes active sessions on deactivation.
+- `GET /api/company/appliances`:
+  - Returns catalog appliances registered by the authenticated company (`CompanyApplianceCatalogModel`).
+  - Response: list of `{ "id", "company_id", "appliance_name", "brand", "category", "model_numbers": [...], "warranty_months", "description", "created_at" }`.
+- `POST /api/company/appliances`:
+  - Body: `{ "appliance_name": "Inverter Split AC 1.5 Ton", "category": "Air Conditioner", "brand": "Crompton", "model_numbers": ["CRO-AC15-INV", "CRO-AC15-ECO"], "warranty_months": 12, "description": "5 Star Inverter AC" }`
+  - Adds new appliance and its supported models to the company's catalog for customer registrations.
+- `DELETE /api/company/appliances/{appliance_id}`:
+  - Deletes appliance item from the company catalog.
+
 
 5.4. Franchise Partner Hub (`/api/franchise`)
 ---------------------------------------------
@@ -648,8 +668,14 @@ Request Headers:
 
 5.7. Customer Appliances & Warranty (`/api/appliances`)
 -------------------------------------------------------
-- `GET /api/appliances`: List customer registered appliances.
-- `POST /api/appliances`: Register appliance with brand, model, purchase date, serial number, invoice URL.
+- `GET /api/appliances`: List customer registered appliances with warranty details and `invoice_url`.
+- `GET /api/appliances/companies`: List active companies registered with platform for customer appliance selection.
+- `GET /api/appliances/catalog?company_id=<id>`:
+  - Returns `{ "brands": ["..."], "appliances": [{ "id", "appliance_name", "brand", "category", "model_numbers": [...], "warranty_months": 12 }] }`
+  - Used for cascading dropdowns in customer registration flow.
+- `POST /api/appliances`:
+  - Body: `{ "company_id": "comp_1", "brand": "Crompton", "category": "Air Conditioner", "appliance_name": "Inverter Split AC 1.5 Ton", "model_no": "CRO-AC15-INV", "serial_no": "SN-2026-9921", "invoice_url": "/uploads/inv_123.pdf" }`
+  - Validates company selection and registers customer appliance with configured warranty duration and attached purchase invoice.
 - `GET /api/appliances/{appliance_id}/warranty`: Real-time warranty validation status.
 
 5.8. Spare Parts & End-to-End Inventory Supply Chain (`/api/inventory`)
@@ -906,6 +932,29 @@ were identified between the initial rough draft documentation and the actual cod
      `is_active` becomes `True` and `password_set_at` is permanently recorded. `created_at` has been added
      to `UserModel` (with startup auto-migration), and both "Created On" and "Password Set" dates are actively
      displayed across Admin, Company, and Franchise directory tables and detail inspection modals.
+
+12. Discrepancy: Guided Cascading Appliance Registration, Company Device Catalog & Invoice File Support
+   - Initial Draft / Early Iteration: Customer appliance registration relied on arbitrary manual freeform text
+     inputs for Brand, Model Number, and Category, leading to inconsistent device data and untracked models.
+     Companies had no way to configure their supported appliances and model variants. Additionally, proof of
+     purchase invoices could not be uploaded during registration.
+   - Reality in Code:
+     1. Company Device Catalog: Added `CompanyApplianceCatalogModel` (`company_appliances` table) allowing
+        company admins to define products under a dedicated "Appliances" navigation item in the company portal.
+        Each entry captures appliance name, category, brand name, comma-separated/multi-line model numbers (parsed
+        into JSON arrays), warranty months, and description. Full backend CRUD (`/api/company/appliances`) with
+        real-time search and statistics.
+     2. Cascading Customer Dropdowns: Replaced all manual text entry with a 4-step cascading dropdown hierarchy:
+        Company -> Brand Name -> Appliance Name -> Model Number.
+        - Selecting an active platform-registered company fetches its catalog (`/api/appliances/catalog`).
+        - If the company has multiple brands, customer selects the brand; if it has only one brand (or default),
+          the brand is auto-selected and locked to the company name.
+        - Appliance dropdown populates with devices configured for that brand.
+        - Model dropdown populates with all exact model numbers configured for that appliance.
+     3. Purchase Invoice Upload: Integrated image (`.jpg`, `.jpeg`, `.png`, `.webp`) and PDF (`.pdf`) file
+        upload with real-time status and preview using `POST /api/uploads`. The resulting `invoice_url` is
+        stored on `ApplianceModel` (with startup auto-migration). Registered appliances display a direct
+        "View Invoice" action link across both Home and Catalog views in the customer dashboard.
 
 ================================================================================
 End of Documentation

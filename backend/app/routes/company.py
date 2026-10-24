@@ -7,6 +7,7 @@ import secrets
 from datetime import datetime, timedelta
 from uuid import uuid4
 
+import json
 from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import or_
@@ -16,11 +17,14 @@ from app.db.models import (
     ApplianceModel, BranchOnboardingModel, CompanyBranchModel, UserModel,
     BranchTechnicianModel, TechnicianModel, FranchiseInventoryModel,
     SparePartModel, InventoryTransactionModel, ServiceRequestModel, WarrantyClaimModel,
-    JobCardModel, TechnicianOnboardingModel
+    JobCardModel, TechnicianOnboardingModel, CompanyApplianceCatalogModel
 )
 from app.db.session import get_db
 from app.email_service import send_brevo_email
-from app.schemas import AccessTogglePayload, BranchCredentialsEmail, CompanyBranchCreate, CompanyOtpVerify, CompanyPasswordSetup
+from app.schemas import (
+    AccessTogglePayload, BranchCredentialsEmail, CompanyBranchCreate,
+    CompanyOtpVerify, CompanyPasswordSetup, CompanyApplianceCreate, CompanyApplianceResponse
+)
 from app.security import get_authenticated_user, revoke_all_user_sessions
 
 router = APIRouter(prefix="/api/company", tags=["company portal"])
@@ -793,6 +797,91 @@ def resend_franchise_setup_link(payload: BranchCredentialsEmail, request: Reques
         logger.exception("Failed to provision a franchise account or resend its setup link")
         raise HTTPException(status_code=500, detail="Could not resend the franchise setup link. Check the backend service logs for details.")
     return {"status": "sent", "email": branch.email, "message": "Franchise setup link sent"}
+
+
+@router.get("/appliances")
+def list_company_appliances(request: Request, db: Session = Depends(get_db)):
+    company = require_company(request, db)
+    appliances = (
+        db.query(CompanyApplianceCatalogModel)
+        .filter(CompanyApplianceCatalogModel.company_id == company.id)
+        .order_by(CompanyApplianceCatalogModel.created_at.desc())
+        .all()
+    )
+    results = []
+    for app in appliances:
+        try:
+            models = json.loads(app.model_numbers) if app.model_numbers else []
+        except Exception:
+            models = [m.strip() for m in str(app.model_numbers).split(",") if m.strip()]
+        results.append({
+            "id": app.id,
+            "company_id": app.company_id,
+            "company_name": company.name,
+            "appliance_name": app.appliance_name,
+            "brand": app.brand,
+            "category": app.category,
+            "model_numbers": models,
+            "warranty_months": app.warranty_months,
+            "description": app.description,
+            "created_at": app.created_at.isoformat() if app.created_at else None,
+        })
+    return results
+
+
+@router.post("/appliances", status_code=201)
+def add_company_appliance(payload: CompanyApplianceCreate, request: Request, db: Session = Depends(get_db)):
+    company = require_company(request, db)
+    brand_name = (payload.brand or "").strip() or company.name.strip()
+
+    if isinstance(payload.model_numbers, list):
+        raw_models = payload.model_numbers
+    else:
+        raw_models = str(payload.model_numbers).split(",")
+    cleaned_models = [m.strip() for m in raw_models if m and m.strip()]
+    if not cleaned_models:
+        raise HTTPException(status_code=422, detail="At least one model number is required")
+
+    new_item = CompanyApplianceCatalogModel(
+        id=f"capp_{uuid4().hex[:10]}",
+        company_id=company.id,
+        appliance_name=payload.appliance_name.strip(),
+        brand=brand_name,
+        category=payload.category.strip(),
+        model_numbers=json.dumps(cleaned_models),
+        warranty_months=payload.warranty_months or 12,
+        description=(payload.description or "").strip() or None,
+        created_at=datetime.utcnow()
+    )
+    db.add(new_item)
+    db.commit()
+    db.refresh(new_item)
+    return {
+        "id": new_item.id,
+        "company_id": new_item.company_id,
+        "company_name": company.name,
+        "appliance_name": new_item.appliance_name,
+        "brand": new_item.brand,
+        "category": new_item.category,
+        "model_numbers": cleaned_models,
+        "warranty_months": new_item.warranty_months,
+        "description": new_item.description,
+        "created_at": new_item.created_at.isoformat(),
+    }
+
+
+@router.delete("/appliances/{appliance_id}")
+def delete_company_appliance(appliance_id: str, request: Request, db: Session = Depends(get_db)):
+    company = require_company(request, db)
+    item = db.query(CompanyApplianceCatalogModel).filter(
+        CompanyApplianceCatalogModel.id == appliance_id,
+        CompanyApplianceCatalogModel.company_id == company.id
+    ).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Appliance not found in company catalog")
+    db.delete(item)
+    db.commit()
+    return {"status": "deleted", "id": appliance_id, "message": "Appliance removed from catalog"}
 
 
 def get_franchise_setup_context(token: str, email: str, db: Session):

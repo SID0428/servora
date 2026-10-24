@@ -71,11 +71,33 @@ if (!checkInitialAuth()) {
   throw new Error(`Authentication required for ${targetRole} workspace.`);
 }
 
+const icons = {
+  Dashboard: "📊",
+  Overview: "📊",
+  Appliances: "🧊",
+  Branches: "🏢",
+  Technicians: "👨‍🔧",
+  "Warranty Claims": "🛡️",
+  "Inventory & Spares": "📦",
+  "Spares Catalog": "📦",
+  Escalations: "⚠️",
+  Customers: "👥",
+  "Service requests": "📋",
+  "My jobs": "📋",
+  "Job history": "📜",
+  "Route & schedule": "🗺️",
+  "Route Map": "🗺️",
+  "Active jobs": "⚡",
+  Reports: "📈",
+  Companies: "🏢",
+  "Help center": "❓",
+};
+
 let role = dashboardRouteRole || initialUser?.role || (typeof document !== "undefined" ? document.body?.dataset?.role : null) || "company";
 const roleConfig = {
   technician: { title: "Technician workspace", kicker: "FIELD SERVICE", nav: ["My jobs", "Job history", "Route & schedule", "Help center"], columns: ["Ticket", "Customer", "Appliance", "Appointment", "Status", "Action"], tableTitle: "My assigned jobs", tableSubtitle: "Your service calls and the next step for each job.", bottomTitle: "Today's schedule", sideTitle: "My performance", resources: [["Assigned today", "Jobs on your schedule", "▤"], ["Completed", "Jobs closed this week", "✓"], ["Customer rating", "From recent service visits", "☆"], ["Service area", "Your assigned territory", "⌖"]] },
   franchise: { title: "Franchise workspace", kicker: "BRANCH OPERATIONS", nav: ["Dashboard", "Service requests", "Technicians", "Inventory & Spares", "Escalations", "Active jobs", "Customers", "Reports"], columns: ["Request ID", "Customer", "Appliance", "Issue", "Technician", "Status", "Action"], tableTitle: "Incoming service requests", tableSubtitle: "Review requests and coordinate local service work.", bottomTitle: "Branch resources", sideTitle: "Branch performance", resources: [["Technicians", "Available in this branch", "♙"], ["Active jobs", "Assigned and in progress", "⚒"], ["Inventory items", "Parts in local warehouse", "📦"], ["Service area", "Local coverage", "⌖"]] },
-  company: { title: "Company workspace", kicker: "COMPANY OPERATIONS", nav: ["Dashboard", "Branches", "Technicians", "Warranty Claims", "Inventory & Spares", "Escalations", "Customers", "Service requests", "Reports"], columns: ["Request ID", "Customer", "Company", "Appliance", "Status", "Date", "Action"], tableTitle: "Recent service requests", tableSubtitle: "Monitor service activity across the company network.", bottomTitle: "Network resources", sideTitle: "Network health", resources: [["Branches", "Locations in your network", "▥"], ["Warranty claims", "OEM reimbursement requests", "🛡️"], ["Technicians", "Field service professionals", "♙"], ["Customers", "Customers served", "♧"]] },
+  company: { title: "Company workspace", kicker: "COMPANY OPERATIONS", nav: ["Dashboard", "Appliances", "Branches", "Technicians", "Warranty Claims", "Inventory & Spares", "Escalations", "Customers", "Service requests", "Reports"], columns: ["Request ID", "Customer", "Company", "Appliance", "Status", "Date", "Action"], tableTitle: "Recent service requests", tableSubtitle: "Monitor service activity across the company network.", bottomTitle: "Network resources", sideTitle: "Network health", resources: [["Branches", "Locations in your network", "▥"], ["Warranty claims", "OEM reimbursement requests", "🛡️"], ["Technicians", "Field service professionals", "♙"], ["Customers", "Customers served", "♧"]] },
   admin: { title: "Platform overview", kicker: "SERVSURE PLATFORM", nav: ["Overview", "Companies", "Branches", "Technicians", "Escalations", "Customers", "Service requests", "Reports"], columns: ["Request ID", "Customer", "Company", "Appliance", "Status", "Date", "Action"], tableTitle: "Platform service activity", tableSubtitle: "A view of requests moving across ServSure.", bottomTitle: "Platform directory", sideTitle: "Platform health", resources: [["Companies", "Service partners", "▥"], ["Branches", "Operational locations", "⌖"], ["Technicians", "Verified professionals", "♙"], ["Customers", "Registered accounts", "♧"]] },
 };
 let config = roleConfig[role] || roleConfig.company;
@@ -83,6 +105,7 @@ const $ = (id) => document.getElementById(id);
 const setHidden = (id, hidden) => { const el = $(id); if (el) el.hidden = Boolean(hidden); };
 let requests = [];
 let companies = [];
+let companyAppliances = [];
 let branches = [];
 let technicians = [];
 let directoryRows = [];
@@ -254,6 +277,7 @@ function renderPage(page) {
   setHidden("addCompanyButton", !admin);
   setHidden("addBranchButton", !(role === "company" && page === "Branches"));
   setHidden("addTechnicianButton", !(role === "franchise" && page === "Technicians"));
+  setHidden("addApplianceCatalogButton", !(role === "company" && page === "Appliances"));
   setHidden("companyInlineAdd", !admin || page !== "Companies");
   setHidden("companyTechBranchFilter", !(role === "company" && page === "Technicians"));
   setHidden("exportButton", page === "System settings" || page === "Companies" || page === "Settings");
@@ -266,6 +290,7 @@ function renderPage(page) {
   if (admin && page === "System settings") { renderSettings(); return; }
 
   // Company routes
+  if (role === "company" && page === "Appliances") { renderCompanyAppliances(); return; }
   if (role === "company" && page === "Branches") { renderCompanyBranches(); return; }
   if (role === "company" && page === "Technicians") { renderCompanyTechnicians(); return; }
   if (role === "company" && page === "Customers") { renderCompanyCustomers(); return; }
@@ -815,8 +840,139 @@ function renderHelpCenterView() {
   $("sidePanelTitle").textContent = "Field Guidelines";
   $("healthContent").innerHTML = `<div class="section-empty">Always carry your ServSure digital ID card, verified tool kit, and wear shoe covers during customer doorstep visits.</div>`;
   $("activityContent").innerHTML = `<div class="section-empty">Confirm diagnosis and price estimate with the customer prior to replacing any spare parts.</div>`;
-  if ($("resourceGrid")) $("resourceGrid").innerHTML = "";
+async function loadCompanyAppliances() {
+  try {
+    companyAppliances = await companyApi("/appliances");
+  } catch (error) {
+    companyAppliances = [];
+    showToast(`Could not load appliances: ${error.message}`, "error");
+  }
+  renderCompanyAppliances();
 }
+
+function renderCompanyAppliances() {
+  if ($("crumbTitle")) $("crumbTitle").textContent = "Appliances";
+  $("metricGrid").hidden = false;
+  $("metricGrid").innerHTML = `
+    <div class="metric-card">
+      <span class="metric-icon">🧊</span>
+      <div class="metric-body">
+        <strong>${companyAppliances.length}</strong>
+        <span>Catalog Appliances</span>
+      </div>
+    </div>
+    <div class="metric-card">
+      <span class="metric-icon">🏷️</span>
+      <div class="metric-body">
+        <strong>${companyAppliances.reduce((acc, a) => acc + (a.model_numbers?.length || 0), 0)}</strong>
+        <span>Supported Models</span>
+      </div>
+    </div>
+    <div class="metric-card">
+      <span class="metric-icon">📂</span>
+      <div class="metric-body">
+        <strong>${new Set(companyAppliances.map((a) => a.category)).size}</strong>
+        <span>Categories</span>
+      </div>
+    </div>
+  `;
+
+  setHidden("addCompanyButton", true);
+  setHidden("addBranchButton", true);
+  setHidden("addTechnicianButton", true);
+  setHidden("addApplianceCatalogButton", false);
+  setHidden("companyInlineAdd", true);
+  setHidden("companyTechBranchFilter", true);
+  setHidden("statusFilter", true);
+  setHidden("exportButton", true);
+  setHidden("pageContent", false);
+
+  if ($("requestSearch")) $("requestSearch").placeholder = "Search appliances by name, model no, brand, or category…";
+  if ($("tableTitle")) $("tableTitle").textContent = "Appliances Catalog";
+  if ($("tableSubtitle")) $("tableSubtitle").textContent = "Brand appliances, multiple model numbers, and standard warranties registered for customer onboarding.";
+  if ($("sidePanelTitle")) $("sidePanelTitle").textContent = "Catalog Overview";
+  if ($("healthContent")) $("healthContent").innerHTML = `<div class="section-empty"><strong>${companyAppliances.length}</strong> appliances configured with <strong>${companyAppliances.reduce((acc, a) => acc + (a.model_numbers?.length || 0), 0)}</strong> model variants.</div>`;
+  if ($("activityContent")) $("activityContent").innerHTML = `<div class="section-empty">Customers selecting your company during registration will choose directly from these appliances and model numbers.</div>`;
+  if ($("bottomTitle")) $("bottomTitle").textContent = "Appliance models";
+  if ($("bottomSubtitle")) $("bottomSubtitle").textContent = "Supported device lineup across all authorized service regions.";
+
+  if ($("requestHead")) {
+    $("requestHead").innerHTML = ["Appliance & Brand", "Category", "Supported Model Numbers", "Standard Warranty", "Registered On", "Action"].map((h) => `<th>${h}</th>`).join("");
+  }
+
+  const query = ($("requestSearch")?.value || "").trim().toLowerCase();
+  const filtered = companyAppliances.filter((a) => {
+    const hay = [a.appliance_name, a.brand, a.category, (a.model_numbers || []).join(" "), a.description || ""].join(" ").toLowerCase();
+    return hay.includes(query);
+  });
+
+  if ($("requestRows")) {
+    $("requestRows").innerHTML = filtered.length
+      ? filtered.map((app) => {
+          const models = Array.isArray(app.model_numbers) ? app.model_numbers : [];
+          const modelTags = models.length
+            ? models.map((m) => `<span class="inline-block px-2 py-0.5 bg-blue-50 text-blue-700 font-mono text-xs rounded border border-blue-100 font-bold mr-1 mb-1">${safe(m)}</span>`).join("")
+            : '<span class="text-slate-400 text-xs">No models specified</span>';
+
+          return `
+            <tr>
+              <td>
+                <strong class="text-slate-900 block font-bold text-sm">${safe(app.appliance_name)}</strong>
+                <small class="text-blue-600 font-semibold">${safe(app.brand || "OEM Brand")}</small>
+                ${app.description ? `<p class="text-[11px] text-slate-400 mt-0.5 truncate max-w-xs">${safe(app.description)}</p>` : ""}
+              </td>
+              <td>
+                <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-slate-100 text-slate-700 text-xs font-semibold">
+                  ${safe(app.category)}
+                </span>
+              </td>
+              <td class="max-w-md">
+                <div class="flex flex-wrap items-center">
+                  ${modelTags}
+                </div>
+              </td>
+              <td class="text-slate-700 font-medium text-xs">
+                🛡️ ${safe(app.warranty_months || 12)} Months
+              </td>
+              <td class="text-slate-500 font-mono text-xs">
+                ${formatDisplayDate(app.created_at)}
+              </td>
+              <td>
+                <button type="button" class="table-action px-2.5 py-1 text-rose-600 hover:bg-rose-50 rounded font-semibold text-xs transition" data-delete-appliance="${safe(app.id)}">
+                  🗑️ Remove
+                </button>
+              </td>
+            </tr>
+          `;
+        }).join("")
+      : `<tr><td class="empty-row" colspan="6">${query ? "No appliances match your search." : "No appliances registered in catalog yet. Click '+ Add appliance' to add your device catalog."}</td></tr>`;
+  }
+
+  if ($("requestCount")) $("requestCount").textContent = `${filtered.length} appliance${filtered.length === 1 ? '' : 's'} shown`;
+  if ($("resourceGrid")) $("resourceGrid").innerHTML = "";
+
+  document.querySelectorAll("[data-delete-appliance]").forEach((btn) => {
+    btn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      const appId = btn.dataset.deleteAppliance;
+      const app = companyAppliances.find((a) => a.id === appId);
+      const name = app ? app.appliance_name : "this appliance";
+      if (!window.confirm(`Are you sure you want to remove "${name}" from your catalog?`)) return;
+
+      btn.disabled = true;
+      try {
+        await companyApi(`/appliances/${encodeURIComponent(appId)}`, { method: "DELETE" });
+        companyAppliances = companyAppliances.filter((a) => a.id !== appId);
+        renderCompanyAppliances();
+        showToast("Appliance removed from catalog.", "success");
+      } catch (err) {
+        showToast(err.message, "error");
+        btn.disabled = false;
+      }
+    });
+  });
+}
+
 function renderCompanyBranches() {
   if ($("crumbTitle")) $("crumbTitle").textContent = "Branches";
   setHidden("addCompanyButton", true);
@@ -3121,6 +3277,7 @@ async function sendPartToFranchise(requestId, partName, quantity, branchName) {
 async function loadWorkspacePageData(page) {
   if (page === "Escalations" || page === "SLA Escalations") { await loadEscalationsData(); return; }
   if (role === "admin") { await loadAdminPageData(page); return; }
+  if (role === "company" && page === "Appliances") { await loadCompanyAppliances(); return; }
   if (role === "company" && page === "Branches") { await loadCompanyBranches(); return; }
   if (role === "company" && page === "Technicians") { await loadCompanyTechnicians(); return; }
   if (role === "company" && page === "Customers") { await loadCompanyCustomers(); return; }
@@ -5535,6 +5692,11 @@ function initEvents() {
   $("companyInlineAdd")?.addEventListener("click", () => { if ($("companyFormMessage")) $("companyFormMessage").textContent = ""; $("companyDialog")?.showModal(); });
   $("addBranchButton")?.addEventListener("click", () => { if ($("branchFormMessage")) $("branchFormMessage").textContent = ""; $("branchDialog")?.showModal(); });
   $("addTechnicianButton")?.addEventListener("click", () => { if ($("technicianFormMessage")) $("technicianFormMessage").textContent = ""; $("technicianDialog")?.showModal(); });
+  $("addApplianceCatalogButton")?.addEventListener("click", () => {
+    if ($("companyApplianceFormMessage")) $("companyApplianceFormMessage").textContent = "";
+    if ($("applianceCatalogBrand") && user?.name) $("applianceCatalogBrand").value = user.name;
+    $("companyApplianceDialog")?.showModal();
+  });
 
   $("closeCompanyDialog")?.addEventListener("click", () => $("companyDialog")?.close());
   $("cancelCompany")?.addEventListener("click", () => $("companyDialog")?.close());
@@ -5542,6 +5704,8 @@ function initEvents() {
   $("cancelBranch")?.addEventListener("click", () => $("branchDialog")?.close());
   $("closeTechnicianDialog")?.addEventListener("click", () => $("technicianDialog")?.close());
   $("cancelTechnician")?.addEventListener("click", () => $("technicianDialog")?.close());
+  $("closeCompanyApplianceDialog")?.addEventListener("click", () => $("companyApplianceDialog")?.close());
+  $("cancelCompanyAppliance")?.addEventListener("click", () => $("companyApplianceDialog")?.close());
   $("closeEditTechnicianDialog")?.addEventListener("click", () => $("editTechnicianDialog")?.close());
   $("cancelEditTechnician")?.addEventListener("click", () => $("editTechnicianDialog")?.close());
   $("closeTechMap")?.addEventListener("click", () => { stopTechMapAnimation(); $("techMapDialog")?.close(); });
@@ -5721,6 +5885,46 @@ function initEvents() {
       branches.push(created); form.reset(); $("branchDialog")?.close(); renderCompanyBranches(); showToast(`${created.branch_name} added. Franchise setup link sent to ${created.email}.`);
     } catch (error) { if ($("branchFormMessage")) $("branchFormMessage").textContent = error.message; }
     finally { if (submit) submit.disabled = false; }
+  });
+
+  $("companyApplianceForm")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const submit = form.querySelector('[type="submit"]');
+    if (submit) submit.disabled = true;
+    if ($("companyApplianceFormMessage")) {
+      $("companyApplianceFormMessage").className = "dialog-message text-blue-600";
+      $("companyApplianceFormMessage").textContent = "Saving appliance to catalog…";
+    }
+
+    const formData = new FormData(form);
+    const payload = {
+      appliance_name: formData.get("appliance_name")?.trim(),
+      category: formData.get("category"),
+      brand: formData.get("brand")?.trim() || user?.name || "",
+      model_numbers: formData.get("model_numbers")?.trim(),
+      warranty_months: parseInt(formData.get("warranty_months") || "12", 10),
+      description: formData.get("description")?.trim() || null,
+    };
+
+    try {
+      const created = await companyApi("/appliances", {
+        method: "POST",
+        body: JSON.stringify(payload)
+      });
+      companyAppliances.unshift(created);
+      form.reset();
+      $("companyApplianceDialog")?.close();
+      renderCompanyAppliances();
+      showToast(`${created.appliance_name} added to company catalog.`, "success");
+    } catch (err) {
+      if ($("companyApplianceFormMessage")) {
+        $("companyApplianceFormMessage").className = "dialog-message text-rose-600";
+        $("companyApplianceFormMessage").textContent = extractErrorMessage(err.message, "Could not save appliance");
+      }
+    } finally {
+      if (submit) submit.disabled = false;
+    }
   });
 
   $("technicianForm")?.addEventListener("submit", async (event) => {

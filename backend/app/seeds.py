@@ -7,7 +7,8 @@ from app.db.models import (
     CompanyBranchModel, BranchTechnicianModel, JobCardModel, ServiceFeedbackModel,
     SparePartModel, PartRequestModel, FranchiseInventoryModel, InventoryTransactionModel,
     WarrantyClaimModel, AMCPlanModel, AMCSubscriptionModel,
-    EstimateModel, EscalationModel, NotificationLogModel, AuthOtpModel
+    EstimateModel, EscalationModel, NotificationLogModel, AuthOtpModel,
+    CompanyApplianceCatalogModel
 )
 
 def seed_database(db: Session):
@@ -54,6 +55,9 @@ def seed_database(db: Session):
     if "amc_end_date" not in appliance_columns:
         with engine.begin() as connection:
             connection.execute(text("ALTER TABLE appliances ADD COLUMN amc_end_date VARCHAR(32) NULL"))
+    if "invoice_url" not in appliance_columns:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE appliances ADD COLUMN invoice_url TEXT NULL"))
 
     req_columns = {column["name"] for column in inspect(engine).get_columns("service_requests")}
     if "pincode" not in req_columns:
@@ -425,4 +429,45 @@ def seed_database(db: Session):
         ]
         db.add_all(plans)
         db.commit()
+
+    # 8. Seed Company Appliance Catalog (Multiple Models & Brands)
+    companies = db.query(UserModel).filter(UserModel.role == "company").all()
+    for comp in companies:
+        existing = db.query(CompanyApplianceCatalogModel).filter(CompanyApplianceCatalogModel.company_id == comp.id).first()
+        if not existing:
+            comp_brand = comp.name.strip()
+            catalog_items = [
+                CompanyApplianceCatalogModel(
+                    id=f"capp_{comp.id[:8]}_ac",
+                    company_id=comp.id,
+                    appliance_name=f"{comp_brand} Inverter Split AC 1.5 Ton",
+                    brand=comp_brand,
+                    category="Air Conditioner",
+                    model_numbers=json.dumps([f"{comp_brand[:3].upper()}-AC15-INV", f"{comp_brand[:3].upper()}-AC15-ECO", f"{comp_brand[:3].upper()}-AC20-PRO"]),
+                    warranty_months=12,
+                    description="5 Star Inverter Split AC with Copper Condenser and Anti-Viral Filter"
+                ),
+                CompanyApplianceCatalogModel(
+                    id=f"capp_{comp.id[:8]}_ref",
+                    company_id=comp.id,
+                    appliance_name=f"{comp_brand} Frost Free Double Door Refrigerator 260L",
+                    brand=comp_brand,
+                    category="Refrigerator",
+                    model_numbers=json.dumps([f"{comp_brand[:3].upper()}-RF260-DF", f"{comp_brand[:3].upper()}-RF310-INV"]),
+                    warranty_months=24,
+                    description="Smart Inverter Compressor with Auto Smart Connect and Multi Air Flow"
+                ),
+                CompanyApplianceCatalogModel(
+                    id=f"capp_{comp.id[:8]}_wm",
+                    company_id=comp.id,
+                    appliance_name=f"{comp_brand} Fully Automatic Front Load Washing Machine 7kg",
+                    brand=comp_brand,
+                    category="Washing Machine",
+                    model_numbers=json.dumps([f"{comp_brand[:3].upper()}-WM70-FL", f"{comp_brand[:3].upper()}-WM80-PRO"]),
+                    warranty_months=24,
+                    description="Direct Drive Motor with 6 Motion Technology and Steam Wash"
+                ),
+            ]
+            db.add_all(catalog_items)
+            db.commit()
 

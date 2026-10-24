@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import List, Optional
+from typing import List, Optional, Union
 from pydantic import BaseModel, Field
 
 class UserRole(str, Enum):
@@ -133,13 +133,36 @@ class ApplianceBase(BaseModel):
     amc_end_date: Optional[str] = None
     serial_no: Optional[str] = None
     icon: str
+    invoice_url: Optional[str] = None
 
 class NewApplianceCreate(BaseModel):
     company_id: str = Field(min_length=1, max_length=64)
     brand: str
-    category: str
+    category: Optional[str] = "Air Conditioner"
+    appliance_name: Optional[str] = None
     model_no: str
     serial_no: Optional[str] = None
+    invoice_url: Optional[str] = None
+
+class CompanyApplianceCreate(BaseModel):
+    appliance_name: str = Field(min_length=2, max_length=128)
+    brand: Optional[str] = None
+    category: str = Field(min_length=2, max_length=64)
+    model_numbers: Union[List[str], str]
+    warranty_months: Optional[int] = 12
+    description: Optional[str] = None
+
+class CompanyApplianceResponse(BaseModel):
+    id: str
+    company_id: str
+    company_name: Optional[str] = None
+    appliance_name: str
+    brand: str
+    category: str
+    model_numbers: List[str]
+    warranty_months: int
+    description: Optional[str] = None
+    created_at: Optional[str] = None
 
 class TechnicianBase(BaseModel):
     id: str

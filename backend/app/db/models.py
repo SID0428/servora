@@ -121,6 +121,7 @@ class ApplianceModel(Base):
     amc_end_date = Column(String(32), nullable=True)
     serial_no = Column(String(64), nullable=True)
     icon = Column(String(64), default="box")
+    invoice_url = Column(Text, nullable=True)
 
 class ServiceRequestModel(Base):
     __tablename__ = "service_requests"
@@ -352,4 +353,17 @@ class NotificationLogModel(Base):
     reference_id = Column(String(64), nullable=True)
     delivery_status = Column(String(32), default="sent") # sent, failed, simulated
     created_at = Column(String(64), nullable=False)
+
+class CompanyApplianceCatalogModel(Base):
+    __tablename__ = "company_appliances"
+
+    id = Column(String(64), primary_key=True, index=True)
+    company_id = Column(String(64), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    appliance_name = Column(String(128), nullable=False)
+    brand = Column(String(128), nullable=False)
+    category = Column(String(64), nullable=False)
+    model_numbers = Column(Text, nullable=False) # JSON-encoded list of model strings
+    warranty_months = Column(Integer, default=12, nullable=False)
+    description = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 

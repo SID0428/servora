@@ -952,51 +952,78 @@
   <!-- ============================================================== -->
   <!-- 7. ADD APPLIANCE MODAL DIALOG (Preserved functionality) -->
   <!-- ============================================================== -->
-  <dialog id="applianceDialog" class="w-[min(94vw,540px)] rounded-2xl border-0 p-0 shadow-2xl">
+  <dialog id="applianceDialog" class="w-[min(94vw,560px)] rounded-2xl border-0 p-0 shadow-2xl">
     <form id="applianceForm" class="space-y-4 p-5 sm:p-7">
       <div class="flex items-start justify-between border-b border-slate-100 pb-4">
         <div>
           <div class="text-[10px] font-bold tracking-[.16em] text-[#0066ff] uppercase">MY APPLIANCES</div>
           <h2 class="mt-1 font-display text-lg font-extrabold text-slate-900">Register an appliance</h2>
-          <p class="mt-0.5 text-xs text-slate-500">Save appliance details for single-click service dispatch.</p>
+          <p class="mt-0.5 text-xs text-slate-500">Select your appliance from authorized company catalog.</p>
         </div>
         <button type="button" id="closeAppliance" class="rounded-lg p-1.5 text-xl text-slate-400 hover:bg-slate-100" aria-label="Close">×</button>
       </div>
 
+      <!-- Step 1: Select Company -->
       <label class="block text-xs font-semibold text-slate-700">
-        Company / Brand Partner
+        1. Select Registered Company
         <select id="newAppCompany" required class="mt-1.5 w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
           <option value="">Loading registered companies…</option>
         </select>
       </label>
-      <p id="applianceCompanyHelp" class="-mt-2.5 text-[11px] text-slate-500" role="status"></p>
+      <p id="applianceCompanyHelp" class="-mt-2 text-[11px] text-slate-500" role="status"></p>
 
+      <!-- Step 2: Select Brand Name -->
+      <div id="newAppBrandWrap" class="space-y-1">
+        <label class="block text-xs font-semibold text-slate-700">
+          2. Brand Name
+          <select id="newAppBrand" required disabled class="mt-1.5 w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
+            <option value="">Choose company first…</option>
+          </select>
+        </label>
+        <p id="applianceBrandHelp" class="text-[11px] text-slate-400 font-normal"></p>
+      </div>
+
+      <!-- Step 3: Select Appliance Name -->
       <label class="block text-xs font-semibold text-slate-700">
-        Category
-        <select id="newAppCategory" required class="mt-1.5 w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
-          <option>Air Conditioner</option>
-          <option>Refrigerator</option>
-          <option>Washing Machine</option>
-          <option>Microwave Oven</option>
-          <option>Water Purifier</option>
-          <option>Chimney</option>
-          <option>Dishwasher</option>
+        3. Appliance Name
+        <select id="newApplianceName" required disabled class="mt-1.5 w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
+          <option value="">Select brand first…</option>
         </select>
       </label>
 
-      <div class="grid gap-3 sm:grid-cols-2">
+      <!-- Step 4: Select Model Number -->
+      <label class="block text-xs font-semibold text-slate-700">
+        4. Model Number
+        <select id="newAppModel" required disabled class="mt-1.5 w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
+          <option value="">Select appliance first…</option>
+        </select>
+      </label>
+
+      <!-- Hidden Category input (auto-populated from selected appliance) -->
+      <input type="hidden" id="newAppCategory" value="">
+
+      <!-- Step 5: Upload Purchase Invoice (Image or PDF) -->
+      <div class="space-y-1 pt-1">
         <label class="block text-xs font-semibold text-slate-700">
-          Brand
-          <input id="newAppBrand" required maxlength="128" class="mt-1.5 w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500" placeholder="e.g. Crompton, LG">
+          5. Purchase Invoice <span class="font-normal text-slate-400">(Optional — Image or PDF, max 5MB)</span>
+          <div class="mt-1.5 flex items-center gap-3">
+            <input type="file" id="newAppInvoiceFile" accept="image/jpeg,image/png,image/webp,application/pdf" class="hidden">
+            <button type="button" id="triggerInvoiceUploadBtn" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold flex items-center gap-2 transition border border-slate-200">
+              <span>📎</span> <span id="invoiceBtnLabel">Choose Invoice File</span>
+            </button>
+            <span id="invoiceFileNameDisplay" class="text-xs text-slate-500 truncate max-w-[240px]">No file chosen</span>
+            <input type="hidden" id="newAppInvoiceUrl" value="">
+          </div>
         </label>
-        <label class="block text-xs font-semibold text-slate-700">
-          Model number
-          <input id="newAppModel" required maxlength="128" class="mt-1.5 w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500" placeholder="e.g. OU-S292">
-        </label>
+        <div id="invoiceUploadProgress" class="hidden text-xs text-blue-600 font-medium">Uploading invoice…</div>
+        <div id="invoiceUploadedNotice" class="hidden text-xs text-emerald-600 font-medium flex items-center gap-1">
+          <span>✓</span> Invoice uploaded successfully!
+        </div>
       </div>
 
-      <label class="block text-xs font-semibold text-slate-700">
-        Serial number <span class="font-normal text-slate-400">(optional)</span>
+      <!-- Step 6: Serial Number (Optional) -->
+      <label class="block text-xs font-semibold text-slate-700 pt-1">
+        6. Serial Number <span class="font-normal text-slate-400">(Optional)</span>
         <input id="newAppSerial" maxlength="128" class="mt-1.5 w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500" placeholder="e.g. CR-AC-2024-8841">
       </label>
 
