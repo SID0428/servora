@@ -1925,6 +1925,14 @@
 
       <!-- Cost Summary -->
       <div class="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-2 text-xs text-slate-700">
+        <div class="flex justify-between" id="estModalCoveredRow">
+          <span class="text-emerald-700 font-semibold">🛡️ OEM Warranty Covered Parts:</span>
+          <span id="estModalCoveredAmount" class="font-bold text-emerald-700">-₹0.00</span>
+        </div>
+        <div class="flex justify-between" id="estModalCustomerPartsRow">
+          <span class="text-slate-500">💵 Customer Billable Parts (Consumables):</span>
+          <span id="estModalCustomerPartsAmount" class="font-semibold text-slate-800">₹0.00</span>
+        </div>
         <div class="flex justify-between">
           <span class="text-slate-500">Doorstep Diagnostic Inspection:</span>
           <span id="estModalInspectionFee" class="font-semibold text-slate-800">₹299.00</span>
@@ -1934,8 +1942,8 @@
           <span id="estModalLaborCost" class="font-semibold text-slate-800">₹0.00</span>
         </div>
         <div class="flex justify-between border-t border-slate-200 pt-2 font-bold text-sm text-slate-900">
-          <span>Total Pre-Repair Estimate:</span>
-          <span id="estModalTotalAmount" class="text-base text-amber-700 font-mono font-extrabold">₹0.00</span>
+          <span>You Pay (Customer Total):</span>
+          <span id="estModalTotalAmount" class="text-base text-blue-700 font-mono font-extrabold">₹0.00</span>
         </div>
       </div>
 

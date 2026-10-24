@@ -4,8 +4,8 @@ PRODUCTION-GRADE TECHNICAL ARCHITECTURE & DEVELOPER ONBOARDING MANUAL
 ================================================================================
 File: documentation.txt
 Platform: ServSure (formerly Servora)
-Version: 1.3.0 (Production Release - Unified Appliance & Brand OEM Warranty Verification Flow)
-Last Updated: October 24, 2026 (17:10 IST)
+Version: 1.4.0 (Production Release - Multi-Year Fiscal Warranty Policies & Item-Level Split Billing)
+Last Updated: October 24, 2026 (17:45 IST)
 Repository: https://github.com/SID0428/servora.git
 
 Welcome to ServSure! This manual is the definitive, authoritative reference
@@ -24,7 +24,7 @@ TABLE OF CONTENTS
    3.2. Operational Access Control & Cascading Deactivation Rules
    3.3. Static Multi-Portal Routing & Role Guards
    3.4. Background Workers (Render Keep-Alive & SLA Engine)
-4. DATABASE MODELS & RELATIONAL SCHEMA (24 MODELS)
+4. DATABASE MODELS & RELATIONAL SCHEMA (25 MODELS)
 5. CORE API & USAGE REFERENCE
    5.1. Authentication, Sessions & Profile (/api/auth)
    5.2. Platform Administration (/api/admin)
@@ -368,6 +368,9 @@ All database entities are defined in `backend/app/db/models.py`:
     - `warranty_rejection_reason`: Text, Nullable: True (Brand rejection audit note).
     - `verified_at`: DateTime, Nullable: True.
     - `verified_by`: String(64), Nullable: True (User ID of brand reviewer).
+    - `matched_policy_id`: String(64), Nullable: True (Fiscal year policy ID mapped by purchase date).
+    - `matched_policy_name`: String(128), Nullable: True (Grandfathered policy name).
+    - `policy_snapshot_json`: Text, Nullable: True (Immutable snapshot of policy coverage at registration/approval).
     - `amc_active`: Boolean, Default: False.
     - `amc_plan_name`, `amc_end_date`: String(64).
     - `invoice_url`: Text.
@@ -392,12 +395,14 @@ All database entities are defined in `backend/app/db/models.py`:
     - `request_id`: String(64), ForeignKey("service_requests.id", CASCADE).
     - `technician_id`: String(64), ForeignKey("technicians.id", CASCADE).
     - `diagnosis`, `work_done`: Text.
-    - `parts_used`: Text (JSON string of consumed parts and quantities).
+    - `parts_used`: Text (JSON string of consumed parts with is_covered, coverage_type, non_coverage_reason).
     - `labor_cost`: Float.
-    - `inspection_fee`: Float, Default: 299.0.
+    - `inspection_fee`: Float, Default: 299.0 (0.0 if under warranty).
+    - `covered_parts_cost`: Float, Default: 0.0 (Cost of OEM-covered parts claimed to brand).
+    - `customer_parts_cost`: Float, Default: 0.0 (Cost of non-covered parts/consumables billed to customer).
     - `discount_amount`: Float, Default: 0.0.
-    - `cgst_amount`, `sgst_amount`: Float (9% + 9% GST).
-    - `total_cost`: Float.
+    - `cgst_amount`, `sgst_amount`: Float (9% + 9% GST on customer billable share).
+    - `total_cost`: Float (Customer grand total payable).
     - `is_warranty_covered`: Boolean, Default: False.
     - `customer_signature_url`, `technician_signature_url`: Text.
 
@@ -413,6 +418,8 @@ All database entities are defined in `backend/app/db/models.py`:
     - `name`: String(128), Nullable: False.
     - `category`: String(64), Nullable: False.
     - `brand`: String(64), Nullable: False.
+    - `part_type`: String(32), Default: "component" ("component" vs "consumable").
+    - `is_warranty_eligible`: Boolean, Default: True.
     - `unit_price`: Float, Nullable: False, Default: 0.0.
     - `hsn_code`: String(32), Nullable: False, Default: "841890".
     - `description`: Text, Nullable: True.
@@ -503,6 +510,21 @@ All database entities are defined in `backend/app/db/models.py`:
     - `model_numbers`: Text, Nullable: False (JSON list of supported model variant strings).
     - `warranty_months`: Integer, Default: 12, Nullable: False.
     - `description`: Text, Nullable: True (Appliance highlights or specifications).
+    - `created_at`: DateTime, Default: datetime.utcnow, Nullable: False.
+
+25. `CompanyWarrantyPolicyModel` (`company_warranty_policies` table):
+    - `id`: String(64), Primary Key (e.g. `pol_...`).
+    - `company_id`: String(64), ForeignKey("users.id", ondelete="CASCADE"), Index: True.
+    - `policy_code`: String(64), Nullable: False (e.g. `FY25-26-COMP`, `FY26-27-PRO`).
+    - `policy_name`: String(128), Nullable: False (e.g. "Samsung FY 2025-26 Enhanced Warranty Policy").
+    - `category`: String(64), Nullable: False, Default: "All" (Product category filter or "All").
+    - `effective_from`: String(32), Nullable: False (Purchase start window date, e.g. "2025-04-01").
+    - `effective_to`: String(32), Nullable: False (Purchase end window date, e.g. "2026-03-31").
+    - `comprehensive_months`: Integer, Default: 12, Nullable: False (Base comprehensive unit coverage).
+    - `component_warranty_json`: Text, Nullable: True (JSON map of component durations in months, e.g. {"compressor": 120, "motor": 60, "pcb": 36}).
+    - `consumables_covered`: Boolean, Default: False, Nullable: False (Whether gas refill, filters, rubber seals are covered).
+    - `terms_and_conditions`: Text, Nullable: True (Grandfathered legal policy text and audit criteria).
+    - `is_active`: Boolean, Default: True, Nullable: False.
     - `created_at`: DateTime, Default: datetime.utcnow, Nullable: False.
 
 
@@ -747,14 +769,22 @@ Request Headers:
 - `GET /api/warranty-amc/registrations`:
   - Query: `?status=all|Pending Verification|Active|Rejected`
   - Returns customer appliance warranty registrations queued for the authenticated brand/company.
-  - Response: list of `{ id, user_id, customer_name, customer_email, customer_phone, company_id, brand, category, model_no, serial_no, registered_on, purchase_date, warranty_months, warranty_status, warranty_start_date, warranty_end_date, warranty_rejection_reason, invoice_url, verified_at, verified_by }`.
+  - Response: list of `{ id, user_id, customer_name, customer_email, customer_phone, company_id, brand, category, model_no, serial_no, registered_on, purchase_date, warranty_months, warranty_status, warranty_start_date, warranty_end_date, warranty_rejection_reason, invoice_url, matched_policy_id, matched_policy_name, policy_snapshot_json, verified_at, verified_by }`.
 - `POST /api/warranty-amc/registrations/{appliance_id}/verify`:
   - Body: `{ "action": "approve" | "reject", "warranty_months": 24, "rejection_reason": "...", "notes": "..." }`
   - Brand OEM review endpoint.
-  - Approve action: Sets `warranty_status = "Active"`, overrides warranty months if specified, recalculates `warranty_start_date` and `warranty_end_date` from purchase date, logs `verified_at` and `verified_by`.
+  - Approve action: Resolves fiscal year policy matched by purchase date, freezes immutable `policy_snapshot_json`, sets `warranty_status = "Active"`, overrides warranty months if specified, recalculates `warranty_start_date` and `warranty_end_date` from purchase date, logs `verified_at` and `verified_by`.
   - Reject action: Sets `warranty_status = "Rejected"`, records `warranty_rejection_reason` for customer visibility, logs `verified_at` and `verified_by`.
+- `GET /api/warranty-amc/policies`:
+  - Query: `?category=...&is_active=true`
+  - Returns company's configured fiscal-year warranty policies with effective date windows and component warranty rules.
+- `POST /api/warranty-amc/policies`:
+  - Body: `{ policy_code, policy_name, category, effective_from, effective_to, comprehensive_months, consumables_covered, component_warranty_json, terms_and_conditions, is_active }`
+  - Company brand admin creates a new fiscal year warranty policy with grandfathered purchase-date coverage windows.
+- `PUT /api/warranty-amc/policies/{policy_id}`:
+  - Update policy rules, duration, component coverage, or active toggle.
 - `GET /api/warranty-amc/claims`: List warranty reimbursement claims.
-- `POST /api/warranty-amc/claims`: Submit parts and labor warranty claim for completed ticket.
+- `POST /api/warranty-amc/claims`: Submit parts and labor warranty claim for completed ticket (restricted to covered parts and OEM labor share).
 - `PUT /api/warranty-amc/claims/{claim_id}`: Company approves or rejects warranty reimbursement.
 - `GET /api/warranty-amc/plans`: List available Annual Maintenance Contract (AMC) plans.
 - `POST /api/warranty-amc/subscriptions`: Customer subscribes appliance to AMC coverage.
@@ -1080,6 +1110,40 @@ were identified between the initial rough draft documentation and the actual cod
         and the request date is within `warranty_end_date`. If valid, `is_under_warranty` is set to `True`, inspection fee
         is zeroed (`Rs. 0`), repair estimates are marked zero-customer-payable, and completed repairs trigger
         franchise reimbursement claims via `WarrantyClaimModel` directly to the brand manufacturer.
+
+16. Discrepancy: Multi-Year Fiscal Warranty Policies & Item-Level Warranty Coverage Isolation Engine
+   - Initial Draft / Early Iteration:
+     Warranty policies were assumed to be static flat periods (e.g. 12 months for everything). There was no mechanism
+     to distinguish which replaced spare parts were covered by the brand OEM versus billable to the customer (such as
+     consumables, gas recharge, or wear-and-tear items). Furthermore, companies change warranty policies across fiscal years
+     (e.g., FY 2024-25 vs FY 2025-26 vs FY 2026-27), and older products were not grandfathered to their purchase-year policy terms.
+   - Reality in Code:
+     1. Fiscal Year Policy Engine (`CompanyWarrantyPolicyModel` in `backend/app/db/models.py`):
+        - Introduced `CompanyWarrantyPolicyModel` with effective purchase date windows (`effective_from` to `effective_to`),
+          comprehensive warranty months, component warranty map in JSON (e.g., `{"compressor": 120, "motor": 60, "pcb": 36}`),
+          consumables coverage toggle (`consumables_covered`), and legal terms.
+        - Default policies seeded for FY 2024-25 (12m comprehensive, 5-yr comp), FY 2025-26 (24m comprehensive, 10-yr comp),
+          and FY 2026-27 Pro (24m comprehensive, 10-yr comp + consumables).
+        - Auto-resolution helper `resolve_policy_for_appliance()` in `warranty_amc.py` queries active policies by appliance brand,
+          category, and purchase date, strictly grandfathering terms to the purchase year.
+        - Upon OEM verification approval, an immutable snapshot of the matched policy terms is frozen into `appliance.policy_snapshot_json`.
+     2. Item-Level Warranty Split & Dual Billing (`requests.py` & `estimates.py`):
+        - `JobCardPartItem` and `EstimatePartItem` schemas include `is_covered`, `coverage_type` (`"OEM_WARRANTY"` vs `"CUSTOMER_PAYABLE"`),
+          and `non_coverage_reason`.
+        - Price engine computes `covered_parts_cost` (claimed to OEM) and `customer_parts_cost` (billed to customer).
+        - Under warranty, doorstep inspection fees are waived (`₹0.00`). If functional parts are replaced under warranty, customer labor
+          is waived (`₹0.00`). If non-covered consumables (e.g. gas refill) are added, the customer is billed only for the consumable + 18% GST.
+        - Automatically creates `WarrantyClaimModel` isolated to ONLY OEM-covered parts and authorized labor share. Consumables
+          are strictly excluded from manufacturer reimbursement claims.
+     3. Multi-Portal UI Synchronizations:
+        - OEM Company Portal (`company-dashboard.html` & `ops-dashboard.js`): Added 3rd subtab `[📜 Fiscal Policies]` with full policy CRUD,
+          audit banner display in `#warrantyVerificationDialog`, and component breakdown tags.
+        - Technician & Franchise Portals (`technician-dashboard.html`, `franchise-dashboard.html`, `ops-dashboard.js`):
+          Digital job cards and pre-repair estimates feature an item-level toggle (`[🛡️ OEM Covered (₹0)]` vs `[💵 Billable (Consumable)]`)
+          with automatic consumable keyword detection and live dual totals (`Customer Payable` vs `OEM Claim Share`).
+        - Customer Portal (`customer-dashboard.html` & `dashboard.js`): Appliance cards display matched policy badges with component warranty terms.
+          Pre-Repair Estimate modal and Job Card receipts clearly display itemized coverage (`🛡️ OEM Warranty Covered: ₹0.00`) and
+          transparent customer-payable amounts with zero hidden fees.
 
 ================================================================================
 End of Documentation

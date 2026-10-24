@@ -1,6 +1,6 @@
 import json
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
@@ -9,13 +9,14 @@ from sqlalchemy import or_
 from app.db.session import get_db
 from app.db.models import (
     UserModel, WarrantyClaimModel, AMCPlanModel, AMCSubscriptionModel,
-    ApplianceModel, ServiceRequestModel, CompanyBranchModel
+    ApplianceModel, ServiceRequestModel, CompanyBranchModel, CompanyWarrantyPolicyModel
 )
 from app.schemas import (
     WarrantyClaimSchema, WarrantyClaimVerifyPayload,
     WarrantyRegistrationItem, WarrantyRegistrationVerifyPayload,
     AMCPlanSchema, AMCSubscriptionCreatePayload, AMCSubscriptionSchema,
-    JobCardPartItem
+    JobCardPartItem, CompanyWarrantyPolicyCreate, CompanyWarrantyPolicyUpdate,
+    CompanyWarrantyPolicyResponse
 )
 from app.security import get_authenticated_user
 
@@ -126,6 +127,240 @@ def verify_warranty_claim(
 # 1B. WARRANTY REGISTRATIONS (OEM Product Registration Audit)
 # ==========================================
 
+# Helper functions for Policy Resolution
+def parse_date(date_val):
+    if not date_val:
+        return None
+    if isinstance(date_val, datetime):
+        return date_val.date()
+    if isinstance(date_val, date):
+        return date_val
+    for fmt in ("%Y-%m-%d", "%d %b %Y", "%d/%m/%Y", "%Y/%m/%d"):
+        try:
+            return datetime.strptime(str(date_val).strip(), fmt).date()
+        except Exception:
+            pass
+    return None
+
+def resolve_policy_for_appliance(company_id: str, brand: str, category: str, purchase_date_val, db: Session):
+    p_date = parse_date(purchase_date_val)
+    if not p_date:
+        p_date = datetime.now().date()
+
+    query = db.query(CompanyWarrantyPolicyModel).filter(CompanyWarrantyPolicyModel.is_active == True)
+    if company_id:
+        query = query.filter(
+            or_(
+                CompanyWarrantyPolicyModel.company_id == company_id,
+                CompanyWarrantyPolicyModel.company_id.in_(
+                    db.query(UserModel.id).filter(UserModel.name.ilike(brand.strip() if brand else ""))
+                )
+            )
+        )
+    elif brand:
+        company_users = db.query(UserModel.id).filter(UserModel.name.ilike(brand.strip())).all()
+        comp_ids = [u[0] for u in company_users]
+        if comp_ids:
+            query = query.filter(CompanyWarrantyPolicyModel.company_id.in_(comp_ids))
+
+    policies = query.order_by(CompanyWarrantyPolicyModel.effective_from.desc()).all()
+    matched = None
+    for pol in policies:
+        if pol.category != "All" and category and pol.category.lower() != category.lower():
+            continue
+        eff_from = pol.effective_from
+        eff_to = pol.effective_to
+        if eff_from and p_date < eff_from:
+            continue
+        if eff_to and p_date > eff_to:
+            continue
+        matched = pol
+        break
+
+    return matched, p_date
+
+# ==========================================
+# 1.1 WARRANTY POLICIES (Fiscal Year / Time Windows)
+# ==========================================
+
+@router.get("/policies", response_model=List[CompanyWarrantyPolicyResponse])
+def list_warranty_policies(
+    request: Request,
+    db: Session = Depends(get_db)
+):
+    user = get_authenticated_user(request, db)
+    query = db.query(CompanyWarrantyPolicyModel)
+    if user.role == "company":
+        query = query.filter(CompanyWarrantyPolicyModel.company_id == user.id)
+    elif user.role != "admin":
+        raise HTTPException(status_code=403, detail="Unauthorized to view company warranty policies")
+
+    policies = query.order_by(CompanyWarrantyPolicyModel.effective_from.desc()).all()
+    results = []
+    for pol in policies:
+        comp_obj = db.query(UserModel).filter(UserModel.id == pol.company_id).first()
+        comp_dict = {}
+        try:
+            comp_dict = json.loads(pol.component_warranty_json) if pol.component_warranty_json else {}
+        except Exception:
+            pass
+        results.append(
+            CompanyWarrantyPolicyResponse(
+                id=pol.id,
+                company_id=pol.company_id,
+                company_name=comp_obj.name if comp_obj else None,
+                policy_code=pol.policy_code,
+                policy_name=pol.policy_name,
+                category=pol.category,
+                effective_from=pol.effective_from.strftime("%Y-%m-%d") if pol.effective_from else "",
+                effective_to=pol.effective_to.strftime("%Y-%m-%d") if pol.effective_to else None,
+                comprehensive_months=pol.comprehensive_months,
+                component_warranty=comp_dict,
+                consumables_covered=pol.consumables_covered,
+                terms_and_conditions=pol.terms_and_conditions,
+                is_active=pol.is_active,
+                created_at=pol.created_at.strftime("%d %b %Y, %I:%M %p") if pol.created_at else None
+            )
+        )
+    return results
+
+@router.post("/policies", response_model=CompanyWarrantyPolicyResponse)
+def create_warranty_policy(
+    payload: CompanyWarrantyPolicyCreate,
+    request: Request,
+    db: Session = Depends(get_db)
+):
+    user = get_authenticated_user(request, db)
+    if user.role not in ("company", "admin"):
+        raise HTTPException(status_code=403, detail="Only brand companies or admins can create warranty policies")
+
+    company_id = user.id
+
+    # Parse effective dates
+    eff_from = parse_date(payload.effective_from)
+    if not eff_from:
+        raise HTTPException(status_code=400, detail="Valid effective_from date (YYYY-MM-DD) is required")
+    eff_to = parse_date(payload.effective_to) if payload.effective_to else None
+
+    # Parse component warranty json
+    comp_json_str = "{}"
+    comp_dict = {}
+    if payload.component_warranty_json:
+        if isinstance(payload.component_warranty_json, dict):
+            comp_dict = payload.component_warranty_json
+            comp_json_str = json.dumps(payload.component_warranty_json)
+        elif isinstance(payload.component_warranty_json, str):
+            try:
+                comp_dict = json.loads(payload.component_warranty_json)
+                comp_json_str = payload.component_warranty_json
+            except Exception:
+                comp_dict = {}
+                comp_json_str = "{}"
+
+    policy_id = f"POL-{user.id[:4].upper()}-{uuid.uuid4().hex[:6].upper()}"
+    new_pol = CompanyWarrantyPolicyModel(
+        id=policy_id,
+        company_id=company_id,
+        policy_code=payload.policy_code.strip().upper(),
+        policy_name=payload.policy_name.strip(),
+        category=payload.category or "All",
+        effective_from=eff_from,
+        effective_to=eff_to,
+        comprehensive_months=payload.comprehensive_months or 12,
+        component_warranty_json=comp_json_str,
+        consumables_covered=bool(payload.consumables_covered),
+        terms_and_conditions=payload.terms_and_conditions,
+        is_active=True,
+        created_at=datetime.utcnow()
+    )
+    db.add(new_pol)
+    db.commit()
+    db.refresh(new_pol)
+
+    return CompanyWarrantyPolicyResponse(
+        id=new_pol.id,
+        company_id=new_pol.company_id,
+        company_name=user.name,
+        policy_code=new_pol.policy_code,
+        policy_name=new_pol.policy_name,
+        category=new_pol.category,
+        effective_from=new_pol.effective_from.strftime("%Y-%m-%d"),
+        effective_to=new_pol.effective_to.strftime("%Y-%m-%d") if new_pol.effective_to else None,
+        comprehensive_months=new_pol.comprehensive_months,
+        component_warranty=comp_dict,
+        consumables_covered=new_pol.consumables_covered,
+        terms_and_conditions=new_pol.terms_and_conditions,
+        is_active=new_pol.is_active,
+        created_at=new_pol.created_at.strftime("%d %b %Y, %I:%M %p")
+    )
+
+@router.put("/policies/{policy_id}", response_model=CompanyWarrantyPolicyResponse)
+def update_warranty_policy(
+    policy_id: str,
+    payload: CompanyWarrantyPolicyUpdate,
+    request: Request,
+    db: Session = Depends(get_db)
+):
+    user = get_authenticated_user(request, db)
+    if user.role not in ("company", "admin"):
+        raise HTTPException(status_code=403, detail="Only brand companies can update policies")
+
+    pol = db.query(CompanyWarrantyPolicyModel).filter(CompanyWarrantyPolicyModel.id == policy_id).first()
+    if not pol:
+        raise HTTPException(status_code=404, detail="Warranty policy not found")
+    if user.role == "company" and pol.company_id != user.id:
+        raise HTTPException(status_code=403, detail="Unauthorized to modify this policy")
+
+    if payload.policy_name is not None:
+        pol.policy_name = payload.policy_name.strip()
+    if payload.category is not None:
+        pol.category = payload.category.strip()
+    if payload.effective_from is not None:
+        d = parse_date(payload.effective_from)
+        if d:
+            pol.effective_from = d
+    if payload.effective_to is not None:
+        pol.effective_to = parse_date(payload.effective_to) if payload.effective_to.strip() else None
+    if payload.comprehensive_months is not None:
+        pol.comprehensive_months = payload.comprehensive_months
+    if payload.component_warranty_json is not None:
+        if isinstance(payload.component_warranty_json, dict):
+            pol.component_warranty_json = json.dumps(payload.component_warranty_json)
+        elif isinstance(payload.component_warranty_json, str):
+            pol.component_warranty_json = payload.component_warranty_json
+    if payload.consumables_covered is not None:
+        pol.consumables_covered = payload.consumables_covered
+    if payload.terms_and_conditions is not None:
+        pol.terms_and_conditions = payload.terms_and_conditions
+    if payload.is_active is not None:
+        pol.is_active = payload.is_active
+
+    db.commit()
+    db.refresh(pol)
+
+    comp_dict = {}
+    try:
+        comp_dict = json.loads(pol.component_warranty_json) if pol.component_warranty_json else {}
+    except Exception:
+        pass
+
+    return CompanyWarrantyPolicyResponse(
+        id=pol.id,
+        company_id=pol.company_id,
+        company_name=user.name,
+        policy_code=pol.policy_code,
+        policy_name=pol.policy_name,
+        category=pol.category,
+        effective_from=pol.effective_from.strftime("%Y-%m-%d"),
+        effective_to=pol.effective_to.strftime("%Y-%m-%d") if pol.effective_to else None,
+        comprehensive_months=pol.comprehensive_months,
+        component_warranty=comp_dict,
+        consumables_covered=pol.consumables_covered,
+        terms_and_conditions=pol.terms_and_conditions,
+        is_active=pol.is_active,
+        created_at=pol.created_at.strftime("%d %b %Y, %I:%M %p") if pol.created_at else None
+    )
+
 @router.get("/registrations", response_model=List[WarrantyRegistrationItem])
 def list_warranty_registrations(
     request: Request,
@@ -153,6 +388,18 @@ def list_warranty_registrations(
     for app in appliances:
         customer = db.query(UserModel).filter(UserModel.id == app.user_id).first()
         company = db.query(UserModel).filter(UserModel.id == app.company_id).first()
+
+        # Resolve policy suggestion if not yet snapshotted
+        matched_pol_id = getattr(app, "matched_policy_id", None)
+        matched_pol_name = getattr(app, "matched_policy_name", None)
+        policy_snapshot = getattr(app, "policy_snapshot_json", None)
+
+        if not matched_pol_name and app.purchase_date:
+            pol_match, _ = resolve_policy_for_appliance(app.company_id, app.brand, app.category, app.purchase_date, db)
+            if pol_match:
+                matched_pol_id = pol_match.id
+                matched_pol_name = pol_match.policy_name
+
         results.append(
             WarrantyRegistrationItem(
                 id=app.id,
@@ -174,6 +421,9 @@ def list_warranty_registrations(
                 warranty_start_date=app.warranty_start_date,
                 warranty_end_date=app.warranty_end_date,
                 warranty_rejection_reason=getattr(app, "warranty_rejection_reason", None),
+                matched_policy_id=matched_pol_id,
+                matched_policy_name=matched_pol_name,
+                policy_snapshot_json=policy_snapshot,
                 invoice_url=app.invoice_url,
                 verified_at=app.verified_at.strftime("%d %b %Y, %I:%M %p") if getattr(app, "verified_at", None) else None,
                 verified_by=getattr(app, "verified_by", None)
@@ -208,8 +458,16 @@ def verify_warranty_registration(
         app.verified_at = now
         app.verified_by = user.id
 
+        # Resolve fiscal year policy matching purchase date
+        matched_pol, p_date = resolve_policy_for_appliance(
+            app.company_id, app.brand, app.category, app.purchase_date, db
+        )
+
+        # Set warranty duration
         if payload.warranty_months and payload.warranty_months > 0:
             app.warranty_months = payload.warranty_months
+        elif matched_pol and matched_pol.comprehensive_months:
+            app.warranty_months = matched_pol.comprehensive_months
 
         # Recalculate end date based on purchase_date or approval date
         base_date = None
@@ -228,6 +486,42 @@ def verify_warranty_registration(
         app.warranty_start_date = base_date.strftime("%d %b %Y")
         app.warranty_end_date = (base_date + timedelta(days=w_months * 30)).strftime("%d %b %Y")
 
+        # Create immutable policy snapshot on ApplianceModel
+        comp_dict = {}
+        if matched_pol:
+            try:
+                comp_dict = json.loads(matched_pol.component_warranty_json) if matched_pol.component_warranty_json else {}
+            except Exception:
+                pass
+            snapshot = {
+                "policy_id": matched_pol.id,
+                "policy_code": matched_pol.policy_code,
+                "policy_name": matched_pol.policy_name,
+                "effective_from": matched_pol.effective_from.strftime("%Y-%m-%d") if matched_pol.effective_from else None,
+                "effective_to": matched_pol.effective_to.strftime("%Y-%m-%d") if matched_pol.effective_to else None,
+                "comprehensive_months": w_months,
+                "component_warranty": comp_dict,
+                "consumables_covered": matched_pol.consumables_covered,
+                "snapshotted_at": now_str
+            }
+            app.matched_policy_id = matched_pol.id
+            app.matched_policy_name = matched_pol.policy_name
+            app.policy_snapshot_json = json.dumps(snapshot)
+        else:
+            # Fallback snapshot
+            snapshot = {
+                "policy_id": "DEFAULT",
+                "policy_code": "STD-DEFAULT",
+                "policy_name": "Standard Manufacturer Warranty",
+                "comprehensive_months": w_months,
+                "component_warranty": {"compressor": 60, "motor": 60},
+                "consumables_covered": False,
+                "snapshotted_at": now_str
+            }
+            app.matched_policy_id = "DEFAULT"
+            app.matched_policy_name = "Standard Manufacturer Warranty"
+            app.policy_snapshot_json = json.dumps(snapshot)
+
     elif payload.action == "reject":
         app.warranty_status = "Rejected"
         app.warranty_rejection_reason = payload.rejection_reason or payload.notes or "Invoice verification failed (illegible document or mismatched serial/model)"
@@ -244,6 +538,9 @@ def verify_warranty_registration(
         "warranty_start_date": app.warranty_start_date,
         "warranty_end_date": app.warranty_end_date,
         "warranty_months": app.warranty_months,
+        "matched_policy_id": app.matched_policy_id,
+        "matched_policy_name": app.matched_policy_name,
+        "policy_snapshot_json": app.policy_snapshot_json,
         "rejection_reason": app.warranty_rejection_reason,
         "warranty_rejection_reason": app.warranty_rejection_reason,
         "verified_at": now_str,

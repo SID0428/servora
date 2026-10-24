@@ -8,6 +8,7 @@ from app.db.session import get_db
 from app.db.models import ApplianceModel, UserModel, CompanyApplianceCatalogModel
 from app.schemas import ApplianceBase, NewApplianceCreate, WarrantyInvoiceReuploadPayload
 from app.security import get_authenticated_user
+from app.routes.warranty_amc import resolve_policy_for_appliance
 
 router = APIRouter(prefix="/api/appliances", tags=["appliances"])
 
@@ -127,10 +128,12 @@ def add_appliance(payload: NewApplianceCreate, request: Request, db: Session = D
                 warranty_months = int(cm.warranty_months)
                 break
 
-    # 2. Determine purchase date and warranty coverage dates
+    # 2. Determine purchase date, matched policy, and warranty coverage dates
     p_date_str = None
     w_start = None
     w_end = None
+    matched_pol_id = None
+    matched_pol_name = None
     if payload.purchase_date and payload.purchase_date.strip():
         raw_p = payload.purchase_date.strip()
         parsed_dt = None
@@ -142,6 +145,13 @@ def add_appliance(payload: NewApplianceCreate, request: Request, db: Session = D
                 pass
         if parsed_dt:
             p_date_str = parsed_dt.strftime("%Y-%m-%d")
+            # Resolve policy for purchase date
+            pol_match, _ = resolve_policy_for_appliance(company.id, payload.brand, cat, p_date_str, db)
+            if pol_match:
+                matched_pol_id = pol_match.id
+                matched_pol_name = pol_match.policy_name
+                if pol_match.comprehensive_months:
+                    warranty_months = pol_match.comprehensive_months
             w_start = parsed_dt.strftime("%d %b %Y")
             w_end = (parsed_dt + timedelta(days=warranty_months * 30)).strftime("%d %b %Y")
     
@@ -165,6 +175,8 @@ def add_appliance(payload: NewApplianceCreate, request: Request, db: Session = D
         warranty_status=w_status,
         warranty_start_date=w_start,
         warranty_end_date=w_end,
+        matched_policy_id=matched_pol_id,
+        matched_policy_name=matched_pol_name,
         serial_no=payload.serial_no or f"{payload.brand[:3].upper()}-{uuid.uuid4().hex[:6].upper()}",
         icon=icon,
         invoice_url=inv_url
@@ -234,6 +246,9 @@ def appliance_payload(appliance: ApplianceModel, company_name: str | None = None
         "warranty_start_date": appliance.warranty_start_date,
         "warranty_end_date": appliance.warranty_end_date,
         "warranty_rejection_reason": getattr(appliance, "warranty_rejection_reason", None),
+        "matched_policy_id": getattr(appliance, "matched_policy_id", None),
+        "matched_policy_name": getattr(appliance, "matched_policy_name", None),
+        "policy_snapshot_json": getattr(appliance, "policy_snapshot_json", None),
         "amc_active": appliance.amc_active,
         "amc_plan_name": appliance.amc_plan_name,
         "amc_end_date": appliance.amc_end_date,

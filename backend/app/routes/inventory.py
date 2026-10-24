@@ -52,6 +52,8 @@ def get_parts_catalog(
             hsn_code=p.hsn_code,
             description=p.description,
             stock_quantity=getattr(p, "stock_quantity", 0) or 0,
+            part_type=getattr(p, "part_type", "functional") or "functional",
+            is_warranty_eligible=getattr(p, "is_warranty_eligible", True) if getattr(p, "is_warranty_eligible", True) is not None else True,
             company_id=getattr(p, "company_id", None),
             is_active=p.is_active
         )
@@ -145,6 +147,8 @@ def get_company_inventory_parts(
             hsn_code=p.hsn_code,
             description=p.description,
             stock_quantity=getattr(p, "stock_quantity", 0) or 0,
+            part_type=getattr(p, "part_type", "functional") or "functional",
+            is_warranty_eligible=getattr(p, "is_warranty_eligible", True) if getattr(p, "is_warranty_eligible", True) is not None else True,
             company_id=getattr(p, "company_id", None),
             is_active=p.is_active
         )
@@ -164,6 +168,8 @@ def add_company_spare_part(
     part_code = payload.part_code.strip().upper()
     existing = db.query(SparePartModel).filter(SparePartModel.part_code == part_code).first()
     brand_name = payload.brand.strip() if payload.brand else (user.name if user.role == "company" else "Universal")
+    part_type = payload.part_type or "functional"
+    is_w_eligible = bool(payload.is_warranty_eligible if payload.is_warranty_eligible is not None else (part_type == "functional"))
 
     if existing:
         existing.name = payload.name.strip()
@@ -174,6 +180,8 @@ def add_company_spare_part(
         if payload.description:
             existing.description = payload.description.strip()
         existing.stock_quantity = payload.stock_quantity
+        existing.part_type = part_type
+        existing.is_warranty_eligible = is_w_eligible
         if user.role == "company" and not existing.company_id:
             existing.company_id = user.id
         db.commit()
@@ -190,6 +198,8 @@ def add_company_spare_part(
             hsn_code=payload.hsn_code.strip() if payload.hsn_code else "841890",
             description=payload.description.strip() if payload.description else None,
             stock_quantity=payload.stock_quantity,
+            part_type=part_type,
+            is_warranty_eligible=is_w_eligible,
             company_id=user.id if user.role == "company" else None,
             is_active=True
         )
@@ -207,6 +217,8 @@ def add_company_spare_part(
         hsn_code=part.hsn_code,
         description=part.description,
         stock_quantity=part.stock_quantity,
+        part_type=getattr(part, "part_type", "functional") or "functional",
+        is_warranty_eligible=getattr(part, "is_warranty_eligible", True) if getattr(part, "is_warranty_eligible", True) is not None else True,
         company_id=part.company_id,
         is_active=part.is_active
     )
@@ -272,6 +284,10 @@ def update_company_part_details(
     if payload.hsn_code:
         part.hsn_code = payload.hsn_code.strip()
     part.description = payload.description.strip() if payload.description else None
+    if payload.part_type:
+        part.part_type = payload.part_type
+    if payload.is_warranty_eligible is not None:
+        part.is_warranty_eligible = payload.is_warranty_eligible
 
     db.commit()
     db.refresh(part)
@@ -286,6 +302,8 @@ def update_company_part_details(
         hsn_code=part.hsn_code,
         description=part.description,
         stock_quantity=getattr(part, "stock_quantity", 0) or 0,
+        part_type=getattr(part, "part_type", "functional") or "functional",
+        is_warranty_eligible=getattr(part, "is_warranty_eligible", True) if getattr(part, "is_warranty_eligible", True) is not None else True,
         company_id=getattr(part, "company_id", None),
         is_active=part.is_active
     )

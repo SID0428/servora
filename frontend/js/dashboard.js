@@ -472,7 +472,18 @@ function renderAppliances() {
                     if (ws.includes("pending")) {
                       return `<span class="rounded-full px-2.5 py-0.5 text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">⏳ Warranty: Under Brand Verification</span>`;
                     } else if (ws.includes("active") || ws.includes("covered") || ws.includes("under")) {
-                      return `<span class="rounded-full px-2.5 py-0.5 text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">✓ OEM Warranty Active${appliance.warranty_end_date ? ` (Valid until ${escapeHtml(appliance.warranty_end_date)})` : ''}</span>`;
+                      let polSnapText = "";
+                      if (appliance.policy_snapshot_json) {
+                        try {
+                          const snap = JSON.parse(appliance.policy_snapshot_json);
+                          const compList = snap.component_warranty ? Object.entries(snap.component_warranty).map(([k,v]) => `${k.toUpperCase()} ${v}m`).join(" · ") : "";
+                          polSnapText = compList ? ` (${compList})` : "";
+                        } catch (e) {}
+                      }
+                      return `
+                        <span class="rounded-full px-2.5 py-0.5 text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">✓ OEM Warranty Active${appliance.warranty_end_date ? ` (${escapeHtml(appliance.warranty_end_date)})` : ''}</span>
+                        ${appliance.matched_policy_name ? `<span class="rounded-full px-2.5 py-0.5 text-[10px] font-semibold bg-blue-50 text-blue-700 border border-blue-200">📜 ${escapeHtml(appliance.matched_policy_name)}${polSnapText}</span>` : ''}
+                      `;
                     } else if (ws.includes("reject")) {
                       return `
                         <span class="rounded-full px-2.5 py-0.5 text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200" title="${escapeHtml(appliance.warranty_rejection_reason || '')}">
@@ -2216,24 +2227,44 @@ window.openJobCardModal = async function(requestId) {
 
       if ($("jcPartsBody")) {
         if (Array.isArray(data.parts_used) && data.parts_used.length > 0) {
-          $("jcPartsBody").innerHTML = data.parts_used.map(p => `
-            <tr>
-              <td class="py-2.5 px-3 font-medium text-slate-800">${escapeHtml(p.part_name)}</td>
-              <td class="py-2.5 px-3 text-center font-semibold text-slate-600">${p.quantity || 1}</td>
-              <td class="py-2.5 px-3 text-right text-slate-600">₹${Number(p.unit_price || 0).toFixed(2)}</td>
-              <td class="py-2.5 px-3 text-right font-bold text-slate-800">₹${Number(p.total_price || ((p.quantity || 1) * (p.unit_price || 0))).toFixed(2)}</td>
-            </tr>
-          `).join("");
+          $("jcPartsBody").innerHTML = data.parts_used.map(p => {
+            const isCov = Boolean(p.is_covered);
+            const lineTotal = Number(p.total_price || ((p.quantity || 1) * (p.unit_price || 0)));
+            const covBadge = isCov
+              ? `<span class="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200 mt-0.5">🛡️ Covered under Warranty</span>`
+              : `<span class="inline-flex items-center gap-1 text-[10px] font-bold text-amber-800 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200 mt-0.5">💵 ${escapeHtml(p.non_coverage_reason || 'Consumable / Wear & Tear')}</span>`;
+            const priceDisplay = isCov
+              ? `<span class="text-emerald-700 font-bold">₹0.00</span> <span class="line-through text-slate-400 text-[10px]">₹${lineTotal.toFixed(0)}</span>`
+              : `₹${lineTotal.toFixed(2)}`;
+
+            return `
+              <tr>
+                <td class="py-2.5 px-3">
+                  <div class="font-medium text-slate-800">${escapeHtml(p.part_name)}</div>
+                  ${covBadge}
+                </td>
+                <td class="py-2.5 px-3 text-center font-semibold text-slate-600">${p.quantity || 1}</td>
+                <td class="py-2.5 px-3 text-right text-slate-600">₹${Number(p.unit_price || 0).toFixed(2)}</td>
+                <td class="py-2.5 px-3 text-right font-bold text-slate-800">${priceDisplay}</td>
+              </tr>
+            `;
+          }).join("");
         } else {
           $("jcPartsBody").innerHTML = `<tr><td colspan="4" class="p-4 text-center text-slate-400">No spare parts billed. Standard diagnosis performed.</td></tr>`;
         }
       }
 
       const pCost = Number(data.parts_cost || 0);
+      const coveredCost = Number(data.covered_parts_cost || 0);
+      const customerPartsCost = Number(data.customer_parts_cost || (pCost - coveredCost));
       const lCost = Number(data.labor_cost || 0);
       const tCost = Number(data.tax_amount || 0);
       const grandTotal = Number(data.total_amount || 0);
-      if ($("jcPartsTotal")) $("jcPartsTotal").textContent = `₹${pCost.toFixed(2)}`;
+      if ($("jcPartsTotal")) {
+        $("jcPartsTotal").innerHTML = coveredCost > 0
+          ? `₹${customerPartsCost.toFixed(2)} <span class="text-[10px] text-emerald-700 font-semibold">(₹${coveredCost.toFixed(0)} OEM Waived)</span>`
+          : `₹${pCost.toFixed(2)}`;
+      }
       if ($("jcLaborCost")) $("jcLaborCost").textContent = `₹${lCost.toFixed(2)}`;
       if ($("jcTaxAmount")) $("jcTaxAmount").textContent = `₹${tCost.toFixed(2)}`;
       if ($("jcGrandTotal")) $("jcGrandTotal").textContent = `₹${grandTotal.toFixed(2)}`;
@@ -3154,21 +3185,37 @@ window.openCustomerEstimateModal = async function(requestId = selectedRequestId)
     const rowsEl = $("estModalPartsRows");
     if (rowsEl) {
       if (est.parts && est.parts.length > 0) {
-        rowsEl.innerHTML = est.parts.map(p => `
-          <tr class="hover:bg-slate-50">
-            <td class="p-2.5">
-              <strong class="text-slate-800 block">${escapeHtml(p.part_name)}</strong>
-              <span class="text-[10px] text-slate-400 font-mono">${escapeHtml(p.part_code || 'STANDARD')}</span>
-            </td>
-            <td class="p-2.5 text-center font-bold">${p.quantity}</td>
-            <td class="p-2.5 text-right">₹${Number(p.unit_price).toFixed(2)}</td>
-            <td class="p-2.5 text-right font-semibold text-slate-900">₹${Number(p.total_price || (p.quantity * p.unit_price)).toFixed(2)}</td>
-          </tr>
-        `).join("");
+        rowsEl.innerHTML = est.parts.map(p => {
+          const isCov = Boolean(p.is_covered);
+          const lineTotal = Number(p.total_price || (p.quantity * p.unit_price));
+          const badge = isCov
+            ? `<span class="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200 mt-0.5">🛡️ OEM Warranty Covered</span>`
+            : `<span class="inline-flex items-center gap-1 text-[10px] font-bold text-amber-800 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200 mt-0.5">💵 ${escapeHtml(p.non_coverage_reason || 'Consumable / Non-Covered')}</span>`;
+          const priceDisplay = isCov
+            ? `<span class="text-emerald-700 font-bold">₹0.00</span> <span class="line-through text-slate-400 text-[10px]">₹${lineTotal.toFixed(0)}</span>`
+            : `₹${lineTotal.toFixed(2)}`;
+
+          return `
+            <tr class="hover:bg-slate-50">
+              <td class="p-2.5">
+                <strong class="text-slate-800 block">${escapeHtml(p.part_name)}</strong>
+                <span class="text-[10px] text-slate-400 font-mono">${escapeHtml(p.part_code || 'STANDARD')}</span>
+                <div>${badge}</div>
+              </td>
+              <td class="p-2.5 text-center font-bold">${p.quantity}</td>
+              <td class="p-2.5 text-right">₹${Number(p.unit_price).toFixed(2)}</td>
+              <td class="p-2.5 text-right font-semibold text-slate-900">${priceDisplay}</td>
+            </tr>
+          `;
+        }).join("");
       } else {
         rowsEl.innerHTML = `<tr><td colspan="4" class="p-3 text-center text-slate-400">No spare parts replacement estimated. Labor and inspection only.</td></tr>`;
       }
     }
+    const coveredParts = Number(est.covered_parts_cost || 0);
+    const customerParts = Number(est.customer_parts_cost || 0);
+    if ($("estModalCoveredAmount")) $("estModalCoveredAmount").textContent = `-₹${coveredParts.toFixed(2)}`;
+    if ($("estModalCustomerPartsAmount")) $("estModalCustomerPartsAmount").textContent = `₹${customerParts.toFixed(2)}`;
     if ($("estModalInspectionFee")) $("estModalInspectionFee").textContent = `₹${Number(est.inspection_fee || 0).toFixed(2)}`;
     if ($("estModalLaborCost")) $("estModalLaborCost").textContent = `₹${Number(est.labor_estimate || 0).toFixed(2)}`;
     if ($("estModalTotalAmount")) $("estModalTotalAmount").textContent = `₹${Number(est.total_estimate || 0).toFixed(2)}`;

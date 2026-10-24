@@ -131,6 +131,9 @@ class ApplianceBase(BaseModel):
     warranty_start_date: Optional[str] = None
     warranty_end_date: Optional[str] = None
     warranty_rejection_reason: Optional[str] = None
+    matched_policy_id: Optional[str] = None
+    matched_policy_name: Optional[str] = None
+    policy_snapshot_json: Optional[str] = None
     amc_active: Optional[bool] = False
     amc_plan_name: Optional[str] = None
     amc_end_date: Optional[str] = None
@@ -194,6 +197,9 @@ class JobCardPartItem(BaseModel):
     unit_price: float = 0.0
     total_price: float = 0.0
     hsn_code: Optional[str] = "8418"
+    is_covered: Optional[bool] = False
+    coverage_type: Optional[str] = "oem_warranty" # oem_warranty or customer_billable
+    non_coverage_reason: Optional[str] = None
 
 class JobCardResponse(BaseModel):
     id: str
@@ -205,6 +211,8 @@ class JobCardResponse(BaseModel):
     inspection_fee: float = 299.0
     labor_cost: float = 0.0
     parts_cost: float = 0.0
+    covered_parts_cost: Optional[float] = 0.0
+    customer_parts_cost: Optional[float] = 0.0
     discount_amount: float = 0.0
     cgst_amount: float = 0.0
     sgst_amount: float = 0.0
@@ -374,6 +382,8 @@ class SparePartSchema(BaseModel):
     hsn_code: str
     description: Optional[str] = None
     stock_quantity: int = 0
+    part_type: Optional[str] = "functional"
+    is_warranty_eligible: Optional[bool] = True
     company_id: Optional[str] = None
     is_active: bool = True
 
@@ -384,6 +394,8 @@ class SparePartCreatePayload(BaseModel):
     brand: str = Field(min_length=2, max_length=64)
     unit_price: float = Field(ge=0.0)
     hsn_code: str = Field(default="8418", max_length=32)
+    part_type: Optional[str] = "functional"
+    is_warranty_eligible: Optional[bool] = True
     description: Optional[str] = None
 
 class CompanyPartCreatePayload(BaseModel):
@@ -393,6 +405,8 @@ class CompanyPartCreatePayload(BaseModel):
     brand: Optional[str] = None
     unit_price: float = Field(ge=0.0)
     stock_quantity: int = Field(default=0, ge=0)
+    part_type: Optional[str] = "functional"
+    is_warranty_eligible: Optional[bool] = True
     hsn_code: Optional[str] = "8418"
     description: Optional[str] = None
 
@@ -401,6 +415,8 @@ class CompanyPartUpdatePayload(BaseModel):
     category: str = Field(min_length=2, max_length=64)
     brand: Optional[str] = None
     unit_price: float = Field(ge=0.0)
+    part_type: Optional[str] = None
+    is_warranty_eligible: Optional[bool] = None
     hsn_code: Optional[str] = "8418"
     description: Optional[str] = None
 
@@ -528,9 +544,50 @@ class WarrantyRegistrationItem(BaseModel):
     warranty_start_date: Optional[str] = None
     warranty_end_date: Optional[str] = None
     warranty_rejection_reason: Optional[str] = None
+    matched_policy_id: Optional[str] = None
+    matched_policy_name: Optional[str] = None
+    policy_snapshot_json: Optional[str] = None
     invoice_url: Optional[str] = None
     verified_at: Optional[str] = None
     verified_by: Optional[str] = None
+
+class CompanyWarrantyPolicyCreate(BaseModel):
+    policy_code: str = Field(min_length=2, max_length=64)
+    policy_name: str = Field(min_length=2, max_length=128)
+    category: Optional[str] = "All"
+    effective_from: str # YYYY-MM-DD
+    effective_to: Optional[str] = None # YYYY-MM-DD or None for ongoing
+    comprehensive_months: Optional[int] = 12
+    component_warranty_json: Optional[Union[dict, str]] = "{}"
+    consumables_covered: Optional[bool] = False
+    terms_and_conditions: Optional[str] = None
+
+class CompanyWarrantyPolicyUpdate(BaseModel):
+    policy_name: Optional[str] = None
+    category: Optional[str] = None
+    effective_from: Optional[str] = None
+    effective_to: Optional[str] = None
+    comprehensive_months: Optional[int] = None
+    component_warranty_json: Optional[Union[dict, str]] = None
+    consumables_covered: Optional[bool] = None
+    terms_and_conditions: Optional[str] = None
+    is_active: Optional[bool] = None
+
+class CompanyWarrantyPolicyResponse(BaseModel):
+    id: str
+    company_id: str
+    company_name: Optional[str] = None
+    policy_code: str
+    policy_name: str
+    category: str
+    effective_from: str
+    effective_to: Optional[str] = None
+    comprehensive_months: int
+    component_warranty: dict = Field(default_factory=dict)
+    consumables_covered: bool
+    terms_and_conditions: Optional[str] = None
+    is_active: bool
+    created_at: Optional[str] = None
 
 class AMCPlanSchema(BaseModel):
     id: str
@@ -574,6 +631,9 @@ class EstimatePartItem(BaseModel):
     quantity: int = Field(default=1, ge=1)
     unit_price: float = Field(default=0.0, ge=0.0)
     total_price: Optional[float] = None
+    is_covered: Optional[bool] = False
+    coverage_type: Optional[str] = "oem_warranty" # oem_warranty or customer_billable
+    non_coverage_reason: Optional[str] = None
 
 class EstimateCreatePayload(BaseModel):
     parts: List[EstimatePartItem] = Field(default_factory=list)
@@ -589,6 +649,9 @@ class EstimateResponse(BaseModel):
     parts: List[EstimatePartItem] = Field(default_factory=list)
     labor_estimate: float
     inspection_fee: float
+    parts_total: Optional[float] = 0.0
+    covered_parts_cost: Optional[float] = 0.0
+    customer_parts_cost: Optional[float] = 0.0
     total_estimate: float
     status: str # pending, approved, rejected
     customer_remarks: Optional[str] = None

@@ -3,7 +3,7 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from app.db.session import get_db
-from app.db.models import ServiceRequestModel, EstimateModel, TechnicianModel, UserModel
+from app.db.models import ServiceRequestModel, EstimateModel, TechnicianModel, UserModel, ApplianceModel, SparePartModel
 from app.schemas import (
     EstimateCreatePayload,
     EstimateResponse,
@@ -18,6 +18,9 @@ router = APIRouter(prefix="/api/requests", tags=["estimates"])
 def format_estimate(est: EstimateModel) -> EstimateResponse:
     parts_raw = json.loads(est.parts_json) if est.parts_json else []
     parts = [EstimatePartItem(**p) if isinstance(p, dict) else p for p in parts_raw]
+    covered_parts_cost = sum(p.total_price if p.total_price else (p.quantity * p.unit_price) for p in parts if getattr(p, "is_covered", False))
+    customer_parts_cost = sum(p.total_price if p.total_price else (p.quantity * p.unit_price) for p in parts if not getattr(p, "is_covered", False))
+    parts_total = covered_parts_cost + customer_parts_cost
     return EstimateResponse(
         id=est.id,
         request_id=est.request_id,
@@ -26,6 +29,9 @@ def format_estimate(est: EstimateModel) -> EstimateResponse:
         parts=parts,
         labor_estimate=est.labor_estimate,
         inspection_fee=est.inspection_fee,
+        parts_total=round(parts_total, 2),
+        covered_parts_cost=round(covered_parts_cost, 2),
+        customer_parts_cost=round(customer_parts_cost, 2),
         total_estimate=est.total_estimate,
         status=est.status,
         customer_remarks=est.customer_remarks,
@@ -62,19 +68,45 @@ def create_or_update_estimate(
         if tech_model:
             tech_name = tech_model.name
 
-    # Calculate parts and total
+    is_under_warranty = bool(getattr(req, "is_under_warranty", False))
+
+    # Calculate parts and split totals (Covered vs Customer Billable)
     parts_list = []
     parts_total = 0.0
+    covered_parts_total = 0.0
+    customer_parts_total = 0.0
+
     for p in payload.parts:
         item_total = round(p.quantity * p.unit_price, 2)
         parts_total += item_total
         p_dict = p.model_dump() if hasattr(p, "model_dump") else p.dict()
         p_dict["total_price"] = item_total
+
+        is_covered = p.is_covered
+        if is_covered is None:
+            is_consumable = any(word in (p.part_name or "").lower() for word in ["gas", "filter", "gasket", "seal", "cleaning", "pipe"])
+            is_covered = is_under_warranty and not is_consumable
+
+        p_dict["is_covered"] = bool(is_covered)
+        if is_covered:
+            p_dict["coverage_type"] = "oem_warranty"
+            p_dict["non_coverage_reason"] = None
+            covered_parts_total += item_total
+        else:
+            p_dict["coverage_type"] = "customer_billable"
+            p_dict["non_coverage_reason"] = p.non_coverage_reason or ("Consumable / Wear & Tear" if any(w in (p.part_name or "").lower() for w in ["gas", "filter", "seal"]) else "Out of Warranty / Excluded")
+            customer_parts_total += item_total
+
         parts_list.append(p_dict)
 
-    inspection_fee = payload.inspection_fee if payload.inspection_fee is not None else 299.0
-    labor_estimate = round(payload.labor_estimate, 2)
-    total_estimate = round(parts_total + labor_estimate + inspection_fee, 2)
+    if is_under_warranty:
+        inspection_fee = 0.0
+        labor_estimate = 0.0 if covered_parts_total > 0 and customer_parts_total == 0 else round(payload.labor_estimate, 2)
+    else:
+        inspection_fee = payload.inspection_fee if payload.inspection_fee is not None else 299.0
+        labor_estimate = round(payload.labor_estimate, 2)
+
+    total_estimate = round(customer_parts_total + labor_estimate + inspection_fee, 2)
     now_str = datetime.now().strftime("%d %b %Y, %I:%M %p")
 
     est_id = f"EST-{req.id.replace('SR-', '')}"

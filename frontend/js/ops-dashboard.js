@@ -114,7 +114,8 @@ let franchiseCustomers = [];
 let franchiseInventory = [];
 let companyWarrantyClaims = [];
 let companyWarrantyRegistrations = [];
-let companyWarrantySubTab = "registrations"; // "registrations" or "claims"
+let companyWarrantyPolicies = [];
+let companyWarrantySubTab = "registrations"; // "registrations", "claims", or "policies"
 let companySparesCatalog = [];
 let companyPartRequests = [];
 let franchisePartRequests = [];
@@ -159,6 +160,7 @@ try {
     franchiseInventory = getUserCache("servsure_cache_inventory");
     companyWarrantyClaims = getUserCache("servsure_cache_claims");
     companyWarrantyRegistrations = getUserCache("servsure_cache_warranty_registrations");
+    companyWarrantyPolicies = getUserCache("servsure_cache_warranty_policies");
     companySparesCatalog = getUserCache("servsure_cache_catalog");
     companyPartRequests = getUserCache("servsure_cache_part_requests");
     franchisePartRequests = getUserCache("servsure_cache_part_requests_franchise");
@@ -2994,18 +2996,22 @@ function initRestockModalEvents() {
 // ==========================================
 async function loadCompanyWarrantyClaims() {
   try {
-    const [claims, registrations] = await Promise.all([
+    const [claims, registrations, policies] = await Promise.all([
       generalApi("/api/warranty-amc/claims").catch(() => []),
       generalApi("/api/warranty-amc/registrations").catch(() => []),
+      generalApi("/api/warranty-amc/policies").catch(() => []),
     ]);
     companyWarrantyClaims = claims || [];
     companyWarrantyRegistrations = registrations || [];
+    companyWarrantyPolicies = policies || [];
     setUserCache("servsure_cache_claims", companyWarrantyClaims);
     setUserCache("servsure_cache_warranty_registrations", companyWarrantyRegistrations);
+    setUserCache("servsure_cache_warranty_policies", companyWarrantyPolicies);
     renderCompanyWarrantyClaims();
   } catch (error) {
     companyWarrantyClaims = [];
     companyWarrantyRegistrations = [];
+    companyWarrantyPolicies = [];
     renderCompanyWarrantyClaims();
     if ($("requestRows")) {
       $("requestRows").innerHTML = `<tr><td class="empty-row" colspan="7">${safe(error.message)}. Check your company session and try again.</td></tr>`;
@@ -3034,19 +3040,27 @@ function renderCompanyWarrantyClaims() {
       <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 w-full">
         <div>
           <span>OEM Warranty Management</span>
-          <p class="text-xs text-slate-500 font-normal mt-0.5">Audit customer appliance warranty registrations and settle franchise repair reimbursement claims.</p>
+          <p class="text-xs text-slate-500 font-normal mt-0.5">Audit customer appliance warranty registrations, manage fiscal-year policies, and settle repair claims.</p>
         </div>
-        <div class="flex items-center gap-2">
+        <div class="flex items-center gap-2 flex-wrap">
           <div class="inline-flex rounded-xl bg-slate-100 p-1 border border-slate-200">
             <button type="button" id="tabWarrantyRegs" class="px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${companyWarrantySubTab === 'registrations' ? 'bg-white text-blue-600 shadow-xs' : 'text-slate-600 hover:text-slate-900'}">
-              📋 Customer Registrations (${companyWarrantyRegistrations.length})
+              📋 Registrations (${companyWarrantyRegistrations.length})
               ${pendingRegs.length > 0 ? `<span class="px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-amber-500 text-white">${pendingRegs.length}</span>` : ''}
             </button>
+            <button type="button" id="tabWarrantyPolicies" class="px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${companyWarrantySubTab === 'policies' ? 'bg-white text-blue-600 shadow-xs' : 'text-slate-600 hover:text-slate-900'}">
+              📜 Fiscal Policies (${companyWarrantyPolicies.length})
+            </button>
             <button type="button" id="tabWarrantyClaims" class="px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${companyWarrantySubTab === 'claims' ? 'bg-white text-blue-600 shadow-xs' : 'text-slate-600 hover:text-slate-900'}">
-              🛡️ Service Claims (${companyWarrantyClaims.length})
+              🛡️ Claims (${companyWarrantyClaims.length})
               ${pendingClaims.length > 0 ? `<span class="px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-rose-500 text-white">${pendingClaims.length}</span>` : ''}
             </button>
           </div>
+          ${companyWarrantySubTab === 'policies' ? `
+            <button type="button" id="addNewPolicyBtn" class="px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-sm transition flex items-center gap-1.5">
+              + Add Policy
+            </button>
+          ` : ''}
         </div>
       </div>
     `;
@@ -3057,9 +3071,16 @@ function renderCompanyWarrantyClaims() {
     companyWarrantySubTab = "registrations";
     renderCompanyWarrantyClaims();
   });
+  $("tabWarrantyPolicies")?.addEventListener("click", () => {
+    companyWarrantySubTab = "policies";
+    renderCompanyWarrantyClaims();
+  });
   $("tabWarrantyClaims")?.addEventListener("click", () => {
     companyWarrantySubTab = "claims";
     renderCompanyWarrantyClaims();
+  });
+  $("addNewPolicyBtn")?.addEventListener("click", () => {
+    openWarrantyPolicyModal();
   });
 
   if ($("sidePanelTitle")) $("sidePanelTitle").textContent = "Warranty summary";
@@ -3182,6 +3203,101 @@ function renderCompanyWarrantyClaims() {
   }
 
   // -------------------------------------------------------------
+  // SUBTAB 3: FISCAL YEAR WARRANTY POLICIES
+  // -------------------------------------------------------------
+  if (companyWarrantySubTab === "policies") {
+    if ($("requestSearch")) $("requestSearch").placeholder = "Search policies by code, name, category, or year";
+    if ($("requestHead")) {
+      $("requestHead").innerHTML = [
+        "Policy Code & Name",
+        "Category",
+        "Effective Window (Purchase Date)",
+        "Comprehensive",
+        "Component Warranties",
+        "Consumables",
+        "Status",
+        "Action"
+      ].map((label) => `<th>${safe(label)}</th>`).join("");
+    }
+
+    const filtered = companyWarrantyPolicies.filter((item) =>
+      [
+        item.policy_code,
+        item.policy_name,
+        item.category,
+        item.effective_from,
+        item.effective_to,
+        item.terms_and_conditions
+      ]
+        .join(" ")
+        .toLowerCase()
+        .includes(query)
+    );
+
+    if ($("requestRows")) {
+      $("requestRows").innerHTML = filtered.length
+        ? filtered
+            .map((item) => {
+              let compBadges = "";
+              if (item.component_warranty_json) {
+                try {
+                  const compObj = JSON.parse(item.component_warranty_json);
+                  compBadges = Object.entries(compObj)
+                    .map(([k, v]) => `<span class="inline-block bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded text-[10px] font-mono mr-1 mb-1">${k.toUpperCase()}: ${v}m</span>`)
+                    .join("");
+                } catch (e) {
+                  compBadges = safe(item.component_warranty_json);
+                }
+              }
+
+              const statusBadge = item.is_active
+                ? `<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">✓ Active</span>`
+                : `<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-slate-100 text-slate-600">Inactive</span>`;
+
+              const consumablesBadge = item.consumables_covered
+                ? `<span class="text-emerald-700 font-semibold text-xs">✓ Covered</span>`
+                : `<span class="text-slate-400 text-xs">✕ Excluded</span>`;
+
+              return `
+                <tr>
+                  <td>
+                    <strong class="text-blue-600 font-mono text-xs block">${safe(item.policy_code)}</strong>
+                    <span class="font-bold text-slate-800 text-xs">${safe(item.policy_name)}</span>
+                  </td>
+                  <td><span class="inline-block bg-blue-50 text-blue-700 font-bold px-2 py-0.5 rounded text-[11px]">${safe(item.category || 'All')}</span></td>
+                  <td>
+                    <div class="text-xs font-semibold text-slate-800">${safe(item.effective_from || '—')} <span class="text-slate-400">to</span> ${safe(item.effective_to || '—')}</div>
+                    <small class="text-slate-400 text-[10px]">Grandfathered by purchase date</small>
+                  </td>
+                  <td><span class="font-bold text-slate-800 text-xs">${item.comprehensive_months || 12} Months</span></td>
+                  <td class="max-w-[180px]">${compBadges || '<span class="text-slate-400 text-xs">—</span>'}</td>
+                  <td>${consumablesBadge}</td>
+                  <td>${statusBadge}</td>
+                  <td>
+                    <button type="button" class="table-action font-semibold text-blue-600 hover:text-blue-800 flex items-center gap-1" data-edit-policy-id="${safe(item.id)}">
+                      <span>✏️</span> Edit Policy
+                    </button>
+                  </td>
+                </tr>
+              `;
+            })
+            .join("")
+        : `<tr><td class="empty-row" colspan="8">${query ? "No policies match your search." : "No fiscal year warranty policies defined yet."}</td></tr>`;
+    }
+
+    if ($("requestCount")) {
+      $("requestCount").textContent = `${filtered.length} polic${filtered.length === 1 ? "y" : "ies"} shown`;
+    }
+
+    document.querySelectorAll("[data-edit-policy-id]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        openWarrantyPolicyModal(btn.dataset.editPolicyId);
+      });
+    });
+    return;
+  }
+
+  // -------------------------------------------------------------
   // SUBTAB 2: SERVICE REPAIR REIMBURSEMENT CLAIMS
   // -------------------------------------------------------------
   if ($("requestSearch")) $("requestSearch").placeholder = "Search claims by ID, branch, appliance, or status";
@@ -3270,6 +3386,27 @@ window.openWarrantyVerificationModal = function (applianceId) {
   if ($("verifyModelNo")) $("verifyModelNo").textContent = reg.model_no || "—";
   if ($("verifySerialNo")) $("verifySerialNo").textContent = reg.serial_no || "Not registered";
   if ($("verifyPurchaseDate")) $("verifyPurchaseDate").textContent = reg.purchase_date || reg.registered_on || "—";
+
+  // Matched policy banner
+  if ($("verifyPolicyTitle")) {
+    $("verifyPolicyTitle").textContent = reg.matched_policy_name
+      ? `Matched Policy: ${reg.matched_policy_name}`
+      : "Standard OEM Warranty Policy";
+  }
+  if ($("verifyPolicyCodeBadge")) {
+    $("verifyPolicyCodeBadge").textContent = reg.matched_policy_id || "STD";
+  }
+  if ($("verifyPolicyDetails")) {
+    let details = "Comprehensive standard warranty.";
+    if (reg.policy_snapshot_json) {
+      try {
+        const snap = JSON.parse(reg.policy_snapshot_json);
+        const compParts = snap.component_warranty ? Object.entries(snap.component_warranty).map(([k, v]) => `${k.toUpperCase()} ${v}m`).join(" · ") : "";
+        details = `Comprehensive: ${snap.comprehensive_months || 12} Months ${compParts ? `· ${compParts}` : ''} · Consumables: ${snap.consumables_covered ? 'Covered' : 'Excluded'}`;
+      } catch (e) {}
+    }
+    $("verifyPolicyDetails").textContent = details;
+  }
 
   const durationInput = $("verifyWarrantyMonths");
   if (durationInput) durationInput.value = reg.warranty_months || 12;
@@ -3411,6 +3548,124 @@ function initWarrantyVerificationDialogEvents() {
     } finally {
       btn.disabled = false;
       btn.textContent = "❌ Reject Registration";
+    }
+  });
+}
+
+window.openWarrantyPolicyModal = function(policyId = null) {
+  const dialog = $("companyWarrantyPolicyDialog");
+  if (!dialog) return;
+
+  if ($("policyModalMsg")) $("policyModalMsg").textContent = "";
+
+  if (policyId) {
+    const pol = companyWarrantyPolicies.find(p => p.id === policyId);
+    if (pol) {
+      if ($("policyModalTitle")) $("policyModalTitle").textContent = "Edit Fiscal Year Warranty Policy";
+      if ($("policyFormId")) $("policyFormId").value = pol.id;
+      if ($("policyCode")) $("policyCode").value = pol.policy_code || "";
+      if ($("policyName")) $("policyName").value = pol.policy_name || "";
+      if ($("policyCategory")) $("policyCategory").value = pol.category || "All";
+      if ($("policyEffectiveFrom")) $("policyEffectiveFrom").value = pol.effective_from || "";
+      if ($("policyEffectiveTo")) $("policyEffectiveTo").value = pol.effective_to || "";
+      if ($("policyComprehensiveMonths")) $("policyComprehensiveMonths").value = pol.comprehensive_months || 12;
+      if ($("policyConsumablesCovered")) $("policyConsumablesCovered").checked = Boolean(pol.consumables_covered);
+      if ($("policyComponentJson")) $("policyComponentJson").value = pol.component_warranty_json || "{}";
+      if ($("policyTerms")) $("policyTerms").value = pol.terms_and_conditions || "";
+      if ($("policyIsActive")) $("policyIsActive").checked = Boolean(pol.is_active);
+    }
+  } else {
+    if ($("policyModalTitle")) $("policyModalTitle").textContent = "Create Fiscal Year Warranty Policy";
+    if ($("policyFormId")) $("policyFormId").value = "";
+    if ($("policyCode")) $("policyCode").value = `FY${new Date().getFullYear().toString().slice(2)}-${(new Date().getFullYear()+1).toString().slice(2)}-COMP`;
+    if ($("policyName")) $("policyName").value = "";
+    if ($("policyCategory")) $("policyCategory").value = "All";
+    if ($("policyEffectiveFrom")) $("policyEffectiveFrom").value = `${new Date().getFullYear()}-04-01`;
+    if ($("policyEffectiveTo")) $("policyEffectiveTo").value = `${new Date().getFullYear() + 1}-03-31`;
+    if ($("policyComprehensiveMonths")) $("policyComprehensiveMonths").value = 12;
+    if ($("policyConsumablesCovered")) $("policyConsumablesCovered").checked = false;
+    if ($("policyComponentJson")) $("policyComponentJson").value = '{"compressor": 120, "motor": 60, "pcb": 36}';
+    if ($("policyTerms")) $("policyTerms").value = "Standard manufacturer defect coverage. Consumables and physical damage excluded.";
+    if ($("policyIsActive")) $("policyIsActive").checked = true;
+  }
+
+  if (typeof dialog.showModal === "function") dialog.showModal();
+  else dialog.hidden = false;
+};
+
+function initWarrantyPolicyDialogEvents() {
+  const dialog = $("companyWarrantyPolicyDialog");
+  if (!dialog) return;
+
+  $("closeWarrantyPolicyDialog")?.addEventListener("click", () => {
+    if (typeof dialog.close === "function") dialog.close();
+    else dialog.hidden = true;
+  });
+  $("cancelWarrantyPolicyBtn")?.addEventListener("click", () => {
+    if (typeof dialog.close === "function") dialog.close();
+    else dialog.hidden = true;
+  });
+
+  $("warrantyPolicyForm")?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const id = $("policyFormId")?.value;
+    const policy_code = $("policyCode")?.value.trim().toUpperCase();
+    const policy_name = $("policyName")?.value.trim();
+    const category = $("policyCategory")?.value;
+    const effective_from = $("policyEffectiveFrom")?.value;
+    const effective_to = $("policyEffectiveTo")?.value;
+    const comprehensive_months = parseInt($("policyComprehensiveMonths")?.value, 10) || 12;
+    const consumables_covered = Boolean($("policyConsumablesCovered")?.checked);
+    const component_warranty_json = $("policyComponentJson")?.value.trim() || null;
+    const terms_and_conditions = $("policyTerms")?.value.trim() || null;
+    const is_active = Boolean($("policyIsActive")?.checked);
+
+    if (component_warranty_json) {
+      try {
+        JSON.parse(component_warranty_json);
+      } catch (err) {
+        if ($("policyModalMsg")) $("policyModalMsg").textContent = "Invalid component warranty JSON syntax. Example: {\"compressor\": 120}";
+        return;
+      }
+    }
+
+    const saveBtn = $("saveWarrantyPolicyBtn");
+    saveBtn.disabled = true;
+    saveBtn.textContent = "Saving…";
+    if ($("policyModalMsg")) $("policyModalMsg").textContent = "";
+
+    try {
+      const payload = {
+        policy_code,
+        policy_name,
+        category,
+        effective_from,
+        effective_to,
+        comprehensive_months,
+        consumables_covered,
+        component_warranty_json,
+        terms_and_conditions,
+        is_active
+      };
+
+      const endpoint = id ? `/api/warranty-amc/policies/${encodeURIComponent(id)}` : "/api/warranty-amc/policies";
+      const method = id ? "PUT" : "POST";
+
+      await generalApi(endpoint, {
+        method,
+        body: JSON.stringify(payload)
+      });
+
+      if (typeof dialog.close === "function") dialog.close();
+      else dialog.hidden = true;
+
+      showToast(`✓ Policy ${policy_code} saved successfully!`, "success");
+      await loadCompanyWarrantyClaims();
+    } catch (err) {
+      if ($("policyModalMsg")) $("policyModalMsg").textContent = err.message || "Failed to save policy.";
+    } finally {
+      saveBtn.disabled = false;
+      saveBtn.textContent = "Save Policy";
     }
   });
 }
@@ -5444,42 +5699,90 @@ function setupOpsTechSignaturePad() {
   }
 }
 
+function anyConsumable(str = "") {
+  return ["gas", "refill", "refrigerant", "filter", "seal", "gasket", "oil", "pipe", "hose", "cleaning"].some(w => (str || "").toLowerCase().includes(w));
+}
+
 function recalculateOpsJobCardTotals() {
   const container = $("opsPartsContainer");
+  const targetReq = requests.find(r => r.id === currentOpsJcRequestId);
+  const isReqWarranty = Boolean(targetReq?.is_under_warranty);
+
   let partsTotal = 0;
+  let coveredPartsTotal = 0;
+  let customerPartsTotal = 0;
+
   if (container) {
     container.querySelectorAll(".ops-part-row").forEach(row => {
       const qty = parseInt(row.querySelector(".part-qty")?.value || "1", 10);
       const price = parseFloat(row.querySelector(".part-price")?.value || "0");
       const lineTotal = (qty || 0) * (price || 0);
       partsTotal += lineTotal;
+
+      const cov = row.querySelector(".part-coverage")?.value;
+      const isPartCovered = (cov === "covered");
+      if (isPartCovered) {
+        coveredPartsTotal += lineTotal;
+      } else {
+        customerPartsTotal += lineTotal;
+      }
+
       const totalDisplay = row.querySelector(".part-line-total");
-      if (totalDisplay) totalDisplay.textContent = `₹${lineTotal.toFixed(2)}`;
+      if (totalDisplay) {
+        totalDisplay.innerHTML = isPartCovered
+          ? `<span class="text-emerald-700 font-bold">₹0.00</span> <span class="line-through text-slate-400 text-[10px]">₹${lineTotal.toFixed(0)}</span>`
+          : `₹${lineTotal.toFixed(2)}`;
+      }
     });
   }
 
-  const labor = parseFloat($("opsJcLaborCost")?.value || "0");
-  const tax = Math.round((partsTotal + labor) * 0.18 * 100) / 100;
-  const grandTotal = Math.round((partsTotal + labor + tax) * 100) / 100;
+  const rawLabor = parseFloat($("opsJcLaborCost")?.value || "0");
+  const customerLabor = (isReqWarranty && coveredPartsTotal > 0 && customerPartsTotal === 0) ? 0.0 : rawLabor;
+  const oemLaborClaim = isReqWarranty ? rawLabor : 0.0;
+
+  const customerSubtotal = customerPartsTotal + customerLabor;
+  const tax = Math.round(customerSubtotal * 0.18 * 100) / 100;
+  const grandTotal = Math.round((customerSubtotal + tax) * 100) / 100;
+  const oemClaimTotal = coveredPartsTotal + oemLaborClaim;
 
   if ($("opsCalcPartsSubtotal")) $("opsCalcPartsSubtotal").textContent = `₹${partsTotal.toFixed(2)}`;
-  if ($("opsCalcLabor")) $("opsCalcLabor").textContent = `₹${labor.toFixed(2)}`;
+  if ($("opsCalcCoveredParts")) $("opsCalcCoveredParts").textContent = `-₹${coveredPartsTotal.toFixed(2)}`;
+  if ($("opsCalcCustomerParts")) $("opsCalcCustomerParts").textContent = `₹${customerPartsTotal.toFixed(2)}`;
+  if ($("opsCalcLabor")) $("opsCalcLabor").textContent = `₹${customerLabor.toFixed(2)} ${isReqWarranty && customerLabor === 0 ? '(Waived under OEM)' : ''}`;
   if ($("opsCalcTax")) $("opsCalcTax").textContent = `₹${tax.toFixed(2)}`;
   if ($("opsCalcTotal")) $("opsCalcTotal").textContent = `₹${grandTotal.toFixed(2)}`;
+  if ($("opsCalcOemClaim")) $("opsCalcOemClaim").textContent = `₹${oemClaimTotal.toFixed(2)} (${isReqWarranty ? 'Claimed to OEM' : 'Customer Payable'})`;
 }
 
-function addOpsPartRow(name = "", qty = 1, price = 0) {
+function addOpsPartRow(name = "", qty = 1, price = 0, isCovered = null, reason = "") {
   const container = $("opsPartsContainer");
   if (!container) return;
+
+  const targetReq = requests.find(r => r.id === currentOpsJcRequestId);
+  const isReqWarranty = Boolean(targetReq?.is_under_warranty);
+
+  if (isCovered === null) {
+    const isConsumable = anyConsumable(name);
+    isCovered = isReqWarranty && !isConsumable;
+  }
+
   const rowId = `part_row_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`;
   const lineTotal = (qty || 1) * (price || 0);
   const rowHtml = `
-    <div id="${rowId}" class="ops-part-row flex items-center gap-2 p-2 bg-slate-50 rounded-xl border border-slate-200">
-      <input type="text" placeholder="Part description (e.g. Capacitor 45uF)" value="${safe(name)}" required class="part-name flex-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs bg-white">
-      <input type="number" min="1" max="50" value="${qty}" class="part-qty w-14 rounded-lg border border-slate-200 px-2 py-1.5 text-xs text-center bg-white">
-      <input type="number" min="0" step="10" placeholder="₹ Price" value="${price}" class="part-price w-20 rounded-lg border border-slate-200 px-2 py-1.5 text-xs text-right bg-white">
-      <span class="part-line-total text-xs font-bold text-slate-800 w-16 text-right">₹${lineTotal.toFixed(2)}</span>
-      <button type="button" class="text-rose-500 hover:text-rose-700 p-1 font-bold" onclick="document.getElementById('${rowId}').remove(); recalculateOpsJobCardTotals();">✕</button>
+    <div id="${rowId}" class="ops-part-row flex flex-col sm:flex-row sm:items-center gap-2 p-2.5 bg-slate-50 rounded-xl border border-slate-200">
+      <div class="flex items-center gap-2 flex-1 min-w-0">
+        <input type="text" placeholder="Part description (e.g. Capacitor 45uF)" value="${safe(name)}" required class="part-name flex-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs bg-white">
+        <input type="number" min="1" max="50" value="${qty}" class="part-qty w-14 rounded-lg border border-slate-200 px-2 py-1.5 text-xs text-center bg-white">
+        <input type="number" min="0" step="10" placeholder="₹ Price" value="${price}" class="part-price w-20 rounded-lg border border-slate-200 px-2 py-1.5 text-xs text-right bg-white">
+      </div>
+      <div class="flex items-center justify-between sm:justify-end gap-2 shrink-0">
+        <select class="part-coverage rounded-lg border border-slate-200 px-2 py-1.5 text-[11px] bg-white font-medium ${isCovered ? 'text-emerald-700' : 'text-slate-700'}">
+          <option value="covered" ${isCovered ? "selected" : ""}>🛡️ OEM Covered (₹0)</option>
+          <option value="billable" ${!isCovered ? "selected" : ""}>💵 Billable (Consumable)</option>
+        </select>
+        <span class="part-line-total text-xs font-bold text-slate-800 w-20 text-right">₹${lineTotal.toFixed(2)}</span>
+        <button type="button" class="text-rose-500 hover:text-rose-700 p-1 font-bold" onclick="document.getElementById('${rowId}').remove(); recalculateOpsJobCardTotals();">✕</button>
+      </div>
     </div>
   `;
   container.insertAdjacentHTML("beforeend", rowHtml);
@@ -5487,6 +5790,20 @@ function addOpsPartRow(name = "", qty = 1, price = 0) {
   if (newRow) {
     newRow.querySelectorAll(".part-qty, .part-price").forEach(inp => {
       inp.addEventListener("input", recalculateOpsJobCardTotals);
+    });
+    newRow.querySelector(".part-coverage")?.addEventListener("change", (e) => {
+      e.target.className = `part-coverage rounded-lg border border-slate-200 px-2 py-1.5 text-[11px] bg-white font-medium ${e.target.value === 'covered' ? 'text-emerald-700' : 'text-slate-700'}`;
+      recalculateOpsJobCardTotals();
+    });
+    newRow.querySelector(".part-name")?.addEventListener("blur", (e) => {
+      if (anyConsumable(e.target.value)) {
+        const sel = newRow.querySelector(".part-coverage");
+        if (sel) {
+          sel.value = "billable";
+          sel.className = "part-coverage rounded-lg border border-slate-200 px-2 py-1.5 text-[11px] bg-white font-medium text-slate-700";
+          recalculateOpsJobCardTotals();
+        }
+      }
     });
   }
   recalculateOpsJobCardTotals();
@@ -5531,7 +5848,7 @@ window.openOpsJobCardModal = async function(requestId) {
     if ($("opsJcWorkSummary")) $("opsJcWorkSummary").value = existingJc.work_summary || "";
     if ($("opsJcLaborCost")) $("opsJcLaborCost").value = existingJc.labor_cost;
     if (Array.isArray(existingJc.parts_used)) {
-      existingJc.parts_used.forEach(p => addOpsPartRow(p.part_name, p.quantity, p.unit_price));
+      existingJc.parts_used.forEach(p => addOpsPartRow(p.part_name, p.quantity, p.unit_price, p.is_covered, p.non_coverage_reason));
     }
     recalculateOpsJobCardTotals();
 
@@ -5558,7 +5875,7 @@ window.openOpsJobCardModal = async function(requestId) {
       $("opsJcStatusBadge").className = "text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700";
     }
     if ($("opsJcWorkSummary")) $("opsJcWorkSummary").value = `Inspected ${req.appliance_name}. Completed diagnosis and testing.`;
-    if ($("opsJcLaborCost")) $("opsJcLaborCost").value = "350";
+    if ($("opsJcLaborCost")) $("opsJcLaborCost").value = req.is_under_warranty ? "0" : "350";
     if ($("opsCustomerSigReadout")) $("opsCustomerSigReadout").classList.add("hidden");
     if ($("opsOtpSection")) $("opsOtpSection").classList.remove("hidden");
     if ($("saveOpsJcBtn")) $("saveOpsJcBtn").textContent = "Generate & Complete Job";
@@ -5596,12 +5913,16 @@ async function submitOpsJobCard(e) {
       const name = row.querySelector(".part-name")?.value.trim();
       const qty = parseInt(row.querySelector(".part-qty")?.value || "1", 10);
       const price = parseFloat(row.querySelector(".part-price")?.value || "0");
+      const isPartCovered = (row.querySelector(".part-coverage")?.value === "covered");
       if (name) {
         parts_used.push({
           part_name: name,
           quantity: qty || 1,
           unit_price: price || 0,
-          total_price: (qty || 1) * (price || 0)
+          total_price: (qty || 1) * (price || 0),
+          is_covered: isPartCovered,
+          coverage_type: isPartCovered ? "OEM_WARRANTY" : "CUSTOMER_PAYABLE",
+          non_coverage_reason: isPartCovered ? null : (anyConsumable(name) ? "Consumable / Wear & Tear" : "Non-warranty item")
         });
       }
     });
@@ -6726,6 +7047,7 @@ function initEvents() {
   initRestockModalEvents();
   initClaimReviewModalEvents();
   initWarrantyVerificationDialogEvents();
+  initWarrantyPolicyDialogEvents();
   initBranchDetailModalEvents();
   initCustomerDetailModalEvents();
 }
@@ -7096,17 +7418,17 @@ window.openTechEstimateModal = async function(requestId) {
       <div class="grid grid-cols-2 gap-3 pt-2">
         <div>
           <label class="block text-xs font-semibold text-slate-700 mb-1">Diagnostic / Inspection Fee (₹)</label>
-          <input type="number" id="techEstInspectionFee" class="w-full rounded-xl border border-slate-200 p-2.5 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500" value="${existingEst?.inspection_fee ?? 299.0}" oninput="window.calcTechEstimateTotal()">
+          <input type="number" id="techEstInspectionFee" class="w-full rounded-xl border border-slate-200 p-2.5 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500" value="${existingEst?.inspection_fee ?? (req.is_under_warranty ? 0.0 : 299.0)}" oninput="window.calcTechEstimateTotal()">
         </div>
         <div>
           <label class="block text-xs font-semibold text-slate-700 mb-1">Labor / Service Charges (₹)</label>
-          <input type="number" id="techEstLaborCost" class="w-full rounded-xl border border-slate-200 p-2.5 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500" value="${existingEst?.labor_estimate ?? 350.0}" oninput="window.calcTechEstimateTotal()">
+          <input type="number" id="techEstLaborCost" class="w-full rounded-xl border border-slate-200 p-2.5 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500" value="${existingEst?.labor_estimate ?? (req.is_under_warranty ? 0.0 : 350.0)}" oninput="window.calcTechEstimateTotal()">
         </div>
       </div>
 
-      <div class="bg-amber-50/80 p-3.5 rounded-xl border border-amber-200 flex items-center justify-between">
-        <span class="text-xs font-bold text-amber-950">Total Customer Estimate:</span>
-        <span id="techEstTotalDisplay" class="text-lg font-mono font-extrabold text-amber-900">₹0.00</span>
+      <div class="bg-amber-50/80 p-3.5 rounded-xl border border-amber-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+        <span class="text-xs font-bold text-amber-950">Estimated Billable Summary:</span>
+        <div id="techEstTotalDisplay" class="text-sm font-mono font-bold text-amber-900 text-right">₹0.00</div>
       </div>
 
       <div>
@@ -7126,41 +7448,87 @@ window.openTechEstimateModal = async function(requestId) {
   modal.showModal();
 
   if (existingEst?.parts && existingEst.parts.length > 0) {
-    existingEst.parts.forEach(p => window.addTechEstimatePartRow(p.part_name, p.part_code, p.quantity, p.unit_price));
+    existingEst.parts.forEach(p => window.addTechEstimatePartRow(p.part_name, p.part_code, p.quantity, p.unit_price, p.is_covered));
   } else {
-    window.addTechEstimatePartRow("Thermostat / Sensor", "PART-STD-01", 1, 450);
+    window.addTechEstimatePartRow("Thermostat / Sensor", "PART-STD-01", 1, 450, req.is_under_warranty);
   }
   window.calcTechEstimateTotal();
 };
 
-window.addTechEstimatePartRow = function(name = "", code = "", qty = 1, price = 0) {
+window.addTechEstimatePartRow = function(name = "", code = "", qty = 1, price = 0, isCovered = null) {
   const container = $("techEstPartsContainer");
   if (!container) return;
+
+  const req = requests.find(r => r.id === currentEstimateRequestId);
+  if (isCovered === null) {
+    const isConsumable = anyConsumable(name);
+    isCovered = Boolean(req?.is_under_warranty) && !isConsumable;
+  }
+
   const row = document.createElement("div");
-  row.className = "flex items-center gap-2 bg-slate-50 p-2 rounded-xl border border-slate-200 text-xs part-row";
+  row.className = "flex flex-col sm:flex-row sm:items-center gap-2 bg-slate-50 p-2 rounded-xl border border-slate-200 text-xs part-row";
   row.innerHTML = `
-    <input type="text" placeholder="Part name" class="flex-1 rounded-lg border border-slate-200 p-1.5 text-xs text-slate-800 est-part-name" value="${safe(name)}">
-    <input type="text" placeholder="Code" class="w-24 rounded-lg border border-slate-200 p-1.5 text-xs text-slate-800 est-part-code" value="${safe(code)}">
+    <input type="text" placeholder="Part name" class="flex-1 rounded-lg border border-slate-200 p-1.5 text-xs text-slate-800 est-part-name" value="${safe(name)}" onblur="window.checkEstPartConsumable(this)">
+    <input type="text" placeholder="Code" class="w-20 rounded-lg border border-slate-200 p-1.5 text-xs text-slate-800 est-part-code" value="${safe(code)}">
     <input type="number" min="1" placeholder="Qty" class="w-14 rounded-lg border border-slate-200 p-1.5 text-xs text-center est-part-qty" value="${qty}" oninput="window.calcTechEstimateTotal()">
     <input type="number" min="0" placeholder="Price" class="w-20 rounded-lg border border-slate-200 p-1.5 text-xs text-right est-part-price" value="${price}" oninput="window.calcTechEstimateTotal()">
+    <select class="est-part-covered rounded-lg border border-slate-200 p-1.5 text-[11px] bg-white font-medium ${isCovered ? 'text-emerald-700' : 'text-slate-700'}" onchange="this.className = 'est-part-covered rounded-lg border border-slate-200 p-1.5 text-[11px] bg-white font-medium ' + (this.value === 'covered' ? 'text-emerald-700' : 'text-slate-700'); window.calcTechEstimateTotal();">
+      <option value="covered" ${isCovered ? "selected" : ""}>🛡️ OEM Covered (₹0)</option>
+      <option value="billable" ${!isCovered ? "selected" : ""}>💵 Billable (Consumable)</option>
+    </select>
     <button type="button" onclick="this.closest('.part-row').remove(); window.calcTechEstimateTotal();" class="text-rose-500 hover:text-rose-700 font-bold px-2 py-1">✕</button>
   `;
   container.appendChild(row);
   window.calcTechEstimateTotal();
 };
 
+window.checkEstPartConsumable = function(inputEl) {
+  if (anyConsumable(inputEl.value)) {
+    const sel = inputEl.closest(".part-row")?.querySelector(".est-part-covered");
+    if (sel) {
+      sel.value = "billable";
+      sel.className = "est-part-covered rounded-lg border border-slate-200 p-1.5 text-[11px] bg-white font-medium text-slate-700";
+      window.calcTechEstimateTotal();
+    }
+  }
+};
+
 window.calcTechEstimateTotal = function() {
-  let partsTotal = 0;
+  const req = requests.find(r => r.id === currentEstimateRequestId);
+  const isWarranty = Boolean(req?.is_under_warranty);
+
+  let coveredPartsTotal = 0;
+  let customerPartsTotal = 0;
+
   document.querySelectorAll("#techEstPartsContainer .part-row").forEach(row => {
     const qty = parseFloat(row.querySelector(".est-part-qty")?.value || 0);
     const price = parseFloat(row.querySelector(".est-part-price")?.value || 0);
-    partsTotal += (qty * price);
+    const isCovered = (row.querySelector(".est-part-covered")?.value === "covered");
+    const lineTotal = (qty * price);
+    if (isCovered) {
+      coveredPartsTotal += lineTotal;
+    } else {
+      customerPartsTotal += lineTotal;
+    }
   });
+
   const insp = parseFloat($("techEstInspectionFee")?.value || 0);
   const labor = parseFloat($("techEstLaborCost")?.value || 0);
-  const total = partsTotal + insp + labor;
+
+  const customerLabor = (isWarranty && coveredPartsTotal > 0 && customerPartsTotal === 0) ? 0.0 : labor;
+  const customerInsp = isWarranty ? 0.0 : insp;
+  const custTotal = customerPartsTotal + customerLabor + customerInsp;
+  const totalParts = coveredPartsTotal + customerPartsTotal;
+  const grandTotal = totalParts + labor + insp;
+
   if ($("techEstTotalDisplay")) {
-    $("techEstTotalDisplay").textContent = `₹${total.toFixed(2)}`;
+    $("techEstTotalDisplay").innerHTML = `
+      <div class="space-y-0.5">
+        <div>Total: ₹${grandTotal.toFixed(2)}</div>
+        <div class="text-xs font-semibold text-slate-600">Customer Payable: <strong class="text-blue-700">₹${custTotal.toFixed(2)}</strong></div>
+        <div class="text-[11px] font-semibold text-emerald-700">OEM Claim Share: <strong>₹${coveredPartsTotal.toFixed(2)}</strong></div>
+      </div>
+    `;
   }
 };
 
@@ -7172,13 +7540,17 @@ window.submitTechEstimate = async function() {
     const code = row.querySelector(".est-part-code")?.value.trim() || "STD";
     const qty = parseInt(row.querySelector(".est-part-qty")?.value || 1, 10);
     const price = parseFloat(row.querySelector(".est-part-price")?.value || 0);
+    const isCovered = (row.querySelector(".est-part-covered")?.value === "covered");
     if (name) {
       parts.push({
         part_name: name,
         part_code: code,
         quantity: qty,
         unit_price: price,
-        total_price: qty * price
+        total_price: qty * price,
+        is_covered: isCovered,
+        coverage_type: isCovered ? "OEM_WARRANTY" : "CUSTOMER_PAYABLE",
+        non_coverage_reason: isCovered ? null : (anyConsumable(name) ? "Consumable / Wear & Tear" : "Non-warranty item")
       });
     }
   });

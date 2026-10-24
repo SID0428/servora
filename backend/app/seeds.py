@@ -1,4 +1,5 @@
 import json
+from datetime import date
 from sqlalchemy import inspect, text
 from sqlalchemy.orm import Session
 from app.db.session import engine, Base, SessionLocal
@@ -8,7 +9,7 @@ from app.db.models import (
     SparePartModel, PartRequestModel, FranchiseInventoryModel, InventoryTransactionModel,
     WarrantyClaimModel, AMCPlanModel, AMCSubscriptionModel,
     EstimateModel, EscalationModel, NotificationLogModel, AuthOtpModel,
-    CompanyApplianceCatalogModel
+    CompanyApplianceCatalogModel, CompanyWarrantyPolicyModel
 )
 
 def seed_database(db: Session):
@@ -24,6 +25,12 @@ def seed_database(db: Session):
     if "company_id" not in sp_columns:
         with engine.begin() as connection:
             connection.execute(text("ALTER TABLE spare_parts ADD COLUMN company_id VARCHAR(64) NULL"))
+    if "part_type" not in sp_columns:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE spare_parts ADD COLUMN part_type VARCHAR(32) NOT NULL DEFAULT 'functional'"))
+    if "is_warranty_eligible" not in sp_columns:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE spare_parts ADD COLUMN is_warranty_eligible BOOLEAN NOT NULL DEFAULT 1"))
 
     user_columns = {column["name"] for column in inspect(engine).get_columns("users")}
     if "password_hash" not in user_columns:
@@ -73,6 +80,15 @@ def seed_database(db: Session):
     if "verified_by" not in appliance_columns:
         with engine.begin() as connection:
             connection.execute(text("ALTER TABLE appliances ADD COLUMN verified_by VARCHAR(64) NULL"))
+    if "matched_policy_id" not in appliance_columns:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE appliances ADD COLUMN matched_policy_id VARCHAR(64) NULL"))
+    if "matched_policy_name" not in appliance_columns:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE appliances ADD COLUMN matched_policy_name VARCHAR(128) NULL"))
+    if "policy_snapshot_json" not in appliance_columns:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE appliances ADD COLUMN policy_snapshot_json TEXT NULL"))
 
     req_columns = {column["name"] for column in inspect(engine).get_columns("service_requests")}
     if "pincode" not in req_columns:
@@ -164,6 +180,12 @@ def seed_database(db: Session):
     if "is_warranty_covered" not in jc_columns:
         with engine.begin() as connection:
             connection.execute(text("ALTER TABLE job_cards ADD COLUMN is_warranty_covered BOOLEAN DEFAULT 0"))
+    if "covered_parts_cost" not in jc_columns:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE job_cards ADD COLUMN covered_parts_cost FLOAT DEFAULT 0.0"))
+    if "customer_parts_cost" not in jc_columns:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE job_cards ADD COLUMN customer_parts_cost FLOAT DEFAULT 0.0"))
 
     # 1. Seed Operational Users if not present
     if not db.query(UserModel).filter(UserModel.role != "customer").first():
@@ -488,5 +510,69 @@ def seed_database(db: Session):
                 ),
             ]
             db.add_all(catalog_items)
+            db.commit()
+
+    # 9. Seed Fiscal Year Warranty Policies for Brand Companies
+    for comp in companies:
+        existing_pol = db.query(CompanyWarrantyPolicyModel).filter(CompanyWarrantyPolicyModel.company_id == comp.id).first()
+        if not existing_pol:
+            comp_brand = comp.name.strip()
+            policies = [
+                CompanyWarrantyPolicyModel(
+                    id=f"pol_{comp.id[:8]}_fy2425",
+                    company_id=comp.id,
+                    policy_code=f"FY24-25-{comp.id[:4].upper()}",
+                    policy_name=f"{comp_brand} FY 2024-25 Standard Warranty Policy",
+                    category="All",
+                    effective_from=date(2024, 4, 1),
+                    effective_to=date(2025, 3, 31),
+                    comprehensive_months=12,
+                    component_warranty_json=json.dumps({
+                        "compressor": 60,
+                        "motor": 60,
+                        "pcb": 24
+                    }),
+                    consumables_covered=False,
+                    terms_and_conditions="Covers 1 year comprehensive product warranty. Functional parts only. Consumables like gas recharge, rubber gaskets, and filters are payable by customer. Compressor and motor have 5-year part warranty.",
+                    is_active=True
+                ),
+                CompanyWarrantyPolicyModel(
+                    id=f"pol_{comp.id[:8]}_fy2526",
+                    company_id=comp.id,
+                    policy_code=f"FY25-26-{comp.id[:4].upper()}",
+                    policy_name=f"{comp_brand} FY 2025-26 Enhanced Warranty Policy",
+                    category="All",
+                    effective_from=date(2025, 4, 1),
+                    effective_to=date(2026, 3, 31),
+                    comprehensive_months=24,
+                    component_warranty_json=json.dumps({
+                        "compressor": 120,
+                        "motor": 120,
+                        "pcb": 60
+                    }),
+                    consumables_covered=False,
+                    terms_and_conditions="Covers 2 years comprehensive warranty. Inverter compressor and direct-drive motor covered for 10 years. Inverter PCB covered for 5 years. Consumables payable by customer.",
+                    is_active=True
+                ),
+                CompanyWarrantyPolicyModel(
+                    id=f"pol_{comp.id[:8]}_fy2627",
+                    company_id=comp.id,
+                    policy_code=f"FY26-27-{comp.id[:4].upper()}",
+                    policy_name=f"{comp_brand} FY 2026-27 Comprehensive Pro Policy",
+                    category="All",
+                    effective_from=date(2026, 4, 1),
+                    effective_to=None,
+                    comprehensive_months=24,
+                    component_warranty_json=json.dumps({
+                        "compressor": 120,
+                        "motor": 120,
+                        "pcb": 60
+                    }),
+                    consumables_covered=True,
+                    terms_and_conditions="Includes 2 years comprehensive warranty plus 1 complimentary gas recharge or filter cleaning during active comprehensive term. 10 years on compressor and motor.",
+                    is_active=True
+                ),
+            ]
+            db.add_all(policies)
             db.commit()
 

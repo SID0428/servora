@@ -201,6 +201,18 @@
 
       <input type="hidden" id="verifyApplianceId" value="">
 
+      <!-- Matched Fiscal Policy Snapshot Banner -->
+      <div id="verifyPolicyBanner" class="p-3 bg-blue-50/90 border border-blue-200 rounded-2xl flex items-start gap-2.5">
+        <span class="text-xl">📜</span>
+        <div class="text-xs">
+          <div class="font-bold text-blue-900 flex items-center gap-2">
+            <span id="verifyPolicyTitle">Matched Policy: Standard OEM Warranty</span>
+            <span id="verifyPolicyCodeBadge" class="text-[10px] font-mono px-2 py-0.5 rounded-full bg-blue-200/80 text-blue-900 font-bold"></span>
+          </div>
+          <div class="text-blue-700 mt-0.5" id="verifyPolicyDetails">Loading policy coverage...</div>
+        </div>
+      </div>
+
       <!-- Grid: Left side details, Right side invoice preview -->
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
         <!-- Details Card -->
@@ -274,6 +286,100 @@
           <button type="button" class="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition shadow-sm" id="verifyApproveBtn">✓ Approve OEM Warranty</button>
         </div>
       </div>
+    </div>
+  </dialog>
+
+  <!-- Fiscal Year Warranty Policy Modal for Brand / Company Admin -->
+  <dialog id="companyWarrantyPolicyDialog" class="w-[min(94vw,620px)] rounded-3xl border-0 p-0 shadow-2xl overflow-hidden bg-white">
+    <div class="p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+      <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+        <div class="flex items-center gap-2.5">
+          <span class="text-2xl">📜</span>
+          <div>
+            <h3 class="font-display text-base font-bold text-slate-900" id="policyModalTitle">Create Fiscal Year Warranty Policy</h3>
+            <p class="text-xs text-slate-400">Configure time-window coverage and grandfathered terms for appliances.</p>
+          </div>
+        </div>
+        <button type="button" id="closeWarrantyPolicyDialog" class="rounded-xl p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700 text-lg leading-none" aria-label="Close">✕</button>
+      </div>
+
+      <form id="warrantyPolicyForm" class="space-y-3.5 text-xs">
+        <input type="hidden" id="policyFormId" value="">
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label class="block font-semibold text-slate-700 mb-1">Policy Code <span class="text-rose-500">*</span></label>
+            <input type="text" id="policyCode" required placeholder="e.g. FY26-27-PRO" class="w-full rounded-xl border border-slate-200 px-3 py-2 font-mono uppercase font-semibold text-xs bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20">
+          </div>
+          <div>
+            <label class="block font-semibold text-slate-700 mb-1">Appliance Category</label>
+            <select id="policyCategory" class="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs bg-white text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20">
+              <option value="All">All Categories</option>
+              <option value="Refrigerator">Refrigerator</option>
+              <option value="Washing Machine">Washing Machine</option>
+              <option value="Air Conditioner">Air Conditioner</option>
+              <option value="Television">Television</option>
+              <option value="Microwave Oven">Microwave Oven</option>
+              <option value="Water Purifier">Water Purifier</option>
+            </select>
+          </div>
+        </div>
+
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">Policy Name <span class="text-rose-500">*</span></label>
+          <input type="text" id="policyName" required placeholder="e.g. Samsung FY 2026-27 Comprehensive Pro Policy" class="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20">
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label class="block font-semibold text-slate-700 mb-1">Effective From (Purchase Date) <span class="text-rose-500">*</span></label>
+            <input type="date" id="policyEffectiveFrom" required class="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs bg-white text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20">
+          </div>
+          <div>
+            <label class="block font-semibold text-slate-700 mb-1">Effective To (Purchase Date) <span class="text-rose-500">*</span></label>
+            <input type="date" id="policyEffectiveTo" required class="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs bg-white text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20">
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label class="block font-semibold text-slate-700 mb-1">Comprehensive Warranty (Months) <span class="text-rose-500">*</span></label>
+            <input type="number" id="policyComprehensiveMonths" min="1" max="120" value="12" required class="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs bg-white text-slate-800 font-bold focus:outline-none focus:ring-2 focus:ring-blue-500/20">
+          </div>
+          <div class="flex flex-col justify-end">
+            <label class="inline-flex items-center gap-2 cursor-pointer p-2 rounded-xl bg-slate-50 border border-slate-200">
+              <input type="checkbox" id="policyConsumablesCovered" class="rounded text-blue-600 focus:ring-0">
+              <span class="font-medium text-slate-700">Consumables Covered under Warranty</span>
+            </label>
+          </div>
+        </div>
+
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">
+            Component-Specific Warranties (JSON)
+            <span class="text-slate-400 font-normal">e.g. {"compressor": 120, "motor": 60, "pcb": 36}</span>
+          </label>
+          <input type="text" id="policyComponentJson" placeholder='{"compressor": 120, "motor": 60}' value='{"compressor": 120, "motor": 60}' class="w-full rounded-xl border border-slate-200 px-3 py-2 font-mono text-xs bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20">
+        </div>
+
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">Terms & Conditions</label>
+          <textarea id="policyTerms" rows="2" placeholder="Exclusions, invoice verification criteria, physical damage rules..." class="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20"></textarea>
+        </div>
+
+        <div class="flex items-center justify-between pt-1">
+          <label class="inline-flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" id="policyIsActive" checked class="rounded text-blue-600 focus:ring-0">
+            <span class="font-semibold text-slate-700">Active Policy</span>
+          </label>
+          <p id="policyModalMsg" class="text-xs text-rose-600 font-semibold"></p>
+        </div>
+
+        <div class="pt-3 border-t border-slate-100 flex items-center justify-end gap-2.5">
+          <button type="button" id="cancelWarrantyPolicyBtn" class="px-4 py-2 rounded-xl text-slate-600 hover:bg-slate-100 text-xs font-bold transition">Cancel</button>
+          <button type="submit" id="saveWarrantyPolicyBtn" class="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition shadow-sm">Save Policy</button>
+        </div>
+      </form>
     </div>
   </dialog>
 

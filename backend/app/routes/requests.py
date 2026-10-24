@@ -65,6 +65,8 @@ def format_job_card(jc: JobCardModel) -> JobCardResponse:
         inspection_fee=getattr(jc, "inspection_fee", 299.0) if getattr(jc, "inspection_fee", 299.0) is not None else 299.0,
         labor_cost=jc.labor_cost,
         parts_cost=jc.parts_cost,
+        covered_parts_cost=getattr(jc, "covered_parts_cost", 0.0) or 0.0,
+        customer_parts_cost=getattr(jc, "customer_parts_cost", 0.0) or 0.0,
         discount_amount=getattr(jc, "discount_amount", 0.0) if getattr(jc, "discount_amount", 0.0) is not None else 0.0,
         cgst_amount=getattr(jc, "cgst_amount", 0.0) if getattr(jc, "cgst_amount", 0.0) is not None else round(jc.tax_amount / 2, 2),
         sgst_amount=getattr(jc, "sgst_amount", 0.0) if getattr(jc, "sgst_amount", 0.0) is not None else round(jc.tax_amount / 2, 2),
@@ -731,42 +733,70 @@ def create_job_card(request_id: str, payload: JobCardCreatePayload, request: Req
     else:
         tech_id = req.technician_id or "tech-default"
 
-    # Phase 2 Price Engine (FR-BILL-001)
+    # Phase 2 Price Engine (FR-BILL-001) with Item-Level Warranty Split
     is_warranty_covered = bool(payload.is_warranty_covered or getattr(req, "is_under_warranty", False))
-    raw_parts_cost = round(sum(p.total_price if p.total_price else (p.quantity * p.unit_price) for p in payload.parts_used), 2)
     raw_labor_cost = round(payload.labor_cost, 2)
     raw_inspection_fee = round(payload.inspection_fee if payload.inspection_fee is not None else 299.0, 2)
 
+    parts_used_list = []
+    covered_parts_cost = 0.0
+    customer_parts_cost = 0.0
+    covered_parts_for_claim = []
+
+    for p in payload.parts_used:
+        p_total = round(p.total_price if p.total_price else (p.quantity * p.unit_price), 2)
+        p_dict = p.model_dump() if hasattr(p, "model_dump") else p.dict()
+        p_dict["total_price"] = p_total
+
+        is_part_covered = getattr(p, "is_covered", None)
+        if is_part_covered is None:
+            is_consumable = any(word in (p.part_name or "").lower() for word in ["gas", "filter", "gasket", "seal", "cleaning", "pipe"])
+            is_part_covered = is_warranty_covered and not is_consumable
+
+        p_dict["is_covered"] = bool(is_part_covered)
+        if is_part_covered:
+            p_dict["coverage_type"] = "oem_warranty"
+            p_dict["non_coverage_reason"] = None
+            covered_parts_cost += p_total
+            covered_parts_for_claim.append(p_dict)
+        else:
+            p_dict["coverage_type"] = "customer_billable"
+            p_dict["non_coverage_reason"] = getattr(p, "non_coverage_reason", None) or ("Consumable / Wear & Tear" if any(w in (p.part_name or "").lower() for w in ["gas", "filter", "seal"]) else "Out of Warranty / Excluded")
+            customer_parts_cost += p_total
+
+        parts_used_list.append(p_dict)
+
+    covered_parts_cost = round(covered_parts_cost, 2)
+    customer_parts_cost = round(customer_parts_cost, 2)
+    raw_parts_cost = round(covered_parts_cost + customer_parts_cost, 2)
+
     if is_warranty_covered:
         inspection_fee = 0.0
-        labor_cost = 0.0
-        parts_cost = 0.0
-        discount_amount = 0.0
-        subtotal = 0.0
-        cgst_amount = 0.0
-        sgst_amount = 0.0
-        tax_amount = 0.0
-        total_amount = 0.0
+        customer_labor = 0.0 if covered_parts_cost > 0 and customer_parts_cost == 0 else raw_labor_cost
     else:
         inspection_fee = raw_inspection_fee
-        labor_cost = raw_labor_cost
-        parts_cost = raw_parts_cost
-        discount_amount = round(payload.discount_amount or 0.0, 2)
-        subtotal = max(0.0, round(inspection_fee + labor_cost + parts_cost - discount_amount, 2))
-        cgst_amount = round(subtotal * 0.09, 2)
-        sgst_amount = round(subtotal * 0.09, 2)
-        tax_amount = round(cgst_amount + sgst_amount, 2)
-        total_amount = round(subtotal + tax_amount, 2)
+        customer_labor = raw_labor_cost
+
+    labor_cost = customer_labor
+    parts_cost = customer_parts_cost
+    discount_amount = round(payload.discount_amount or 0.0, 2)
+    customer_subtotal = max(0.0, round(inspection_fee + labor_cost + parts_cost - discount_amount, 2))
+    cgst_amount = round(customer_subtotal * 0.09, 2)
+    sgst_amount = round(customer_subtotal * 0.09, 2)
+    tax_amount = round(cgst_amount + sgst_amount, 2)
+    total_amount = round(customer_subtotal + tax_amount, 2)
 
     now_str = datetime.now().strftime("%d %b %Y, %I:%M %p")
 
     jc = db.query(JobCardModel).filter(JobCardModel.request_id == request_id).first()
     if jc:
         jc.work_summary = payload.work_summary
-        jc.parts_used_json = json.dumps([(p.model_dump() if hasattr(p, "model_dump") else p.dict()) for p in payload.parts_used])
+        jc.parts_used_json = json.dumps(parts_used_list)
         jc.inspection_fee = inspection_fee
         jc.labor_cost = labor_cost
-        jc.parts_cost = parts_cost
+        jc.parts_cost = raw_parts_cost
+        jc.covered_parts_cost = covered_parts_cost
+        jc.customer_parts_cost = customer_parts_cost
         jc.discount_amount = discount_amount
         jc.cgst_amount = cgst_amount
         jc.sgst_amount = sgst_amount
@@ -784,10 +814,12 @@ def create_job_card(request_id: str, payload: JobCardCreatePayload, request: Req
             technician_id=tech_id,
             customer_id=req.customer_id,
             work_summary=payload.work_summary,
-            parts_used_json=json.dumps([(p.model_dump() if hasattr(p, "model_dump") else p.dict()) for p in payload.parts_used]),
+            parts_used_json=json.dumps(parts_used_list),
             inspection_fee=inspection_fee,
             labor_cost=labor_cost,
-            parts_cost=parts_cost,
+            parts_cost=raw_parts_cost,
+            covered_parts_cost=covered_parts_cost,
+            customer_parts_cost=customer_parts_cost,
             discount_amount=discount_amount,
             cgst_amount=cgst_amount,
             sgst_amount=sgst_amount,
@@ -845,21 +877,22 @@ def create_job_card(request_id: str, payload: JobCardCreatePayload, request: Req
                     )
                     db.add(txn)
 
-    # Phase 2 FR-WAR-002: Automatic OEM Warranty Claim creation
-    if is_warranty_covered and (raw_parts_cost > 0 or raw_labor_cost > 0) and req.company_id:
+    # Phase 2 FR-WAR-002: Automatic OEM Warranty Claim creation strictly for COVERED parts
+    if is_warranty_covered and (covered_parts_cost > 0 or raw_labor_cost > 0) and req.company_id and covered_parts_for_claim:
         claim_id = f"CLM-{req.id.replace('SR-', '')}"
         existing_claim = db.query(WarrantyClaimModel).filter(WarrantyClaimModel.id == claim_id).first()
         if not existing_claim:
+            oem_labor_share = raw_labor_cost if customer_labor == 0 else 0.0
             w_claim = WarrantyClaimModel(
                 id=claim_id,
                 request_id=req.id,
                 company_id=req.company_id,
                 branch_id=req.branch_id or "branch_1",
                 appliance_id=req.appliance_id,
-                claim_amount=round(raw_parts_cost + raw_labor_cost, 2),
-                parts_claimed_json=json.dumps([(p.model_dump() if hasattr(p, "model_dump") else p.dict()) for p in payload.parts_used]),
+                claim_amount=round(covered_parts_cost + oem_labor_share, 2),
+                parts_claimed_json=json.dumps(covered_parts_for_claim),
                 status="Pending Review",
-                claim_notes=f"OEM Warranty reimbursement claim for {req.appliance_name} ({req.model_no}). Consumer billed ₹0.00.",
+                claim_notes=f"OEM Warranty reimbursement for {len(covered_parts_for_claim)} covered part(s) (₹{covered_parts_cost:.2f}). Consumer billed ₹{total_amount:.2f} for consumables/non-covered parts.",
                 submitted_at=now_str
             )
             db.add(w_claim)
@@ -873,8 +906,11 @@ def create_job_card(request_id: str, payload: JobCardCreatePayload, request: Req
         jc.customer_status = "accepted"
         req.status = "Completed"
         req.status_badge = "Completed"
-        if is_warranty_covered or total_amount == 0:
+        if total_amount == 0:
             req.payment_status = "Paid (Warranty Covered)"
+            req.paid_at = now_str
+        elif is_warranty_covered and customer_parts_cost > 0:
+            req.payment_status = "Paid (Warranty + Consumables)"
             req.paid_at = now_str
         elif not req.payment_status or req.payment_status == "Pending":
             req.payment_status = "Paid"

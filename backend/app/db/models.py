@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Float, Integer, Boolean, Text, ForeignKey, DateTime, UniqueConstraint
+from sqlalchemy import Column, String, Float, Integer, Boolean, Text, ForeignKey, DateTime, Date, UniqueConstraint
 from datetime import datetime
 from app.db.session import Base
 
@@ -121,6 +121,9 @@ class ApplianceModel(Base):
     warranty_rejection_reason = Column(String(256), nullable=True)
     verified_at = Column(DateTime, nullable=True)
     verified_by = Column(String(64), nullable=True)
+    matched_policy_id = Column(String(64), nullable=True)
+    matched_policy_name = Column(String(128), nullable=True)
+    policy_snapshot_json = Column(Text, nullable=True)
     amc_active = Column(Boolean, default=False)
     amc_plan_name = Column(String(64), nullable=True)
     amc_end_date = Column(String(32), nullable=True)
@@ -188,6 +191,8 @@ class JobCardModel(Base):
     inspection_fee = Column(Float, nullable=False, default=299.0)
     labor_cost = Column(Float, nullable=False, default=0.0)
     parts_cost = Column(Float, nullable=False, default=0.0)
+    covered_parts_cost = Column(Float, nullable=False, default=0.0)
+    customer_parts_cost = Column(Float, nullable=False, default=0.0)
     discount_amount = Column(Float, nullable=False, default=0.0)
     cgst_amount = Column(Float, nullable=False, default=0.0)
     sgst_amount = Column(Float, nullable=False, default=0.0)
@@ -226,6 +231,8 @@ class SparePartModel(Base):
     hsn_code = Column(String(32), nullable=False, default="8418")
     description = Column(Text, nullable=True)
     stock_quantity = Column(Integer, default=0, nullable=False)
+    part_type = Column(String(32), default="functional", nullable=False) # functional, consumable, wear_and_tear, accessory
+    is_warranty_eligible = Column(Boolean, default=True, nullable=False)
     company_id = Column(String(64), ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
     is_active = Column(Boolean, default=True)
 
@@ -370,5 +377,22 @@ class CompanyApplianceCatalogModel(Base):
     model_numbers = Column(Text, nullable=False) # JSON-encoded list of model strings
     warranty_months = Column(Integer, default=12, nullable=False)
     description = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+class CompanyWarrantyPolicyModel(Base):
+    __tablename__ = "company_warranty_policies"
+
+    id = Column(String(64), primary_key=True, index=True) # e.g. POL-SAMS-FY2526
+    company_id = Column(String(64), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    policy_code = Column(String(64), index=True, nullable=False) # e.g. FY25-26-AC
+    policy_name = Column(String(128), nullable=False) # e.g. FY 2025-26 Split AC Standard Warranty
+    category = Column(String(64), nullable=False, default="All") # Air Conditioner, Refrigerator, or All
+    effective_from = Column(Date, nullable=False) # e.g. 2025-04-01
+    effective_to = Column(Date, nullable=True) # e.g. 2026-03-31, None means ongoing
+    comprehensive_months = Column(Integer, default=12, nullable=False)
+    component_warranty_json = Column(Text, default="{}", nullable=False) # e.g. {"compressor": 120, "pcb": 60, "motor": 120}
+    consumables_covered = Column(Boolean, default=False, nullable=False)
+    terms_and_conditions = Column(Text, nullable=True)
+    is_active = Column(Boolean, default=True, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
