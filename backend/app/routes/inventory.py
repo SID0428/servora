@@ -122,15 +122,7 @@ def get_company_inventory_parts(
 
     query = db.query(SparePartModel).filter(SparePartModel.is_active == True)
     if user.role == "company":
-        comp_name = user.name or ""
-        query = query.filter(
-            or_(
-                SparePartModel.company_id == user.id,
-                SparePartModel.company_id == None,
-                SparePartModel.brand.ilike(f"%{comp_name}%"),
-                SparePartModel.brand.ilike("%universal%")
-            )
-        )
+        query = query.filter(SparePartModel.company_id == user.id)
     if category and category.lower() != "all":
         query = query.filter(SparePartModel.category.ilike(f"%{category}%"))
     if search:
@@ -556,22 +548,9 @@ def get_branch_inventory(
         SparePartModel, FranchiseInventoryModel.part_id == SparePartModel.id
     ).filter(FranchiseInventoryModel.branch_id == branch_id).all()
 
-    # If warehouse is empty, initialize from catalog with default stock
+    # If warehouse is empty, return empty list without auto-populating
     if not items:
-        all_parts = db.query(SparePartModel).all()
-        for p in all_parts:
-            inv = FranchiseInventoryModel(
-                id=f"inv_{uuid.uuid4().hex[:10]}",
-                branch_id=branch_id,
-                part_id=p.id,
-                quantity_available=10,
-                reorder_level=4
-            )
-            db.add(inv)
-        db.commit()
-        items = db.query(FranchiseInventoryModel, SparePartModel).join(
-            SparePartModel, FranchiseInventoryModel.part_id == SparePartModel.id
-        ).filter(FranchiseInventoryModel.branch_id == branch_id).all()
+        return []
 
     result = []
     for inv, part in items:

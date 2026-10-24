@@ -8,12 +8,13 @@
       try {
         var u = null;
         try {
-          var uRole = localStorage.getItem("servsure_user_technician");
+          var uRole = localStorage.getItem("servsure_user_technician") || localStorage.getItem("servora_user_technician");
           if (uRole) u = JSON.parse(uRole);
         } catch(e) {}
         if (!u || !u.role || u.role !== "technician") {
           try {
-            var uGen = JSON.parse(localStorage.getItem("servsure_user") || "null");
+            var rawGen = localStorage.getItem("servsure_user") || localStorage.getItem("servora_user") || "null";
+            var uGen = JSON.parse(rawGen);
             if (uGen && uGen.role === "technician") u = uGen;
           } catch(e) {}
         }

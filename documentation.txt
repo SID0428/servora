@@ -4,8 +4,8 @@ PRODUCTION-GRADE TECHNICAL ARCHITECTURE & DEVELOPER ONBOARDING MANUAL
 ================================================================================
 File: documentation.txt
 Platform: ServSure (formerly Servora)
-Version: 1.1.6 (Production Release - Company Appliance Catalog, Cascading Registration & Purchase Invoice Upload)
-Last Updated: October 24, 2026 (10:55 IST)
+Version: 1.1.7 (Production Release - Cross-Account Isolation, Empty Inventory Enforcement & Hash Routing Persistence)
+Last Updated: October 24, 2026 (11:42 IST)
 Repository: https://github.com/SID0428/servora.git
 
 Welcome to ServSure! This manual is the definitive, authoritative reference
@@ -680,9 +680,10 @@ Request Headers:
 
 5.8. Spare Parts & End-to-End Inventory Supply Chain (`/api/inventory`)
 ----------------------------------------------------------------------
-- `GET /api/inventory/parts`: Spare parts catalog with category, brand, search filters, stock_quantity, and company_id.
+- `GET /api/inventory/parts`: Platform spare parts catalog with category, brand, search filters, stock_quantity, and company_id.
 - `POST /api/inventory/parts`: Catalog administration (admin, company, franchise).
-- `GET /api/inventory/company/parts`: List parts belonging to company brand with warehouse stock level.
+- `GET /api/inventory/company/parts`: List parts belonging strictly to the authenticated company brand with warehouse stock level (`SparePartModel.company_id == user.id`). Returns an empty list (`[]`) for newly registered companies.
+- `GET /api/inventory/branch/{branch_id}`: List inventory for a specific branch. Strictly returns configured stock records without legacy dummy auto-seeding. Returns empty list (`[]`) for new branches.
 - `POST /api/inventory/company/parts`:
   - Body:
     ```json
@@ -775,6 +776,16 @@ Request Headers:
 4. Dual-Key Browser Storage Compatibility:
    - When saving authenticated sessions in JavaScript, keys are set across both
      `servsure_*` and `servora_*` namespaces (`servsure_user`, `servora_user`).
+   - Portal `<head>` gatekeeper scripts check both namespaces, preventing accidental redirect loops.
+5. User-Scoped Client Caching:
+   - Client caches (e.g. requests, catalog, inventory) are strictly isolated per user ID
+     (`servsure_cache_${userId}_*`) using `getUserCache(key)` and `setUserCache(key, data)`.
+   - Legacy unscoped cache keys are purged upon initial load, ensuring that switching between accounts
+     or role views never leaks stale tickets or spare parts.
+6. URL Hash Routing Persistence:
+   - Dashboard page state is synchronized with `window.location.hash` (`#Overview`, `#Requests`, `#Inventory`, etc.).
+   - On page refresh or browser back/forward navigation, the active tab and data views are accurately
+     restored instead of resetting or breaking navigation state.
 
 
 ================================================================================
@@ -955,6 +966,32 @@ were identified between the initial rough draft documentation and the actual cod
         upload with real-time status and preview using `POST /api/uploads`. The resulting `invoice_url` is
         stored on `ApplianceModel` (with startup auto-migration). Registered appliances display a direct
         "View Invoice" action link across both Home and Catalog views in the customer dashboard.
+
+13. Discrepancy: Cross-Account Cache Isolation, Empty Inventory Enforcement & Hash Routing Persistence
+   - Initial Draft / Early Iteration:
+     1. Portal Refresh Failure: When refreshing franchise, company, technician, or admin portals, nothing loaded
+        or an infinite loading state occurred. Investigation revealed an unhandled JavaScript `ReferenceError: stored is not defined`
+        inside `loadDashboard()`, missing hash routing to restore the active view on refresh, and single-key
+        `servsure_*` checks in portal `<head>` redirect scripts that conflicted with `servora_*` sessions.
+     2. Auto-Seeded 7 Inventory Parts: Upon logging into a newly created company or franchise branch, the inventory
+        table automatically displayed 7 spare parts instead of starting empty at zero. This occurred because
+        `get_branch_inventory` in `inventory.py` contained an auto-seeding loop that cloned all seed catalog parts
+        whenever a warehouse was empty, and company catalog queries fell back to platform-wide parts.
+     3. Cross-Tenant Complaint Leak: Complaints from one company briefly rendered in another company's or franchise's
+        dashboard before disappearing. This was caused by global un-scoped localStorage keys (`servora_cache_requests_${role}`)
+        and an over-permissive fallback in `requestForRole(item)` that returned `true` for unowned tickets.
+   - Reality in Code:
+     1. Portal Refresh & Hash Persistence: Fixed the `stored` reference error in `ops-dashboard.js`. Added `getPageFromHash()`
+        and hashchange event listeners so that refreshing any portal cleanly re-fetches and renders the correct active
+        tab. Updated inline `<head>` scripts across all portal HTML pages (`admin`, `company`, `franchise`, `technician`)
+        to evaluate both `servsure_*` and `servora_*` keys.
+     2. Zero-Dummy Inventory Policy: Removed the 7-part auto-seeding block from `get_branch_inventory`. Cleaned up
+        the database to purge auto-created franchise inventory rows for non-demo branches. Enforced strict company scoping
+        in `get_company_inventory_parts` (`SparePartModel.company_id == user.id`), ensuring all new company and franchise
+        accounts strictly start with 0 spare parts until explicitly added or requisitioned.
+     3. User-Scoped Client Caches: Replaced global role cache keys with user-scoped storage (`getUserCache` / `setUserCache`
+        keyed by `userId`). Purged legacy un-scoped cache entries on boot. Hardened `requestForRole(item)` so that tickets
+        not matching the authenticated user's company or branch strictly return `false`, eliminating cross-tenant leakage.
 
 ================================================================================
 End of Documentation

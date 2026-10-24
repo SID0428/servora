@@ -215,6 +215,8 @@ def seed_database(db: Session):
         db.query(UserModel).filter(
             (UserModel.id == "branch_1") | (UserModel.email == "amit.noida@crompton-service.com")
         ).delete(synchronize_session=False)
+        # Purge any auto-created franchise inventory for dynamic branches
+        db.query(FranchiseInventoryModel).filter(FranchiseInventoryModel.branch_id != "branch_1").delete(synchronize_session=False)
         db.commit()
     except Exception as cleanup_err:
         db.rollback()
@@ -230,7 +232,8 @@ def seed_database(db: Session):
                 brand="Crompton",
                 unit_price=650.0,
                 hsn_code="8532",
-                description="Heavy duty AC run capacitor for outdoor compressor & fan motor"
+                description="Heavy duty AC run capacitor for outdoor compressor & fan motor",
+                company_id="comp_1"
             ),
             SparePartModel(
                 id="part_crm_blw01",
@@ -240,7 +243,8 @@ def seed_database(db: Session):
                 brand="Crompton",
                 unit_price=1200.0,
                 hsn_code="8414",
-                description="Dynamically balanced ultra-quiet cross flow blower"
+                description="Dynamically balanced ultra-quiet cross flow blower",
+                company_id="comp_1"
             ),
             SparePartModel(
                 id="part_lg_comp01",

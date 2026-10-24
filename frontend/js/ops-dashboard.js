@@ -122,19 +122,45 @@ let companyInventorySubTab = "stock"; // "stock" or "requests"
 let franchiseInventorySubTab = "stock"; // "stock" or "requests"
 let user = initialUser;
 
+const getUserCache = (key, fallback = "[]") => {
+  if (!user?.id) return JSON.parse(fallback);
+  const scopedKey = `${key}_${user.id}`;
+  const raw = localStorage.getItem(scopedKey) || localStorage.getItem(key);
+  try {
+    return raw ? JSON.parse(raw) : JSON.parse(fallback);
+  } catch {
+    return JSON.parse(fallback);
+  }
+};
+
+const setUserCache = (key, data) => {
+  if (!user?.id) return;
+  try {
+    localStorage.setItem(`${key}_${user.id}`, JSON.stringify(data));
+  } catch {}
+};
+
 try {
-  requests = JSON.parse(localStorage.getItem(`servora_cache_requests_${role}`) || "[]");
-  technicians = JSON.parse(localStorage.getItem("servora_cache_techs") || "[]");
-  branches = JSON.parse(localStorage.getItem("servora_cache_branches") || "[]");
-  companies = JSON.parse(localStorage.getItem("servora_cache_companies") || "[]");
-  companyCustomers = JSON.parse(localStorage.getItem("servora_cache_customers") || "[]");
-  franchiseCustomers = JSON.parse(localStorage.getItem("servora_cache_franchise_customers") || "[]");
-  franchiseInventory = JSON.parse(localStorage.getItem("servora_cache_inventory") || "[]");
-  companyWarrantyClaims = JSON.parse(localStorage.getItem("servora_cache_claims") || "[]");
-  companySparesCatalog = JSON.parse(localStorage.getItem("servora_cache_catalog") || "[]");
-  companyPartRequests = JSON.parse(localStorage.getItem("servora_cache_part_requests") || "[]");
-  franchisePartRequests = JSON.parse(localStorage.getItem("servora_cache_part_requests_franchise") || "[]");
-  allCatalogParts = JSON.parse(localStorage.getItem("servora_cache_catalog_all") || "[]");
+  // Purge any legacy un-scoped cache keys that cause cross-account leaks
+  localStorage.removeItem("servora_cache_catalog");
+  localStorage.removeItem("servora_cache_requests_company");
+  localStorage.removeItem("servora_cache_requests_franchise");
+  localStorage.removeItem("servora_cache_inventory");
+
+  if (user?.id) {
+    requests = getUserCache(`servsure_cache_requests_${role}`);
+    technicians = getUserCache("servsure_cache_techs");
+    branches = getUserCache("servsure_cache_branches");
+    companies = getUserCache("servsure_cache_companies");
+    companyCustomers = getUserCache("servsure_cache_customers");
+    franchiseCustomers = getUserCache("servsure_cache_franchise_customers");
+    franchiseInventory = getUserCache("servsure_cache_inventory");
+    companyWarrantyClaims = getUserCache("servsure_cache_claims");
+    companySparesCatalog = getUserCache("servsure_cache_catalog");
+    companyPartRequests = getUserCache("servsure_cache_part_requests");
+    franchisePartRequests = getUserCache("servsure_cache_part_requests_franchise");
+    allCatalogParts = getUserCache("servsure_cache_catalog_all");
+  }
 } catch {}
 
 function safe(value) { const node = document.createElement("span"); node.textContent = value ?? ""; return node.innerHTML; }
@@ -254,25 +280,57 @@ function setProfile() {
   if ($("todayLabel")) $("todayLabel").textContent = new Intl.DateTimeFormat("en-IN", { dateStyle: "medium" }).format(new Date());
 }
 function greeting() { const hour = new Date().getHours(); return hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening"; }
+function getPageFromHash() {
+  const hash = (window.location.hash || "").replace(/^#/, "").trim().toLowerCase();
+  if (!hash) return null;
+  const navItems = role === "technician" ? [...config.nav, "Route Map"] : config.nav;
+  return navItems.find((item) => item.toLowerCase().replaceAll(/[^a-z0-9]+/g, "-") === hash) || null;
+}
+
 function buildNav() {
   const opsNav = $("opsNav");
   if (!opsNav) return;
   const navItems = role === "technician" ? [...config.nav, "Route Map"] : config.nav;
-  opsNav.innerHTML = navItems.map((item, index) => `<a href="#${item.toLowerCase().replaceAll(/[^a-z0-9]+/g, "-")}" data-page="${safe(item)}" class="nav-link ${index === 0 ? "active" : ""}"><span class="nav-icon">${icons[item] || (item === "Route Map" ? "🗺️" : "•")}</span>${safe(item)}${item === "Service requests" || item === "My jobs" ? `<span class="nav-count">${requests.length}</span>` : ""}</a>`).join("");
+  const activePage = getPageFromHash() || (role === "admin" ? "Overview" : config.nav[0] || "Dashboard");
+
+  opsNav.innerHTML = navItems.map((item) => {
+    const slug = item.toLowerCase().replaceAll(/[^a-z0-9]+/g, "-");
+    const isActive = item === activePage;
+    return `<a href="#${slug}" data-page="${safe(item)}" class="nav-link ${isActive ? "active" : ""}"><span class="nav-icon">${icons[item] || (item === "Route Map" ? "🗺️" : "•")}</span>${safe(item)}${item === "Service requests" || item === "My jobs" ? `<span class="nav-count">${requests.length}</span>` : ""}</a>`;
+  }).join("");
+
   document.querySelectorAll(".nav-link").forEach((link) => link.addEventListener("click", (event) => {
     event.preventDefault();
-    if (link.dataset.page === "Route Map") {
+    const pageName = link.dataset.page;
+    if (pageName === "Route Map") {
       window.openTechRouteMap();
       return;
     }
+    const slug = pageName.toLowerCase().replaceAll(/[^a-z0-9]+/g, "-");
+    if (window.location.hash !== `#${slug}`) {
+      window.location.hash = slug;
+    }
     document.querySelectorAll(".nav-link").forEach((item) => item.classList.remove("active"));
     link.classList.add("active");
-    loadWorkspacePageData(link.dataset.page);
-    document.querySelector(".ops-sidebar").classList.remove("open");
+    loadWorkspacePageData(pageName);
+    document.querySelector(".ops-sidebar")?.classList.remove("open");
   }));
+}
+
+if (typeof window !== "undefined") {
+  window.addEventListener("hashchange", () => {
+    const page = getPageFromHash();
+    if (page) {
+      document.querySelectorAll(".nav-link").forEach((link) => {
+        link.classList.toggle("active", link.dataset.page === page);
+      });
+      loadWorkspacePageData(page);
+    }
+  });
 }
 function renderPage(page) {
   if ($("crumbTitle")) $("crumbTitle").textContent = page;
+  document.querySelectorAll(".nav-link").forEach((link) => link.classList.toggle("active", link.dataset.page === page));
   const admin = role === "admin";
   setHidden("addCompanyButton", !admin);
   setHidden("addBranchButton", !(role === "company" && page === "Branches"));
@@ -3791,24 +3849,24 @@ function requestForRole(item) {
   if (!item) return false;
   if (role === "admin") return true;
   if (role === "technician") {
+    if (item.technician_id && user?.id && item.technician_id === user.id) return true;
     if (item.technician?.id && user?.id && item.technician.id === user.id) return true;
-    if (item.technician?.name && user?.name && item.technician.name.toLowerCase() === user.name.toLowerCase()) return true;
-    if (!item.technician?.id && item.branch_id && user?.branch_id && item.branch_id === user.branch_id) return true;
-    return true;
+    if (item.technician?.name && user?.name && item.technician.name.trim().toLowerCase() === user.name.trim().toLowerCase()) return true;
+    return false;
   }
-  if (role === "franchise") {
+  if (role === "franchise" || role === "branch") {
     const bId = user?.branch_id || user?.id;
     if (bId && item.branch_id && item.branch_id === bId) return true;
-    if (user?.pincode && item.pincode && item.pincode === user.pincode) return true;
-    return true;
+    return false;
   }
   if (role === "company") {
     const cId = user?.company_id || user?.id;
+    const uName = (user?.name || "").trim().toLowerCase();
     if (cId && item.company_id && item.company_id === cId) return true;
-    if (user?.name && item.brand && item.brand.toLowerCase() === user.name.toLowerCase()) return true;
-    return true;
+    if (uName && item.brand && item.brand.trim().toLowerCase() === uName) return true;
+    return false;
   }
-  return true;
+  return false;
 }
 
 function statusClass(status) {
@@ -5499,47 +5557,64 @@ async function loadDashboard() {
     if ($("tableSubtitle")) $("tableSubtitle").textContent = config.tableSubtitle;
     if ($("sidePanelTitle")) $("sidePanelTitle").textContent = config.sideTitle;
     if ($("bottomTitle")) $("bottomTitle").textContent = config.bottomTitle;
-    const response = await fetch(`${API_BASE_URL}/api/requests`, { credentials: "include", headers: authHeaders() });
-    if (response.status === 401 && !stored) throw new Error("Your session was not accepted. Sign out and sign in again.");
-    if (response.ok) {
-      requests = await response.json();
-      try { localStorage.setItem(`servora_cache_requests_${role}`, JSON.stringify(requests)); } catch {}
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/requests`, { credentials: "include", headers: authHeaders() });
+      if (response.ok) {
+        requests = await response.json();
+        setUserCache(`servsure_cache_requests_${role}`, requests);
+      } else if (response.status === 401) {
+        console.warn("Session unauthorized for /api/requests");
+      }
+    } catch {
+      requests = getUserCache(`servsure_cache_requests_${role}`);
     }
+
     if (role === "admin") {
-      companies = await adminApi("/companies");
-      try { localStorage.setItem("servora_cache_companies", JSON.stringify(companies)); } catch {}
+      try {
+        companies = await adminApi("/companies");
+        setUserCache("servsure_cache_companies", companies);
+      } catch {
+        companies = getUserCache("servsure_cache_companies");
+      }
     }
+
     if (role === "company") {
       try {
         companyCustomers = await companyApi("/customers");
-        localStorage.setItem("servora_cache_customers", JSON.stringify(companyCustomers));
-      } catch { companyCustomers = []; }
+        setUserCache("servsure_cache_customers", companyCustomers);
+      } catch { companyCustomers = getUserCache("servsure_cache_customers"); }
+
       try {
         branches = await companyApi("/branches");
-        localStorage.setItem("servora_cache_branches", JSON.stringify(branches));
-      } catch { branches = []; }
+        setUserCache("servsure_cache_branches", branches);
+      } catch { branches = getUserCache("servsure_cache_branches"); }
+
       try {
         companyWarrantyClaims = await generalApi("/api/warranty-amc/claims");
-        localStorage.setItem("servora_cache_claims", JSON.stringify(companyWarrantyClaims));
-      } catch { companyWarrantyClaims = []; }
+        setUserCache("servsure_cache_claims", companyWarrantyClaims);
+      } catch { companyWarrantyClaims = getUserCache("servsure_cache_claims"); }
+
       try {
-        companySparesCatalog = await generalApi("/api/inventory/parts");
-        localStorage.setItem("servora_cache_catalog", JSON.stringify(companySparesCatalog));
-      } catch { companySparesCatalog = []; }
+        companySparesCatalog = await generalApi("/api/inventory/company/parts");
+        setUserCache("servsure_cache_catalog", companySparesCatalog);
+      } catch { companySparesCatalog = getUserCache("servsure_cache_catalog"); }
     }
+
     if (role === "franchise") {
       try {
         technicians = await franchiseApi("/technicians");
-        localStorage.setItem("servora_cache_techs", JSON.stringify(technicians));
-      } catch { technicians = []; }
+        setUserCache("servsure_cache_techs", technicians);
+      } catch { technicians = getUserCache("servsure_cache_techs"); }
+
       try {
         const branchId = user?.branch_id || user?.id || "me";
         franchiseInventory = await generalApi(`/api/inventory/branch/${encodeURIComponent(branchId)}`);
-        localStorage.setItem("servora_cache_inventory", JSON.stringify(franchiseInventory));
-      } catch { franchiseInventory = []; }
+        setUserCache("servsure_cache_inventory", franchiseInventory);
+      } catch { franchiseInventory = getUserCache("servsure_cache_inventory"); }
+
       try {
         franchiseCustomers = await franchiseApi("/customers");
-        localStorage.setItem("servora_cache_franchise_customers", JSON.stringify(franchiseCustomers));
+        setUserCache("servsure_cache_franchise_customers", franchiseCustomers);
       } catch {
         compileFranchiseCustomersFromRequests();
       }
@@ -5548,9 +5623,18 @@ async function loadDashboard() {
     const detail = error instanceof TypeError ? "Connecting to ServSure API…" : error.message;
     console.warn("API notice:", detail);
   }
-  setProfile(); buildNav(); setMetrics(); renderRequests(); renderInsights(); renderResources();
+
+  setProfile();
+  buildNav();
+  setMetrics();
+  renderInsights();
+  renderResources();
+
+  const pageFromHash = getPageFromHash();
+  const initialPage = pageFromHash || (role === "admin" ? "Overview" : config.nav[0] || "Dashboard");
+  await loadWorkspacePageData(initialPage);
+
   if (role !== "admin") { setHidden("addCompanyButton", true); }
-  if (role === "admin") { if ($("crumbTitle")) $("crumbTitle").textContent = "Overview"; renderPage("Overview"); }
   if (user?.role && user.role !== role) showToast(`Signed in as ${user.role}; this is the ${role} workspace.`, "error");
 }
 
@@ -6701,9 +6785,12 @@ function initOpsApp() {
   setProfile();
   buildNav();
   setMetrics();
-  renderRequests();
   renderInsights();
   renderResources();
+  const initialHashPage = getPageFromHash();
+  if (!initialHashPage || initialHashPage === "Dashboard" || initialHashPage === "Overview" || initialHashPage === "My jobs") {
+    renderRequests();
+  }
   loadDashboard();
 
   // Real-time technician sync across tabs / windows

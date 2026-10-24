@@ -8,12 +8,13 @@
       try {
         var u = null;
         try {
-          var uRole = localStorage.getItem("servsure_user_franchise");
+          var uRole = localStorage.getItem("servsure_user_franchise") || localStorage.getItem("servora_user_franchise");
           if (uRole) u = JSON.parse(uRole);
         } catch(e) {}
         if (!u || !u.role || (u.role !== "franchise" && u.role !== "branch")) {
           try {
-            var uGen = JSON.parse(localStorage.getItem("servsure_user") || "null");
+            var rawGen = localStorage.getItem("servsure_user") || localStorage.getItem("servora_user") || "null";
+            var uGen = JSON.parse(rawGen);
             if (uGen && (uGen.role === "franchise" || uGen.role === "branch")) u = uGen;
           } catch(e) {}
         }
