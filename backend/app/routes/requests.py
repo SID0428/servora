@@ -162,12 +162,33 @@ def format_request_detail(req: ServiceRequestModel, db: Session, user: Optional[
     elif req.status == "Reopened / Under Review":
         computed_badge = "Reopened"
 
+    # Privacy: Once a service is completed, redact all customer PII from the technician's view.
+    # Technicians should only retain service records (appliance, job card, billing) — not personal customer data.
+    is_completed_for_technician = (
+        user and user.role == "technician"
+        and (req.status == "Completed" or computed_badge == "Completed")
+    )
+    if is_completed_for_technician:
+        customer_name_val = "Service Completed"
+        customer_phone_val = None
+        customer_address_val = None
+        pincode_val = None
+        latitude_val = None
+        longitude_val = None
+    else:
+        customer_name_val = req.customer_name
+        customer_phone_val = req.customer_phone
+        customer_address_val = req.customer_address
+        pincode_val = req.pincode
+        latitude_val = req.latitude
+        longitude_val = req.longitude
+
     return ServiceRequestDetail(
         id=req.id,
         customer_id=req.customer_id,
-        customer_name=req.customer_name,
-        customer_phone=req.customer_phone,
-        customer_address=req.customer_address,
+        customer_name=customer_name_val,
+        customer_phone=customer_phone_val,
+        customer_address=customer_address_val,
         appliance_id=req.appliance_id,
         appliance_name=req.appliance_name,
         brand=req.brand,
@@ -197,9 +218,9 @@ def format_request_detail(req: ServiceRequestModel, db: Session, user: Optional[
         paid_at=getattr(req, "paid_at", None),
         branch_id=req.branch_id,
         company_id=req.company_id,
-        pincode=req.pincode,
-        latitude=req.latitude,
-        longitude=req.longitude,
+        pincode=pincode_val,
+        latitude=latitude_val,
+        longitude=longitude_val,
         tech_latitude=getattr(req, "tech_latitude", None),
         tech_longitude=getattr(req, "tech_longitude", None),
         tech_location_updated_at=getattr(req, "tech_location_updated_at", None),

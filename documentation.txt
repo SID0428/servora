@@ -4,8 +4,8 @@ PRODUCTION-GRADE TECHNICAL ARCHITECTURE & DEVELOPER ONBOARDING MANUAL
 ================================================================================
 File: documentation.txt
 Platform: ServSure (formerly Servora)
-Version: 1.1.9 (Production Release - Company Appliance Catalog Editing & Details View)
-Last Updated: October 24, 2026 (12:35 IST)
+Version: 1.2.0 (Production Release - Technician Portal Customer PII Privacy After Service Completion)
+Last Updated: October 24, 2026 (15:07 IST)
 Repository: https://github.com/SID0428/servora.git
 
 Welcome to ServSure! This manual is the definitive, authoritative reference
@@ -1003,6 +1003,31 @@ were identified between the initial rough draft documentation and the actual cod
      3. User-Scoped Client Caches: Replaced global role cache keys with user-scoped storage (`getUserCache` / `setUserCache`
         keyed by `userId`). Purged legacy un-scoped cache entries on boot. Hardened `requestForRole(item)` so that tickets
         not matching the authenticated user's company or branch strictly return `false`, eliminating cross-tenant leakage.
+
+14. Discrepancy: Customer PII Privacy in Technician Portal After Service Completion
+   - Initial Draft / Early Iteration:
+     Once a technician marked a job as Completed, the full customer PII (name, phone number, home address,
+     pincode, GPS latitude/longitude) remained fully visible in the technician portal indefinitely — in
+     completed job cards, the job history list view, the ticket detail modal, the receipt modal, and the
+     map route dialog. This created a security and privacy risk where field technicians could retain and
+     misuse customer personal data long after service was rendered.
+   - Reality in Code:
+     Backend (backend/app/routes/requests.py — format_request_detail() & backend/app/schemas/__init__.py):
+     Added a privacy redaction block after the OTP-redaction guard. When user.role == "technician" AND
+     (req.status == "Completed" or computed_badge == "Completed"), the API response sets customer_name = "Service Completed",
+     customer_phone = None, customer_address = None, pincode = None, latitude = None, longitude = None.
+     Updated `ServiceRequestDetail` schema to support nullable `customer_phone` and `customer_address` (Optional[str] = None)
+     preventing Pydantic serialization errors. All other roles (admin, franchise, company, customer) continue to receive
+     full customer details as normal.
+     Frontend (frontend/js/ops-dashboard.js):
+       - renderTechCompletedCardHtml(): Shows a lock privacy notice instead of name/phone/address
+         for settled completed jobs (detected by null customer_phone from backend).
+       - renderJobHistoryView() compact list card: Shows "Customer info cleared (settled)" label.
+       - openOpsReceiptModal(): Shows "Authorized Customer" / "Customer doorstep — details on file".
+       - openOpsJobCardModal(): Shows "Authorized Customer (Privacy Protected)" instead of raw details when PII is redacted.
+       - openTicketDetailModal() Customer Information Card: Shows privacy-protected placeholders
+         when piiRedacted condition is true (null phone + Completed + technician role).
+       - openTechRouteMap(): Map subtitle uses "Customer Doorstep" instead of customer_name.
 
 ================================================================================
 End of Documentation

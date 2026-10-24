@@ -216,21 +216,21 @@ class JobCardResponse(BaseModel):
 class ServiceRequestDetail(BaseModel):
     id: str
     customer_id: str
-    customer_name: str
-    customer_phone: str
-    customer_address: str
-    appliance_id: str
-    appliance_name: str
-    brand: str
-    model_no: str
-    issue: str
+    customer_name: Optional[str] = "Customer"
+    customer_phone: Optional[str] = None
+    customer_address: Optional[str] = None
+    appliance_id: Optional[str] = None
+    appliance_name: Optional[str] = None
+    brand: Optional[str] = None
+    model_no: Optional[str] = None
+    issue: Optional[str] = None
     description: Optional[str] = None
-    priority: str
-    status: str
-    status_badge: str
-    created_at: str
-    appointment_date: str
-    appointment_slot: str
+    priority: Optional[str] = "Medium"
+    status: Optional[str] = "Pending"
+    status_badge: Optional[str] = "Pending"
+    created_at: Optional[str] = None
+    appointment_date: Optional[str] = None
+    appointment_slot: Optional[str] = None
     technician: Optional[TechnicianBase] = None
     timeline: List[TimelineStep] = Field(default_factory=list)
     verification_otp: Optional[str] = None

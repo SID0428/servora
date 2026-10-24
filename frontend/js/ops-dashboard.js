@@ -727,14 +727,24 @@ function renderTechCompletedCardHtml(item) {
       ` : ''}
 
       <div class="rounded-xl bg-slate-50 p-3.5 border border-slate-100 text-xs text-slate-600 space-y-1.5">
-        <div class="flex items-center justify-between">
-          <span class="font-semibold text-slate-800">👤 Customer: ${safe(item.customer_name)}</span>
-          <a href="tel:${safe(item.customer_phone || '')}" class="inline-flex items-center gap-1 text-[11px] font-bold text-blue-600 hover:text-blue-800 bg-blue-50 px-2 py-0.5 rounded-md border border-blue-100">📞 Call</a>
-        </div>
-        <div class="flex items-start gap-1.5 text-slate-500">
-          <span class="flex-none">📍 Address:</span>
-          <span class="text-slate-700 font-medium">${safe(item.customer_address || 'Customer doorstep address')} ${item.pincode ? `<strong class="text-slate-800">(PIN: ${safe(item.pincode)})</strong>` : ''}</span>
-        </div>
+        ${item.customer_phone ? `
+          <div class="flex items-center justify-between">
+            <span class="font-semibold text-slate-800">👤 Customer: ${safe(item.customer_name)}</span>
+            <a href="tel:${safe(item.customer_phone || '')}" class="inline-flex items-center gap-1 text-[11px] font-bold text-blue-600 hover:text-blue-800 bg-blue-50 px-2 py-0.5 rounded-md border border-blue-100">📞 Call</a>
+          </div>
+          <div class="flex items-start gap-1.5 text-slate-500">
+            <span class="flex-none">📍 Address:</span>
+            <span class="text-slate-700 font-medium">${safe(item.customer_address || 'Customer doorstep address')} ${item.pincode ? `<strong class="text-slate-800">(PIN: ${safe(item.pincode)})</strong>` : ''}</span>
+          </div>
+        ` : `
+          <div class="flex items-center gap-2 p-2.5 rounded-lg bg-emerald-50 border border-emerald-200">
+            <span class="text-emerald-600 text-base">🔒</span>
+            <div>
+              <p class="font-semibold text-emerald-800 text-[11px]">Customer details removed for privacy</p>
+              <p class="text-emerald-700 text-[10px] mt-0.5">Personal information is cleared once a service is settled and completed.</p>
+            </div>
+          </div>
+        `}
         <div class="flex items-center gap-2 text-slate-500 pt-0.5">
           <span>🕒 Scheduled:</span>
           <span class="font-semibold text-slate-700">${safe(item.appointment_date)} · ${safe(item.appointment_slot || 'Regular Slot')}</span>
@@ -805,7 +815,10 @@ function renderJobHistoryView() {
                     <h3 class="text-base font-bold text-slate-800 group-hover:text-blue-600 transition">${safe(item.appliance_name || item.brand)}</h3>
                     <p class="text-xs text-slate-500">Issue: <span class="font-medium text-slate-700">${safe(item.issue)}</span></p>
                     <div class="pt-1 text-xs text-slate-600 flex flex-wrap items-center gap-x-4 gap-y-1">
-                      <span>👤 Customer: <strong class="text-slate-800">${safe(item.customer_name)}</strong></span>
+                      ${item.customer_phone
+                        ? `<span>👤 Customer: <strong class="text-slate-800">${safe(item.customer_name)}</strong></span>`
+                        : `<span class="text-emerald-700 font-medium">🔒 Customer info cleared (settled)</span>`
+                      }
                       <span>🕒 Closed / Scheduled: <span class="font-medium text-slate-700">${safe(item.appointment_date)}</span></span>
                     </div>
                   </div>
@@ -4609,9 +4622,9 @@ window.openOpsReceiptModal = async function(requestId, showPrevious = false) {
     }`;
   }
 
-  if ($("opsReceiptCustomerName")) $("opsReceiptCustomerName").textContent = req.customer_name || "Customer";
+  if ($("opsReceiptCustomerName")) $("opsReceiptCustomerName").textContent = (req.customer_phone ? req.customer_name : "Authorized Customer") || "Customer";
   if ($("opsReceiptCustomerPhone")) $("opsReceiptCustomerPhone").textContent = req.customer_phone || "";
-  if ($("opsReceiptCustomerAddress")) $("opsReceiptCustomerAddress").textContent = req.customer_address || "Customer doorstep location";
+  if ($("opsReceiptCustomerAddress")) $("opsReceiptCustomerAddress").textContent = (req.customer_phone ? req.customer_address : "Customer doorstep — details on file") || "Customer doorstep location";
 
   const techName = showPrevious
     ? (req.previous_technician_name || "Original Technician")
@@ -4908,15 +4921,16 @@ window.viewRequestDetails = async function(requestId) {
   }
 
   // Customer Information Card
-  if ($("ticketModalCustomerName")) $("ticketModalCustomerName").textContent = req.customer_name || "Customer";
+  const piiRedacted = !req.customer_phone && req.status === "Completed" && targetRole === "technician";
+  if ($("ticketModalCustomerName")) $("ticketModalCustomerName").textContent = piiRedacted ? "🔒 Privacy Protected" : (req.customer_name || "Customer");
   if ($("ticketModalCustomerPhone")) {
-    $("ticketModalCustomerPhone").textContent = req.customer_phone ? `📞 ${req.customer_phone}` : "No phone provided";
-    $("ticketModalCustomerPhone").href = req.customer_phone ? `tel:${req.customer_phone}` : "#";
+    $("ticketModalCustomerPhone").textContent = piiRedacted ? "Cleared after service completion" : (req.customer_phone ? `📞 ${req.customer_phone}` : "No phone provided");
+    $("ticketModalCustomerPhone").href = piiRedacted ? "#" : (req.customer_phone ? `tel:${req.customer_phone}` : "#");
   }
-  if ($("ticketModalCustomerAddress")) $("ticketModalCustomerAddress").textContent = req.customer_address || "Customer address not specified";
-  if ($("ticketModalPincode")) $("ticketModalPincode").textContent = req.pincode ? `PIN: ${req.pincode}` : "PIN: —";
+  if ($("ticketModalCustomerAddress")) $("ticketModalCustomerAddress").textContent = piiRedacted ? "Customer address removed for privacy" : (req.customer_address || "Customer address not specified");
+  if ($("ticketModalPincode")) $("ticketModalPincode").textContent = piiRedacted ? "PIN: —" : (req.pincode ? `PIN: ${req.pincode}` : "PIN: —");
   if ($("ticketModalGps")) {
-    if (req.latitude && req.longitude) {
+    if (!piiRedacted && req.latitude && req.longitude) {
       $("ticketModalGps").textContent = `GPS: ${Number(req.latitude).toFixed(4)}, ${Number(req.longitude).toFixed(4)}`;
       $("ticketModalGps").classList.remove("hidden");
     } else {
@@ -5189,7 +5203,10 @@ window.openOpsJobCardModal = async function(requestId) {
 
   if ($("opsJcMessage")) $("opsJcMessage").textContent = "";
   if ($("opsJcReqId")) $("opsJcReqId").textContent = req.id;
-  if ($("opsJcCustomerName")) $("opsJcCustomerName").textContent = `${req.customer_name} (${req.customer_phone || ''})`;
+  const jcCustLabel = req.customer_phone
+    ? `${req.customer_name} (${req.customer_phone})`
+    : (targetRole === "technician" ? "Authorized Customer (Privacy Protected)" : (req.customer_name || "Customer"));
+  if ($("opsJcCustomerName")) $("opsJcCustomerName").textContent = jcCustLabel;
   if ($("opsJcApplianceIssue")) $("opsJcApplianceIssue").textContent = `${req.appliance_name} · Issue: ${req.issue}`;
   if ($("opsPartsContainer")) $("opsPartsContainer").innerHTML = "";
 
@@ -5370,7 +5387,8 @@ window.openTechRouteMap = function(requestId) {
   if (targetReq) {
     if (liveBanner) liveBanner.classList.remove("hidden");
     if (mapTitle) mapTitle.textContent = `Live Field Tracking · ${targetReq.id}`;
-    if (mapSubtitle) mapSubtitle.textContent = `Tracking field technician movement to ${targetReq.customer_name || 'Customer'}`;
+    const mapDestLabel = (targetReq.customer_phone) ? (targetReq.customer_name || 'Customer') : 'Customer Doorstep';
+    if (mapSubtitle) mapSubtitle.textContent = `Tracking field technician movement to ${mapDestLabel}`;
   } else {
     if (liveBanner) liveBanner.classList.add("hidden");
     if (mapTitle) mapTitle.textContent = "Today's Route & Field Jobs";
