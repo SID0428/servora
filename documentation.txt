@@ -4,8 +4,8 @@ PRODUCTION-GRADE TECHNICAL ARCHITECTURE & DEVELOPER ONBOARDING MANUAL
 ================================================================================
 File: documentation.txt
 Platform: ServSure (formerly Servora)
-Version: 1.1.8 (Production Release - Resolved ESM Parse Error & Complete Portal Hydration across All Roles)
-Last Updated: October 24, 2026 (12:08 IST)
+Version: 1.1.9 (Production Release - Company Appliance Catalog Editing & Details View)
+Last Updated: October 24, 2026 (12:35 IST)
 Repository: https://github.com/SID0428/servora.git
 
 Welcome to ServSure! This manual is the definitive, authoritative reference
@@ -622,6 +622,9 @@ Request Headers:
 - `POST /api/company/appliances`:
   - Body: `{ "appliance_name": "Inverter Split AC 1.5 Ton", "category": "Air Conditioner", "brand": "Crompton", "model_numbers": ["CRO-AC15-INV", "CRO-AC15-ECO"], "warranty_months": 12, "description": "5 Star Inverter AC" }`
   - Adds new appliance and its supported models to the company's catalog for customer registrations.
+- `PUT /api/company/appliances/{appliance_id}`:
+  - Body: `{ "appliance_name": "Inverter Split AC 1.5 Ton", "category": "Air Conditioner", "brand": "Crompton", "model_numbers": ["CRO-AC15-INV", "CRO-AC15-ECO", "CRO-AC20-PRO"], "warranty_months": 24, "description": "Updated Specs" }`
+  - Updates appliance details, warranty, and supported model numbers. Cleans and serializes model arrays.
 - `DELETE /api/company/appliances/{appliance_id}`:
   - Deletes appliance item from the company catalog.
 
@@ -953,8 +956,11 @@ were identified between the initial rough draft documentation and the actual cod
      1. Company Device Catalog: Added `CompanyApplianceCatalogModel` (`company_appliances` table) allowing
         company admins to define products under a dedicated "Appliances" navigation item in the company portal.
         Each entry captures appliance name, category, brand name, comma-separated/multi-line model numbers (parsed
-        into JSON arrays), warranty months, and description. Full backend CRUD (`/api/company/appliances`) with
-        real-time search and statistics.
+        into JSON arrays), warranty months, and description. Full backend CRUD (`/api/company/appliances`, `PUT /api/company/appliances/{id}`)
+        with real-time search, statistics, inline editing modal pre-filled with existing specs and models, and an
+        appliance details inspection modal (`#applianceDetailsDialog`). In the catalog table, model numbers are compacted
+        to prevent row distortion, providing a direct "View all (N) ->" trigger and "Details" action button to inspect
+        all model variants in a dedicated view.
      2. Cascading Customer Dropdowns: Replaced all manual text entry with a 4-step cascading dropdown hierarchy:
         Company -> Brand Name -> Appliance Name -> Model Number.
         - Selecting an active platform-registered company fetches its catalog (`/api/appliances/catalog`).

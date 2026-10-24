@@ -870,6 +870,53 @@ def add_company_appliance(payload: CompanyApplianceCreate, request: Request, db:
     }
 
 
+@router.put("/appliances/{appliance_id}")
+def update_company_appliance(
+    appliance_id: str,
+    payload: CompanyApplianceCreate,
+    request: Request,
+    db: Session = Depends(get_db)
+):
+    company = require_company(request, db)
+    item = db.query(CompanyApplianceCatalogModel).filter(
+        CompanyApplianceCatalogModel.id == appliance_id,
+        CompanyApplianceCatalogModel.company_id == company.id
+    ).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Appliance not found in company catalog")
+
+    brand_name = (payload.brand or "").strip() or company.name.strip()
+    if isinstance(payload.model_numbers, list):
+        raw_models = payload.model_numbers
+    else:
+        raw_models = str(payload.model_numbers).split(",")
+    cleaned_models = [m.strip() for m in raw_models if m and m.strip()]
+    if not cleaned_models:
+        raise HTTPException(status_code=422, detail="At least one model number is required")
+
+    item.appliance_name = payload.appliance_name.strip()
+    item.brand = brand_name
+    item.category = payload.category.strip()
+    item.model_numbers = json.dumps(cleaned_models)
+    item.warranty_months = payload.warranty_months or 12
+    item.description = (payload.description or "").strip() or None
+
+    db.commit()
+    db.refresh(item)
+    return {
+        "id": item.id,
+        "company_id": item.company_id,
+        "company_name": company.name,
+        "appliance_name": item.appliance_name,
+        "brand": item.brand,
+        "category": item.category,
+        "model_numbers": cleaned_models,
+        "warranty_months": item.warranty_months,
+        "description": item.description,
+        "created_at": item.created_at.isoformat() if item.created_at else None,
+    }
+
+
 @router.delete("/appliances/{appliance_id}")
 def delete_company_appliance(appliance_id: str, request: Request, db: Session = Depends(get_db)):
     company = require_company(request, db)

@@ -970,9 +970,26 @@ function renderCompanyAppliances() {
     $("requestRows").innerHTML = filtered.length
       ? filtered.map((app) => {
           const models = Array.isArray(app.model_numbers) ? app.model_numbers : [];
-          const modelTags = models.length
-            ? models.map((m) => `<span class="inline-block px-2 py-0.5 bg-blue-50 text-blue-700 font-mono text-xs rounded border border-blue-100 font-bold mr-1 mb-1">${safe(m)}</span>`).join("")
-            : '<span class="text-slate-400 text-xs">No models specified</span>';
+          let modelsDisplay = "";
+          if (models.length === 0) {
+            modelsDisplay = '<span class="text-slate-400 text-xs italic">No models specified</span>';
+          } else if (models.length === 1) {
+            modelsDisplay = `
+              <div class="flex items-center gap-1.5 flex-wrap">
+                <span class="inline-block px-2 py-0.5 bg-blue-50 text-blue-700 font-mono text-xs rounded border border-blue-200 font-bold">${safe(models[0])}</span>
+              </div>
+            `;
+          } else {
+            modelsDisplay = `
+              <div class="flex items-center gap-1.5 flex-wrap">
+                <span class="inline-block px-2 py-0.5 bg-blue-50 text-blue-700 font-mono text-xs rounded border border-blue-200 font-bold">${safe(models[0])}</span>
+                <span class="inline-block px-2 py-0.5 bg-slate-100 text-slate-700 font-mono text-xs rounded border border-slate-200 font-semibold">+${models.length - 1} more</span>
+                <button type="button" class="text-blue-600 hover:text-blue-800 font-semibold text-xs ml-1 inline-flex items-center gap-0.5 cursor-pointer underline-offset-2 hover:underline" data-view-appliance="${safe(app.id)}">
+                  View all (${models.length}) →
+                </button>
+              </div>
+            `;
+          }
 
           return `
             <tr>
@@ -986,21 +1003,27 @@ function renderCompanyAppliances() {
                   ${safe(app.category)}
                 </span>
               </td>
-              <td class="max-w-md">
-                <div class="flex flex-wrap items-center">
-                  ${modelTags}
-                </div>
+              <td class="max-w-xs">
+                ${modelsDisplay}
               </td>
-              <td class="text-slate-700 font-medium text-xs">
+              <td class="text-slate-700 font-medium text-xs whitespace-nowrap">
                 🛡️ ${safe(app.warranty_months || 12)} Months
               </td>
-              <td class="text-slate-500 font-mono text-xs">
+              <td class="text-slate-500 font-mono text-xs whitespace-nowrap">
                 ${formatDisplayDate(app.created_at)}
               </td>
               <td>
-                <button type="button" class="table-action px-2.5 py-1 text-rose-600 hover:bg-rose-50 rounded font-semibold text-xs transition" data-delete-appliance="${safe(app.id)}">
-                  🗑️ Remove
-                </button>
+                <div class="flex items-center gap-1.5 whitespace-nowrap">
+                  <button type="button" class="table-action px-2 py-1 text-slate-700 hover:bg-slate-100 rounded font-semibold text-xs transition inline-flex items-center gap-1" data-view-appliance="${safe(app.id)}" title="View full details and all model numbers">
+                    👁️ Details
+                  </button>
+                  <button type="button" class="table-action px-2 py-1 text-blue-600 hover:bg-blue-50 rounded font-semibold text-xs transition inline-flex items-center gap-1" data-edit-appliance="${safe(app.id)}" title="Edit appliance specifications and models">
+                    ✏️ Edit
+                  </button>
+                  <button type="button" class="table-action px-2 py-1 text-rose-600 hover:bg-rose-50 rounded font-semibold text-xs transition" data-delete-appliance="${safe(app.id)}" title="Remove appliance">
+                    🗑️
+                  </button>
+                </div>
               </td>
             </tr>
           `;
@@ -1010,6 +1033,20 @@ function renderCompanyAppliances() {
 
   if ($("requestCount")) $("requestCount").textContent = `${filtered.length} appliance${filtered.length === 1 ? '' : 's'} shown`;
   if ($("resourceGrid")) $("resourceGrid").innerHTML = "";
+
+  document.querySelectorAll("[data-view-appliance]").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      openApplianceDetails(btn.dataset.viewAppliance);
+    });
+  });
+
+  document.querySelectorAll("[data-edit-appliance]").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      openEditApplianceModal(btn.dataset.editAppliance);
+    });
+  });
 
   document.querySelectorAll("[data-delete-appliance]").forEach((btn) => {
     btn.addEventListener("click", async (e) => {
@@ -1031,6 +1068,77 @@ function renderCompanyAppliances() {
       }
     });
   });
+}
+
+function openApplianceDetails(appId) {
+  const app = companyAppliances.find((a) => a.id === appId);
+  if (!app) return;
+  const dialog = $("applianceDetailsDialog");
+  if (!dialog) return;
+
+  if ($("detailApplianceName")) $("detailApplianceName").textContent = app.appliance_name;
+  if ($("detailApplianceBrand")) $("detailApplianceBrand").textContent = app.brand || user?.name || "OEM Brand";
+  if ($("detailApplianceCategory")) $("detailApplianceCategory").textContent = app.category || "Appliance";
+  if ($("detailApplianceWarranty")) $("detailApplianceWarranty").textContent = `🛡️ ${app.warranty_months || 12} Months Warranty`;
+  if ($("detailRegisteredOn")) $("detailRegisteredOn").textContent = `Registered: ${formatDisplayDate(app.created_at)}`;
+
+  const descContainer = $("detailApplianceDescContainer");
+  if (descContainer) {
+    if (app.description) {
+      descContainer.style.display = "";
+      if ($("detailApplianceDesc")) $("detailApplianceDesc").textContent = app.description;
+    } else {
+      descContainer.style.display = "none";
+    }
+  }
+
+  const models = Array.isArray(app.model_numbers) ? app.model_numbers : [];
+  if ($("detailModelCountBadge")) $("detailModelCountBadge").textContent = `${models.length} Model Variant${models.length === 1 ? '' : 's'}`;
+
+  const listEl = $("detailModelNumbersList");
+  if (listEl) {
+    listEl.innerHTML = models.length
+      ? models.map((m) => `
+          <div class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white text-slate-800 font-mono text-xs font-bold rounded-xl border border-slate-200 shadow-xs">
+            <span class="text-blue-500">🏷️</span>
+            <span>${safe(m)}</span>
+          </div>
+        `).join("")
+      : '<span class="text-slate-400 text-xs italic">No model numbers configured</span>';
+  }
+
+  const editBtn = $("detailEditApplianceBtn");
+  if (editBtn) {
+    editBtn.onclick = () => {
+      dialog.close();
+      openEditApplianceModal(app.id);
+    };
+  }
+
+  dialog.showModal();
+}
+
+function openEditApplianceModal(appId) {
+  const app = companyAppliances.find((a) => a.id === appId);
+  if (!app) return;
+  const dialog = $("companyApplianceDialog");
+  if (!dialog) return;
+
+  if ($("editingApplianceId")) $("editingApplianceId").value = app.id;
+  if ($("companyApplianceDialogTitle")) $("companyApplianceDialogTitle").textContent = "Edit appliance";
+  if ($("companyApplianceDialogSubtitle")) $("companyApplianceDialogSubtitle").textContent = "Update appliance specifications and model numbers.";
+  if ($("submitCompanyAppliance")) $("submitCompanyAppliance").textContent = "Update appliance";
+  if ($("companyApplianceFormMessage")) $("companyApplianceFormMessage").textContent = "";
+
+  if ($("applianceCatalogName")) $("applianceCatalogName").value = app.appliance_name;
+  if ($("applianceCatalogCategory")) $("applianceCatalogCategory").value = app.category;
+  if ($("applianceCatalogBrand")) $("applianceCatalogBrand").value = app.brand || "";
+  const models = Array.isArray(app.model_numbers) ? app.model_numbers : [];
+  if ($("applianceCatalogModels")) $("applianceCatalogModels").value = models.join(", ");
+  if ($("applianceCatalogWarranty")) $("applianceCatalogWarranty").value = app.warranty_months || 12;
+  if ($("applianceCatalogDesc")) $("applianceCatalogDesc").value = app.description || "";
+
+  dialog.showModal();
 }
 
 function renderCompanyBranches() {
@@ -5779,7 +5887,13 @@ function initEvents() {
   $("addBranchButton")?.addEventListener("click", () => { if ($("branchFormMessage")) $("branchFormMessage").textContent = ""; $("branchDialog")?.showModal(); });
   $("addTechnicianButton")?.addEventListener("click", () => { if ($("technicianFormMessage")) $("technicianFormMessage").textContent = ""; $("technicianDialog")?.showModal(); });
   $("addApplianceCatalogButton")?.addEventListener("click", () => {
+    if ($("editingApplianceId")) $("editingApplianceId").value = "";
+    if ($("companyApplianceDialogTitle")) $("companyApplianceDialogTitle").textContent = "Add an appliance";
+    if ($("companyApplianceDialogSubtitle")) $("companyApplianceDialogSubtitle").textContent = "Register an appliance with supported model numbers for customer onboarding.";
+    if ($("submitCompanyAppliance")) $("submitCompanyAppliance").textContent = "Save to catalog";
     if ($("companyApplianceFormMessage")) $("companyApplianceFormMessage").textContent = "";
+    const form = $("companyApplianceForm");
+    if (form) form.reset();
     if ($("applianceCatalogBrand") && user?.name) $("applianceCatalogBrand").value = user.name;
     $("companyApplianceDialog")?.showModal();
   });
@@ -5792,6 +5906,8 @@ function initEvents() {
   $("cancelTechnician")?.addEventListener("click", () => $("technicianDialog")?.close());
   $("closeCompanyApplianceDialog")?.addEventListener("click", () => $("companyApplianceDialog")?.close());
   $("cancelCompanyAppliance")?.addEventListener("click", () => $("companyApplianceDialog")?.close());
+  $("closeApplianceDetailsDialog")?.addEventListener("click", () => $("applianceDetailsDialog")?.close());
+  $("cancelApplianceDetails")?.addEventListener("click", () => $("applianceDetailsDialog")?.close());
   $("closeEditTechnicianDialog")?.addEventListener("click", () => $("editTechnicianDialog")?.close());
   $("cancelEditTechnician")?.addEventListener("click", () => $("editTechnicianDialog")?.close());
   $("closeTechMap")?.addEventListener("click", () => { stopTechMapAnimation(); $("techMapDialog")?.close(); });
@@ -5977,10 +6093,13 @@ function initEvents() {
     event.preventDefault();
     const form = event.currentTarget;
     const submit = form.querySelector('[type="submit"]');
+    const editingId = $("editingApplianceId")?.value?.trim() || "";
+    const isEdit = Boolean(editingId);
+
     if (submit) submit.disabled = true;
     if ($("companyApplianceFormMessage")) {
       $("companyApplianceFormMessage").className = "dialog-message text-blue-600";
-      $("companyApplianceFormMessage").textContent = "Saving appliance to catalog…";
+      $("companyApplianceFormMessage").textContent = isEdit ? "Updating appliance…" : "Saving appliance to catalog…";
     }
 
     const formData = new FormData(form);
@@ -5994,19 +6113,37 @@ function initEvents() {
     };
 
     try {
-      const created = await companyApi("/appliances", {
-        method: "POST",
-        body: JSON.stringify(payload)
-      });
-      companyAppliances.unshift(created);
-      form.reset();
-      $("companyApplianceDialog")?.close();
-      renderCompanyAppliances();
-      showToast(`${created.appliance_name} added to company catalog.`, "success");
+      if (isEdit) {
+        const updated = await companyApi(`/appliances/${encodeURIComponent(editingId)}`, {
+          method: "PUT",
+          body: JSON.stringify(payload)
+        });
+        const idx = companyAppliances.findIndex((a) => a.id === editingId);
+        if (idx !== -1) {
+          companyAppliances[idx] = updated;
+        } else {
+          companyAppliances.unshift(updated);
+        }
+        form.reset();
+        if ($("editingApplianceId")) $("editingApplianceId").value = "";
+        $("companyApplianceDialog")?.close();
+        renderCompanyAppliances();
+        showToast(`${updated.appliance_name} updated successfully.`, "success");
+      } else {
+        const created = await companyApi("/appliances", {
+          method: "POST",
+          body: JSON.stringify(payload)
+        });
+        companyAppliances.unshift(created);
+        form.reset();
+        $("companyApplianceDialog")?.close();
+        renderCompanyAppliances();
+        showToast(`${created.appliance_name} added to company catalog.`, "success");
+      }
     } catch (err) {
       if ($("companyApplianceFormMessage")) {
         $("companyApplianceFormMessage").className = "dialog-message text-rose-600";
-        $("companyApplianceFormMessage").textContent = extractErrorMessage(err.message, "Could not save appliance");
+        $("companyApplianceFormMessage").textContent = extractErrorMessage(err.message, isEdit ? "Could not update appliance" : "Could not save appliance");
       }
     } finally {
       if (submit) submit.disabled = false;
