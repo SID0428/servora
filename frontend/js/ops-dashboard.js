@@ -5147,6 +5147,23 @@ window.techAction = async function(requestId, action, otp = null) {
   }
 };
 
+function numberToWordsIndian(num) {
+  if (isNaN(num) || num <= 0) return "Zero Rupees Only";
+  const a = ['', 'One ', 'Two ', 'Three ', 'Four ', 'Five ', 'Six ', 'Seven ', 'Eight ', 'Nine ', 'Ten ', 'Eleven ', 'Twelve ', 'Thirteen ', 'Fourteen ', 'Fifteen ', 'Sixteen ', 'Seventeen ', 'Eighteen ', 'Nineteen '];
+  const b = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
+  const n = ('000000000' + Math.floor(num)).substr(-9).match(/^(\d{2})(\d{2})(\d{2})(\d{1})(\d{2})$/);
+  if (!n) return 'Indian Rupees Only';
+  let str = '';
+  str += (Number(n[1]) != 0) ? (a[Number(n[1])] || b[n[1][0]] + ' ' + a[n[1][1]]) + 'Crore ' : '';
+  str += (Number(n[2]) != 0) ? (a[Number(n[2])] || b[n[2][0]] + ' ' + a[n[2][1]]) + 'Lakh ' : '';
+  str += (Number(n[3]) != 0) ? (a[Number(n[3])] || b[n[3][0]] + ' ' + a[n[3][1]]) + 'Thousand ' : '';
+  str += (Number(n[4]) != 0) ? (a[Number(n[4])] || b[n[4][0]] + ' ' + a[n[4][1]]) + 'Hundred ' : '';
+  str += (Number(n[5]) != 0) ? ((str != '') ? 'and ' : '') + (a[Number(n[5])] || b[n[5][0]] + ' ' + a[n[5][1]]) : '';
+  const paise = Math.round((num - Math.floor(num)) * 100);
+  let paiseStr = paise > 0 ? ` and ${paise}/100 Paise` : '';
+  return `Indian Rupees ${str.trim()}${paiseStr} Only`;
+}
+
 window.openOpsReceiptModal = async function(requestId, showPrevious = false) {
   const req = requests.find(r => r.id === requestId);
   if (!req) return;
@@ -5169,27 +5186,40 @@ window.openOpsReceiptModal = async function(requestId, showPrevious = false) {
   const invoiceNo = `REC-${req.id}${showPrevious ? '-PREV' : ''}`;
   if ($("opsReceiptInvoiceNo")) $("opsReceiptInvoiceNo").textContent = invoiceNo;
   if ($("opsReceiptDate")) $("opsReceiptDate").textContent = (jc && jc.completed_at) || req.appointment_date || new Date().toLocaleDateString('en-IN');
+  
+  const isWarranty = Boolean(req.is_under_warranty);
+  const isPaid = req.payment_status === "Paid" || isWarranty || jc;
+
   if ($("opsReceiptPaidBadge")) {
-    const isPaid = req.payment_status === "Paid" || jc;
-    $("opsReceiptPaidBadge").textContent = isPaid ? "✓ PAID IN FULL" : "PAYMENT PENDING";
-    $("opsReceiptPaidBadge").className = `mt-1 inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
-      isPaid ? "bg-emerald-100 text-emerald-800 border-emerald-200" : "bg-amber-100 text-amber-800 border-amber-200"
-    }`;
+    if (isWarranty) {
+      $("opsReceiptPaidBadge").textContent = "[ OEM WARRANTY COVERED ]";
+    } else {
+      $("opsReceiptPaidBadge").textContent = isPaid ? "[ PAID IN FULL ]" : "[ PAYMENT PENDING ]";
+    }
+    $("opsReceiptPaidBadge").className = "inline-block border border-black px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider text-black bg-white";
   }
 
   if ($("opsReceiptCustomerName")) $("opsReceiptCustomerName").textContent = (req.customer_phone ? req.customer_name : "Authorized Customer") || "Customer";
   if ($("opsReceiptCustomerPhone")) $("opsReceiptCustomerPhone").textContent = req.customer_phone || "";
   if ($("opsReceiptCustomerAddress")) $("opsReceiptCustomerAddress").textContent = (req.customer_phone ? req.customer_address : "Customer doorstep — details on file") || "Customer doorstep location";
 
+  // Also support admin dashboard IDs
+  if ($("opsReceiptCustName")) $("opsReceiptCustName").textContent = (req.customer_phone ? req.customer_name : "Authorized Customer") || "Customer";
+  if ($("opsReceiptCustPhone")) $("opsReceiptCustPhone").textContent = req.customer_phone || "";
+  if ($("opsReceiptCustAddr")) $("opsReceiptCustAddr").textContent = req.customer_address || "Customer doorstep location";
+
   const techName = showPrevious
     ? (req.previous_technician_name || "Original Technician")
     : (req.technician?.name || req.previous_technician_name || "Authorized Field Technician");
   if ($("opsReceiptBranchName")) $("opsReceiptBranchName").textContent = "ServSure Authorized Franchise Partner";
-  if ($("opsReceiptTechName")) $("opsReceiptTechName").textContent = `Technician: ${techName}`;
+  if ($("opsReceiptTechName")) $("opsReceiptTechName").textContent = techName;
   if ($("opsReceiptApplianceDetails")) $("opsReceiptApplianceDetails").textContent = `${req.brand || ''} ${req.appliance_name || 'Appliance'} (${req.model_no || 'Standard'})`;
-  if ($("opsReceiptIssueDescription")) $("opsReceiptIssueDescription").textContent = `Service: ${req.issue || 'Repair inspection'}`;
+  if ($("opsReceiptIssueDescription")) $("opsReceiptIssueDescription").textContent = `${req.issue || 'Repair inspection'}`;
 
-  const isWarranty = Boolean(req.is_under_warranty);
+  // Admin IDs
+  if ($("opsReceiptAppliance")) $("opsReceiptAppliance").textContent = `${req.brand || ''} ${req.appliance_name || 'Appliance'}`;
+  if ($("opsReceiptModel")) $("opsReceiptModel").textContent = req.model_no || 'Standard';
+
   const parts = (jc && Array.isArray(jc.parts_used)) ? jc.parts_used : [];
   const partsCost = jc ? Number(jc.parts_cost || 0) : 0;
   const laborCost = jc ? Number(jc.labor_cost || 350) : 350;
@@ -5198,40 +5228,29 @@ window.openOpsReceiptModal = async function(requestId, showPrevious = false) {
   const taxAmount = isWarranty ? 0.0 : (jc ? Number(jc.tax_amount || ((inspectionFee + laborCost + partsCost - discount) * 0.18)) : ((inspectionFee + laborCost + partsCost - discount) * 0.18));
   const totalAmount = isWarranty ? 0.0 : (jc ? Number(jc.total_amount || (inspectionFee + laborCost + partsCost - discount + taxAmount)) : (inspectionFee + laborCost + partsCost - discount + taxAmount));
 
-  if ($("opsReceiptPaidBadge")) {
-    const isPaid = req.payment_status === "Paid" || isWarranty || jc;
-    if (isWarranty) {
-      $("opsReceiptPaidBadge").textContent = "✓ OEM WARRANTY COVERED";
-      $("opsReceiptPaidBadge").className = "mt-1 inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold border bg-blue-100 text-blue-800 border-blue-200";
-    } else {
-      $("opsReceiptPaidBadge").textContent = isPaid ? "✓ PAID IN FULL" : "PAYMENT PENDING";
-      $("opsReceiptPaidBadge").className = `mt-1 inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
-        isPaid ? "bg-emerald-100 text-emerald-800 border-emerald-200" : "bg-amber-100 text-amber-800 border-amber-200"
-      }`;
-    }
-  }
-
   if ($("opsReceiptItemsBody")) {
     let rowsHtml = `
-      <tr>
-        <td class="py-2.5 px-3 text-slate-400 font-mono">1</td>
-        <td class="py-2.5 px-3 font-medium text-slate-800">
+      <tr class="border-b border-black/20">
+        <td class="py-2 px-2.5 border-r border-black/40 text-center font-mono">1</td>
+        <td class="py-2 px-2.5 border-r border-black/40 font-medium text-black">
           Doorstep Inspection & Diagnostic Evaluation
-          <span class="text-[10px] text-slate-400 block font-mono">SAC: 9987 · Standard Diagnostic Visit</span>
+          <span class="text-[10px] text-neutral-600 block font-normal font-mono">Certified technical diagnostics</span>
         </td>
-        <td class="py-2.5 px-3 text-center text-slate-600 font-semibold">1</td>
-        <td class="py-2.5 px-3 text-right text-slate-600">${isWarranty ? '<s class="text-slate-400">₹' + inspectionFee.toFixed(2) + '</s>' : '₹' + inspectionFee.toFixed(2)}</td>
-        <td class="py-2.5 px-3 text-right font-bold text-slate-800">${isWarranty ? '₹0.00' : '₹' + inspectionFee.toFixed(2)}</td>
+        <td class="py-2 px-2.5 border-r border-black/40 text-center font-mono">9987</td>
+        <td class="py-2 px-2.5 border-r border-black/40 text-center font-mono font-semibold">1</td>
+        <td class="py-2 px-2.5 border-r border-black/40 text-right font-mono">₹${inspectionFee.toFixed(2)}</td>
+        <td class="py-2 px-2.5 text-right font-mono font-bold text-black">${isWarranty ? '₹0.00' : '₹' + inspectionFee.toFixed(2)}</td>
       </tr>
-      <tr>
-        <td class="py-2.5 px-3 text-slate-400 font-mono">2</td>
-        <td class="py-2.5 px-3 font-medium text-slate-800">
-          Labor & Technical Repair Charges
-          <span class="text-[10px] text-slate-400 block font-mono">SAC: 9987 · Certified Field Service</span>
+      <tr class="border-b border-black/20">
+        <td class="py-2 px-2.5 border-r border-black/40 text-center font-mono">2</td>
+        <td class="py-2 px-2.5 border-r border-black/40 font-medium text-black">
+          Labor & Technical Overhaul Repair Charges
+          <span class="text-[10px] text-neutral-600 block font-normal font-mono">Standard service & overhaul labor</span>
         </td>
-        <td class="py-2.5 px-3 text-center text-slate-600 font-semibold">1</td>
-        <td class="py-2.5 px-3 text-right text-slate-600">${isWarranty ? '<s class="text-slate-400">₹' + laborCost.toFixed(2) + '</s>' : '₹' + laborCost.toFixed(2)}</td>
-        <td class="py-2.5 px-3 text-right font-bold text-slate-800">${isWarranty ? '₹0.00' : '₹' + laborCost.toFixed(2)}</td>
+        <td class="py-2 px-2.5 border-r border-black/40 text-center font-mono">9987</td>
+        <td class="py-2 px-2.5 border-r border-black/40 text-center font-mono font-semibold">1</td>
+        <td class="py-2 px-2.5 border-r border-black/40 text-right font-mono">₹${laborCost.toFixed(2)}</td>
+        <td class="py-2 px-2.5 text-right font-mono font-bold text-black">${isWarranty ? '₹0.00' : '₹' + laborCost.toFixed(2)}</td>
       </tr>
     `;
 
@@ -5240,16 +5259,18 @@ window.openOpsReceiptModal = async function(requestId, showPrevious = false) {
         const pQty = p.quantity || 1;
         const pRate = Number(p.unit_price || 0);
         const pTotal = Number(p.total_price || (pQty * pRate));
+        const hsn = p.hsn_code || '841890';
         rowsHtml += `
-          <tr>
-            <td class="py-2.5 px-3 text-slate-400 font-mono">${idx + 3}</td>
-            <td class="py-2.5 px-3 font-medium text-slate-800">
+          <tr class="border-b border-black/20">
+            <td class="py-2 px-2.5 border-r border-black/40 text-center font-mono">${idx + 3}</td>
+            <td class="py-2 px-2.5 border-r border-black/40 font-medium text-black">
               ${safe(p.part_name)}
-              <span class="text-[10px] text-slate-400 block font-mono">HSN: ${safe(p.hsn_code || '841890')} · Genuine OEM Part</span>
+              <span class="text-[10px] text-neutral-600 block font-mono font-normal">Genuine OEM Component</span>
             </td>
-            <td class="py-2.5 px-3 text-center text-slate-600 font-semibold">${pQty}</td>
-            <td class="py-2.5 px-3 text-right text-slate-600">${isWarranty ? '<s class="text-slate-400">₹' + pRate.toFixed(2) + '</s>' : '₹' + pRate.toFixed(2)}</td>
-            <td class="py-2.5 px-3 text-right font-bold text-slate-800">${isWarranty ? '₹0.00' : '₹' + pTotal.toFixed(2)}</td>
+            <td class="py-2 px-2.5 border-r border-black/40 text-center font-mono">${safe(hsn)}</td>
+            <td class="py-2 px-2.5 border-r border-black/40 text-center font-mono font-semibold">${pQty}</td>
+            <td class="py-2 px-2.5 border-r border-black/40 text-right font-mono">₹${pRate.toFixed(2)}</td>
+            <td class="py-2 px-2.5 text-right font-mono font-bold text-black">${isWarranty ? '₹0.00' : '₹' + pTotal.toFixed(2)}</td>
           </tr>
         `;
       });
@@ -5257,9 +5278,9 @@ window.openOpsReceiptModal = async function(requestId, showPrevious = false) {
 
     if (isWarranty) {
       rowsHtml += `
-        <tr class="bg-blue-50/60 font-semibold text-blue-900">
-          <td colspan="4" class="py-2 px-3 text-right text-[11px]">🛡️ 100% Brand Manufacturer Warranty Coverage:</td>
-          <td class="py-2 px-3 text-right text-emerald-600 text-xs">-₹${(inspectionFee + laborCost + partsCost).toFixed(2)}</td>
+        <tr class="border-b border-black/40 bg-neutral-100 font-semibold text-black">
+          <td colspan="5" class="py-2 px-3 text-right text-xs">Less: 100% Brand OEM Warranty Coverage Waiver:</td>
+          <td class="py-2 px-3 text-right font-mono font-bold text-xs">-₹${(inspectionFee + laborCost + partsCost).toFixed(2)}</td>
         </tr>
       `;
     }
@@ -5267,10 +5288,29 @@ window.openOpsReceiptModal = async function(requestId, showPrevious = false) {
     $("opsReceiptItemsBody").innerHTML = rowsHtml;
   }
 
-  if ($("opsReceiptPartsSubtotal")) $("opsReceiptPartsSubtotal").textContent = isWarranty ? "₹0.00 (Covered)" : `₹${partsCost.toFixed(2)}`;
-  if ($("opsReceiptLaborCost")) $("opsReceiptLaborCost").textContent = isWarranty ? "₹0.00 (Covered)" : `₹${(inspectionFee + laborCost).toFixed(2)}`;
-  if ($("opsReceiptGstTax")) $("opsReceiptGstTax").textContent = isWarranty ? "₹0.00" : `₹${taxAmount.toFixed(2)} (CGST 9% + SGST 9%)`;
-  if ($("opsReceiptGrandTotal")) $("opsReceiptGrandTotal").textContent = `₹${totalAmount.toFixed(2)}`;
+  if ($("opsReceiptInspectionFee")) $("opsReceiptInspectionFee").textContent = isWarranty ? "₹0.00" : `₹${inspectionFee.toFixed(2)}`;
+  if ($("opsReceiptPartsSubtotal")) $("opsReceiptPartsSubtotal").textContent = isWarranty ? "₹0.00" : `₹${partsCost.toFixed(2)}`;
+  if ($("opsReceiptLaborCost")) $("opsReceiptLaborCost").textContent = isWarranty ? "₹0.00" : `₹${laborCost.toFixed(2)}`;
+  if ($("opsReceiptGstTax")) $("opsReceiptGstTax").textContent = isWarranty ? "₹0.00" : `₹${taxAmount.toFixed(2)}`;
+  if ($("opsReceiptTaxAmount")) $("opsReceiptTaxAmount").textContent = isWarranty ? "₹0.00" : `₹${taxAmount.toFixed(2)}`;
+  if ($("opsReceiptGrandTotal")) $("opsReceiptGrandTotal").textContent = isWarranty ? "₹0.00" : `₹${totalAmount.toFixed(2)}`;
+  
+  if ($("opsReceiptAmountWords")) {
+    if (isWarranty && totalAmount === 0) {
+      $("opsReceiptAmountWords").textContent = "Zero Rupees (100% Covered Under OEM Brand Warranty)";
+    } else {
+      $("opsReceiptAmountWords").textContent = numberToWordsIndian(totalAmount);
+    }
+  }
+
+  // Admin portal field fallbacks
+  if ($("opsReceiptLabor")) $("opsReceiptLabor").textContent = `₹${laborCost.toFixed(2)}`;
+  if ($("opsReceiptParts")) $("opsReceiptParts").textContent = `₹${partsCost.toFixed(2)}`;
+  if ($("opsReceiptCgst")) $("opsReceiptCgst").textContent = `₹${(taxAmount / 2).toFixed(2)}`;
+  if ($("opsReceiptSgst")) $("opsReceiptSgst").textContent = `₹${(taxAmount / 2).toFixed(2)}`;
+  if ($("opsReceiptTotal")) $("opsReceiptTotal").textContent = isWarranty ? "₹0.00" : `₹${totalAmount.toFixed(2)}`;
+  if ($("opsReceiptPaymentMethod")) $("opsReceiptPaymentMethod").textContent = req.payment_method ? req.payment_method.toUpperCase() : "UPI / ONLINE";
+  if ($("opsReceiptTxnRef")) $("opsReceiptTxnRef").textContent = req.payment_transaction_id || `PAY-${req.id}`;
 
   if ($("opsReceiptTechSigImg") && jc && jc.technician_signature) {
     $("opsReceiptTechSigImg").src = jc.technician_signature;
@@ -5283,6 +5323,13 @@ window.openOpsReceiptModal = async function(requestId, showPrevious = false) {
 
   if ($("opsReceiptCustSigImg") && jc && jc.customer_signature) {
     $("opsReceiptCustSigImg").src = jc.customer_signature;
+    $("opsReceiptCustSigImg").classList.remove("hidden");
+    if ($("opsReceiptCustSigText")) $("opsReceiptCustSigText").textContent = "Digitally signed by Customer";
+  } else {
+    if ($("opsReceiptCustSigImg")) $("opsReceiptCustSigImg").classList.add("hidden");
+    if ($("opsReceiptCustSigText")) $("opsReceiptCustSigText").textContent = "Settled & verified via Completion OTP";
+  }
+};
     $("opsReceiptCustSigImg").classList.remove("hidden");
     if ($("opsReceiptCustSigText")) $("opsReceiptCustSigText").textContent = "Digitally signed by Customer";
   } else {

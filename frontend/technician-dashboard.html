@@ -363,95 +363,163 @@
   </nav>
 
   <!-- Official Payment Receipt Modal for Ops -->
-  <dialog id="opsReceiptDialog" class="w-[min(94vw,680px)] rounded-3xl border-0 p-0 shadow-2xl overflow-hidden bg-white">
-    <div class="p-6 sm:p-8 space-y-5 max-h-[90vh] overflow-y-auto" id="opsReceiptPrintArea">
-      <div class="flex items-start justify-between border-b border-slate-200 pb-4">
-        <div>
-          <div class="flex items-center gap-2">
-            <span class="w-8 h-8 rounded-xl bg-[#0066ff] text-white flex items-center justify-center font-display font-extrabold text-sm">S</span>
-            <span class="font-display font-black text-xl tracking-tight text-slate-900">SERVSURE</span>
+  <dialog id="opsReceiptDialog" class="w-[min(94vw,760px)] rounded-xl border border-black/40 p-0 shadow-2xl overflow-hidden bg-white">
+    <div class="p-4 sm:p-6 space-y-4 max-h-[92vh] overflow-y-auto bg-neutral-100 print:bg-white print:p-0 print:m-0 print:max-h-none print:overflow-visible" id="opsReceiptPrintArea">
+      
+      <!-- AUTHENTIC BLACK & WHITE TAX INVOICE DOCUMENT SHEET -->
+      <div class="bg-white border-2 border-black p-5 sm:p-6 text-black font-sans text-xs shadow-sm print:border-2 print:border-black print:p-5 print:shadow-none">
+        
+        <!-- Header Banner -->
+        <div class="text-center pb-3 border-b-2 border-black">
+          <div class="flex items-center justify-between text-[10px] font-mono uppercase tracking-widest text-neutral-700 pb-1">
+            <span>GST COMPLIANT SERVICE INVOICE</span>
+            <span class="font-bold border border-black px-1.5 py-0.5 text-black">OFFICIAL COPY</span>
           </div>
-          <p class="text-[11px] text-slate-400 mt-1">Official GST Tax Invoice & Service Receipt</p>
+          <h2 class="text-xl sm:text-2xl font-black uppercase tracking-wider text-black mt-1">TAX INVOICE</h2>
+          <p class="text-[10px] text-neutral-600 font-medium tracking-tight">Issued in accordance with Rule 46 of the Central Goods & Services Tax (CGST) Rules, 2017</p>
         </div>
-        <div class="text-right">
-          <span id="opsReceiptInvoiceNo" class="font-mono text-xs font-bold text-slate-800 block">REC-SR-7845</span>
-          <span id="opsReceiptDate" class="text-[11px] text-slate-500 block">19 Oct 2026, 03:30 PM</span>
-          <span id="opsReceiptPaidBadge" class="mt-1 inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold border border-emerald-200">
-            ✓ PAID IN FULL
-          </span>
+
+        <!-- Provider & Invoice Reference Grid -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 border-b border-black text-xs">
+          <!-- Left: Provider Details -->
+          <div class="p-3 border-b sm:border-b-0 sm:border-r border-black space-y-1">
+            <div class="font-black text-sm tracking-tight uppercase text-black">SERVSURE TECHNOLOGIES PRIVATE LIMITED</div>
+            <p class="text-[11px] text-neutral-800 leading-snug">
+              Authorized Consumer Appliance Care & Diagnostic Network<br>
+              Regd. Office: Plot 42, Sector 18, Commercial Hub, New Delhi - 110001<br>
+              <span class="font-semibold">GSTIN:</span> <span class="font-mono">07AAACS1234F1Z8</span> &nbsp;|&nbsp; <span class="font-semibold">PAN:</span> <span class="font-mono">AAACS1234F</span><br>
+              <span class="font-semibold">Principal SAC:</span> <span class="font-mono">9987</span> (Maintenance & Repair Services)<br>
+              <span class="font-semibold">Helpline:</span> 1800-123-SERV &nbsp;|&nbsp; <span class="font-semibold">Email:</span> support@servsure.com
+            </p>
+          </div>
+          <!-- Right: Invoice Metadata -->
+          <div class="p-3 space-y-1.5 text-xs bg-neutral-50/40">
+            <div class="flex justify-between items-center">
+              <span class="font-semibold text-neutral-700">Invoice No:</span>
+              <span id="opsReceiptInvoiceNo" class="font-mono font-black text-black text-sm">REC-SR-7845</span>
+            </div>
+            <div class="flex justify-between items-center">
+              <span class="font-semibold text-neutral-700">Invoice Date:</span>
+              <span id="opsReceiptDate" class="font-mono font-medium text-black">19 Oct 2026, 03:30 PM</span>
+            </div>
+            <div class="flex justify-between items-center">
+              <span class="font-semibold text-neutral-700">Place of Supply:</span>
+              <span class="font-medium text-black">State Code 07 (Delhi)</span>
+            </div>
+            <div class="flex justify-between items-center pt-0.5">
+              <span class="font-semibold text-neutral-700">Payment Status:</span>
+              <span id="opsReceiptPaidBadge" class="border border-black px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider text-black bg-white">[ PAID IN FULL ]</span>
+            </div>
+          </div>
         </div>
+
+        <!-- Customer & Service Center Details Grid -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 border-b border-black text-xs">
+          <!-- Billed To (Customer) -->
+          <div class="p-3 border-b sm:border-b-0 sm:border-r border-black space-y-1">
+            <div class="text-[10px] font-bold uppercase tracking-wider text-neutral-600 border-b border-black/20 pb-0.5 mb-1">Billed To (Customer / Recipient)</div>
+            <div id="opsReceiptCustomerName" class="font-bold text-sm text-black">Customer Name</div>
+            <div><span class="font-semibold">Phone:</span> <span id="opsReceiptCustomerPhone" class="font-mono">+91 98765 43210</span></div>
+            <div><span class="font-semibold">Service Address:</span> <span id="opsReceiptCustomerAddress" class="text-neutral-800">Doorstep Address</span></div>
+          </div>
+          <!-- Service Center & Technician -->
+          <div class="p-3 space-y-1">
+            <div class="text-[10px] font-bold uppercase tracking-wider text-neutral-600 border-b border-black/20 pb-0.5 mb-1">Authorized Service Center & Job Details</div>
+            <div><span class="font-semibold">Franchise:</span> <span id="opsReceiptBranchName">ServSure Authorized Franchise Partner</span></div>
+            <div><span class="font-semibold">Technician:</span> <span id="opsReceiptTechName">Rahul Sharma</span></div>
+            <div><span class="font-semibold">Appliance Serviced:</span> <span id="opsReceiptApplianceDetails" class="font-medium">LG Inverter AC (LG-INV-15)</span></div>
+            <div><span class="font-semibold">Service Diagnostic:</span> <span id="opsReceiptIssueDescription" class="text-neutral-800">Cooling repair</span></div>
+          </div>
+        </div>
+
+        <!-- Itemized Accounting Table -->
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-xs border-collapse">
+            <thead>
+              <tr class="border-b-2 border-black bg-neutral-100 text-black font-bold uppercase text-[10px]">
+                <th class="py-2 px-2.5 border-r border-black w-8 text-center">#</th>
+                <th class="py-2 px-2.5 border-r border-black">Description of Goods / Services</th>
+                <th class="py-2 px-2.5 border-r border-black text-center w-20">HSN/SAC</th>
+                <th class="py-2 px-2.5 border-r border-black text-center w-12">Qty</th>
+                <th class="py-2 px-2.5 border-r border-black text-right w-24">Rate (₹)</th>
+                <th class="py-2 px-2.5 text-right w-28">Amount (₹)</th>
+              </tr>
+            </thead>
+            <tbody id="opsReceiptItemsBody" class="divide-y divide-black/20 text-black">
+              <!-- Rendered by openOpsReceiptModal -->
+            </tbody>
+            <tfoot class="border-t-2 border-black text-xs text-black">
+              <tr class="border-b border-black/20">
+                <td colspan="5" class="py-1.5 px-3 text-right font-medium">Replaced Spare Parts Taxable Subtotal:</td>
+                <td id="opsReceiptPartsSubtotal" class="py-1.5 px-3 text-right font-semibold font-mono">₹0.00</td>
+              </tr>
+              <tr class="border-b border-black/20">
+                <td colspan="5" class="py-1.5 px-3 text-right font-medium">Labor & Diagnostic Charges (SAC 9987):</td>
+                <td id="opsReceiptLaborCost" class="py-1.5 px-3 text-right font-semibold font-mono">₹0.00</td>
+              </tr>
+              <tr class="border-b border-black/20">
+                <td colspan="5" class="py-1.5 px-3 text-right font-medium">Applicable GST (18%):</td>
+                <td id="opsReceiptGstTax" class="py-1.5 px-3 text-right font-semibold font-mono">₹0.00</td>
+              </tr>
+              <tr class="border-t-2 border-b-2 border-black font-black text-sm bg-neutral-100">
+                <td colspan="5" class="py-2.5 px-3 text-right uppercase tracking-wider font-bold">Total Invoice Value (INR):</td>
+                <td id="opsReceiptGrandTotal" class="py-2.5 px-3 text-right text-base font-mono font-black">₹0.00</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+
+        <!-- Amount Chargeable in Words -->
+        <div class="p-2.5 border-b border-black text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+          <div>
+            <span class="font-bold text-neutral-800">Amount Chargeable (in words): </span>
+            <span id="opsReceiptAmountWords" class="font-bold uppercase text-black font-mono">Indian Rupees Zero Only</span>
+          </div>
+          <div class="text-[10px] text-neutral-500 font-mono">E. & O.E.</div>
+        </div>
+
+        <!-- Terms, Conditions & Declarations -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 border-b border-black text-[10px] leading-tight">
+          <div class="p-2.5 border-b sm:border-b-0 sm:border-r border-black space-y-1">
+            <span class="font-bold uppercase block text-black">Terms & Conditions:</span>
+            <ol class="list-decimal list-inside text-neutral-700 space-y-0.5">
+              <li>All services covered under <strong>7-Day Free Warranty Revisit</strong> for reported complaint.</li>
+              <li>Genuine OEM spare parts replaced carry respective manufacturer warranty.</li>
+            </ol>
+          </div>
+          <div class="p-2.5 space-y-1 text-neutral-700">
+            <span class="font-bold uppercase block text-black">Statutory Declaration:</span>
+            <p>We declare that this invoice shows the actual price of the goods & services described and that all particulars are true and correct.</p>
+            <p class="font-mono text-[9px] text-neutral-500 pt-1">Computer-generated GST invoice. Electronic authentication valid under IT Act, 2000.</p>
+          </div>
+        </div>
+
+        <!-- Dual Signature Box -->
+        <div class="grid grid-cols-2 border-black text-[10px]">
+          <div class="p-3 border-r border-black text-center flex flex-col justify-between min-h-[95px]">
+            <span class="font-bold text-neutral-700 uppercase">Customer Acknowledgement</span>
+            <div class="my-auto py-1">
+              <img id="opsReceiptCustSigImg" src="" alt="Customer Signature" class="h-10 mx-auto object-contain hidden filter grayscale contrast-200">
+              <span id="opsReceiptCustSigText" class="italic text-neutral-600 block text-[10px]">Settled & verified via Completion OTP</span>
+            </div>
+            <span class="text-[9px] text-neutral-500 border-t border-dotted border-black/40 pt-1">Customer Signature / E-Consent</span>
+          </div>
+          <div class="p-3 text-center flex flex-col justify-between min-h-[95px]">
+            <span class="font-bold text-neutral-700 uppercase">For ServSure Authorized Franchise</span>
+            <div class="my-auto py-1">
+              <img id="opsReceiptTechSigImg" src="" alt="Tech Signature" class="h-10 mx-auto object-contain hidden filter grayscale contrast-200">
+              <span id="opsReceiptTechSigText" class="italic text-neutral-600 block text-[10px]">Verified on doorstep by field technician</span>
+            </div>
+            <span class="text-[9px] text-neutral-500 border-t border-dotted border-black/40 pt-1">Authorised Signatory / Technician</span>
+          </div>
+        </div>
+
       </div>
 
-      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs bg-slate-50/70 p-4 rounded-2xl border border-slate-100">
-        <div>
-          <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">Customer & Service Address</span>
-          <strong id="opsReceiptCustomerName" class="text-slate-800 font-bold block text-sm">Customer Name</strong>
-          <span id="opsReceiptCustomerPhone" class="text-slate-500 block mt-0.5">+91 98765 43210</span>
-          <p id="opsReceiptCustomerAddress" class="text-slate-600 mt-1 leading-relaxed">Doorstep Address</p>
-        </div>
-        <div class="sm:border-l sm:border-slate-200/80 sm:pl-4">
-          <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">Servicing Franchise & Technician</span>
-          <strong id="opsReceiptBranchName" class="text-slate-800 font-bold block text-sm">ServSure Authorized Franchise</strong>
-          <span id="opsReceiptTechName" class="text-blue-600 font-semibold block mt-0.5">Technician: Rahul Sharma</span>
-          <span id="opsReceiptApplianceDetails" class="text-slate-600 block mt-1">LG Inverter AC (LG-INV-15)</span>
-          <span id="opsReceiptIssueDescription" class="text-slate-500 text-[11px] block mt-0.5">Service: Cooling repair</span>
-        </div>
-      </div>
-
-      <div>
-        <table class="w-full text-left text-xs border border-slate-200 rounded-xl overflow-hidden">
-          <thead class="bg-slate-100/80 text-[10px] font-bold uppercase tracking-wider text-slate-500 border-b border-slate-200">
-            <tr>
-              <th class="py-2.5 px-3">#</th>
-              <th class="py-2.5 px-3">Description</th>
-              <th class="py-2.5 px-3 text-center">Qty</th>
-              <th class="py-2.5 px-3 text-right">Unit Rate (₹)</th>
-              <th class="py-2.5 px-3 text-right">Amount (₹)</th>
-            </tr>
-          </thead>
-          <tbody id="opsReceiptItemsBody" class="divide-y divide-slate-100">
-          </tbody>
-          <tfoot class="bg-slate-50 text-xs border-t border-slate-200">
-            <tr>
-              <td colspan="4" class="py-1.5 px-3 text-right font-medium text-slate-600">Parts Subtotal:</td>
-              <td id="opsReceiptPartsSubtotal" class="py-1.5 px-3 text-right font-semibold text-slate-800">₹0.00</td>
-            </tr>
-            <tr>
-              <td colspan="4" class="py-1.5 px-3 text-right font-medium text-slate-600">Labor & Diagnostic Charges:</td>
-              <td id="opsReceiptLaborCost" class="py-1.5 px-3 text-right font-semibold text-slate-800">₹0.00</td>
-            </tr>
-            <tr>
-              <td colspan="4" class="py-1.5 px-3 text-right font-medium text-slate-600">GST (18% - CGST 9% + SGST 9%):</td>
-              <td id="opsReceiptGstTax" class="py-1.5 px-3 text-right font-semibold text-slate-800">₹0.00</td>
-            </tr>
-            <tr class="border-t-2 border-slate-300 bg-blue-50/50">
-              <td colspan="4" class="py-2.5 px-3 text-right font-extrabold text-sm text-slate-900">Total Paid Amount:</td>
-              <td id="opsReceiptGrandTotal" class="py-2.5 px-3 text-right font-extrabold text-base text-blue-700">₹0.00</td>
-            </tr>
-          </tfoot>
-        </table>
-      </div>
-
-      <div class="grid grid-cols-2 gap-4 pt-2 text-[11px] text-slate-500 border-t border-slate-100">
-        <div>
-          <span class="font-bold text-slate-700 block">Technician Verification:</span>
-          <img id="opsReceiptTechSigImg" src="" alt="Tech Signature" class="h-10 mt-1 object-contain border border-slate-200 rounded p-1 bg-white hidden">
-          <span id="opsReceiptTechSigText" class="italic text-slate-400 block mt-1">Verified on doorstep</span>
-        </div>
-        <div class="text-right">
-          <span class="font-bold text-slate-700 block">Customer Acceptance:</span>
-          <img id="opsReceiptCustSigImg" src="" alt="Customer Signature" class="h-10 mt-1 object-contain border border-slate-200 rounded p-1 bg-white ml-auto hidden">
-          <span id="opsReceiptCustSigText" class="italic text-slate-400 block mt-1">Approved & closed via Completion OTP</span>
-        </div>
-      </div>
-
-      <div class="p-3 bg-slate-50 rounded-xl text-[10px] text-slate-400 text-center leading-normal">
-        Official GST Tax Invoice · ServSure Authorized Service Operations
-      </div>
-
-      <div class="flex items-center justify-between pt-2 border-t border-slate-100 print:hidden">
-        <button type="button" onclick="document.getElementById('opsReceiptDialog').close()" class="rounded-xl px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100">Close</button>
-        <button type="button" onclick="window.print()" class="rounded-xl bg-[#0066ff] hover:bg-blue-700 px-5 py-2 text-xs font-bold text-white shadow-sm transition flex items-center gap-1.5">
+      <!-- Modal Footer (Hidden when printing) -->
+      <div class="flex items-center justify-between pt-2 border-t border-black/20 print:hidden">
+        <button type="button" onclick="document.getElementById('opsReceiptDialog').close()" class="border border-black px-4 py-2 rounded-lg text-xs font-semibold text-black hover:bg-neutral-200 transition">Close</button>
+        <button type="button" onclick="window.print()" class="rounded-lg bg-black hover:bg-neutral-800 px-5 py-2 text-xs font-bold text-white shadow-sm transition flex items-center gap-1.5">
           <span>🖨️ Print / Download PDF</span>
         </button>
       </div>

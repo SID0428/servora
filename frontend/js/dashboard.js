@@ -2592,9 +2592,26 @@ window.openReceiptModal = async function(requestId, showPrevious = false) {
         if (showPrevious) {
           $("receiptSwitchTab1").className = "px-3 py-1.5 rounded-lg font-bold text-xs transition bg-blue-600 text-white shadow-2xs";
           $("receiptSwitchTab2").className = "px-3 py-1.5 rounded-lg font-bold text-xs transition text-slate-600 hover:text-slate-900";
+export function numberToWordsIndian(num) {
+  if (isNaN(num) || num <= 0) return "Zero Rupees Only";
+  const a = ['', 'One ', 'Two ', 'Three ', 'Four ', 'Five ', 'Six ', 'Seven ', 'Eight ', 'Nine ', 'Ten ', 'Eleven ', 'Twelve ', 'Thirteen ', 'Fourteen ', 'Fifteen ', 'Sixteen ', 'Seventeen ', 'Eighteen ', 'Nineteen '];
+  const b = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
+  const n = ('000000000' + Math.floor(num)).substr(-9).match(/^(\d{2})(\d{2})(\d{2})(\d{1})(\d{2})$/);
+  if (!n) return 'Indian Rupees Only';
+  let str = '';
+  str += (Number(n[1]) != 0) ? (a[Number(n[1])] || b[n[1][0]] + ' ' + a[n[1][1]]) + 'Crore ' : '';
+  str += (Number(n[2]) != 0) ? (a[Number(n[2])] || b[n[2][0]] + ' ' + a[n[2][1]]) + 'Lakh ' : '';
+  str += (Number(n[3]) != 0) ? (a[Number(n[3])] || b[n[3][0]] + ' ' + a[n[3][1]]) + 'Thousand ' : '';
+  str += (Number(n[4]) != 0) ? (a[Number(n[4])] || b[n[4][0]] + ' ' + a[n[4][1]]) + 'Hundred ' : '';
+  str += (Number(n[5]) != 0) ? ((str != '') ? 'and ' : '') + (a[Number(n[5])] || b[n[5][0]] + ' ' + a[n[5][1]]) : '';
+  const paise = Math.round((num - Math.floor(num)) * 100);
+  let paiseStr = paise > 0 ? ` and ${paise}/100 Paise` : '';
+  return `Indian Rupees ${str.trim()}${paiseStr} Only`;
+}
+
         } else {
-          $("receiptSwitchTab1").className = "px-3 py-1.5 rounded-lg font-bold text-xs transition text-slate-600 hover:text-slate-900";
-          $("receiptSwitchTab2").className = "px-3 py-1.5 rounded-lg font-bold text-xs transition bg-blue-600 text-white shadow-2xs";
+          $("receiptSwitchTab1").className = "px-3 py-1.5 font-mono font-bold text-xs transition border border-black text-black bg-white hover:bg-neutral-100";
+          $("receiptSwitchTab2").className = "px-3 py-1.5 font-mono font-bold text-xs transition bg-black text-white";
         }
         $("receiptSwitchTab1").onclick = () => window.openReceiptModal(reqId, true);
         $("receiptSwitchTab2").onclick = () => window.openReceiptModal(reqId, false);
@@ -2610,17 +2627,15 @@ window.openReceiptModal = async function(requestId, showPrevious = false) {
   const isPaid = targetReq.payment_status === "Paid" || targetReq.payment_status === "Paid (Warranty Covered)" || (jc && isWarranty);
 
   if ($("receiptPaidBadge")) {
-    $("receiptPaidBadge").textContent = isWarranty ? "✓ COVERED UNDER BRAND WARRANTY" : (isPaid ? "✓ PAID IN FULL" : "PAYMENT PENDING");
-    $("receiptPaidBadge").className = `mt-1 inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
-      isPaid ? "bg-emerald-100 text-emerald-800 border-emerald-200" : "bg-amber-100 text-amber-800 border-amber-200"
-    }`;
+    $("receiptPaidBadge").textContent = isWarranty ? "[ OEM WARRANTY COVERED ]" : (isPaid ? "[ PAID IN FULL ]" : "[ PAYMENT PENDING ]");
+    $("receiptPaidBadge").className = "inline-block border border-black px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider text-black bg-white";
   }
 
   if ($("receiptPaymentMeta")) {
     const pMethod = targetReq.payment_method ? targetReq.payment_method.toUpperCase() : "UPI / ONLINE";
     const pTxn = targetReq.payment_transaction_id || `PAY-${reqId}`;
     const visitSuffix = showPrevious ? " (Visit 1)" : (hasMultipleReceipts ? " (Visit 2)" : "");
-    $("receiptPaymentMeta").textContent = isWarranty ? `OEM Brand Reimbursed · Customer Liability ₹0.00${visitSuffix}` : `${pMethod} · Ref: ${pTxn}${visitSuffix}`;
+    $("receiptPaymentMeta").textContent = isWarranty ? `OEM Brand Reimbursed · Liability ₹0.00${visitSuffix}` : `${pMethod} · Ref: ${pTxn}${visitSuffix}`;
   }
 
   // Customer info
@@ -2633,9 +2648,9 @@ window.openReceiptModal = async function(requestId, showPrevious = false) {
     ? (targetReq.previous_technician_name || "Original Technician")
     : (targetReq.technician?.name || targetReq.previous_technician_name || "Authorized Field Technician");
   if ($("receiptBranchName")) $("receiptBranchName").textContent = "ServSure Authorized Franchise Partner";
-  if ($("receiptTechName")) $("receiptTechName").textContent = `Technician: ${techName}${showPrevious ? " (Initial Visit)" : (hasMultipleReceipts ? " (Revisit Resolution)" : "")}`;
+  if ($("receiptTechName")) $("receiptTechName").textContent = `${techName}${showPrevious ? " (Initial Visit)" : (hasMultipleReceipts ? " (Revisit Resolution)" : "")}`;
   if ($("receiptApplianceDetails")) $("receiptApplianceDetails").textContent = `${targetReq.brand || ''} ${targetReq.appliance_name || 'Home Appliance'} (${targetReq.model_no || 'Standard'})`;
-  if ($("receiptIssueDescription")) $("receiptIssueDescription").textContent = `Service: ${targetReq.issue || 'Routine Service'}${showPrevious ? " [Initial Service]" : (hasMultipleReceipts ? " [Reopened Service]" : "")}`;
+  if ($("receiptIssueDescription")) $("receiptIssueDescription").textContent = `${targetReq.issue || 'Routine Diagnostics & Service'}${showPrevious ? " [Initial Service]" : (hasMultipleReceipts ? " [Reopened Service]" : "")}`;
 
   // Itemized breakdown adhering to Phase 2 automated price engine
   const parts = (jc && Array.isArray(jc.parts_used)) ? jc.parts_used : [];
@@ -2651,30 +2666,32 @@ window.openReceiptModal = async function(requestId, showPrevious = false) {
     let rowsHtml = "";
     // Line 1: Inspection Fee (SAC 9987)
     rowsHtml += `
-      <tr>
-        <td class="py-2.5 px-3 text-slate-400 font-mono">1</td>
-        <td class="py-2.5 px-3 font-medium text-slate-800">
+      <tr class="border-b border-black/20">
+        <td class="py-2 px-2.5 border-r border-black/40 text-center font-mono">1</td>
+        <td class="py-2 px-2.5 border-r border-black/40 font-medium text-black">
           Standard Doorstep Inspection & Technical Diagnostics
-          <span class="text-[10px] text-slate-400 block font-normal font-mono">SAC 9987 · GST 18%</span>
+          <span class="text-[10px] text-neutral-600 block font-normal font-mono">Certified diagnostic doorstep visit</span>
         </td>
-        <td class="py-2.5 px-3 text-center text-slate-600 font-semibold">1</td>
-        <td class="py-2.5 px-3 text-right text-slate-600">₹${inspectFee.toFixed(2)}</td>
-        <td class="py-2.5 px-3 text-right font-bold text-slate-800">₹${inspectFee.toFixed(2)}</td>
+        <td class="py-2 px-2.5 border-r border-black/40 text-center font-mono">9987</td>
+        <td class="py-2 px-2.5 border-r border-black/40 text-center font-mono font-semibold">1</td>
+        <td class="py-2 px-2.5 border-r border-black/40 text-right font-mono">₹${inspectFee.toFixed(2)}</td>
+        <td class="py-2 px-2.5 text-right font-mono font-bold text-black">₹${inspectFee.toFixed(2)}</td>
       </tr>
     `;
 
     // Line 2: Labor & Service
     if (laborCost > 0) {
       rowsHtml += `
-        <tr>
-          <td class="py-2.5 px-3 text-slate-400 font-mono">2</td>
-          <td class="py-2.5 px-3 font-medium text-slate-800">
+        <tr class="border-b border-black/20">
+          <td class="py-2 px-2.5 border-r border-black/40 text-center font-mono">2</td>
+          <td class="py-2 px-2.5 border-r border-black/40 font-medium text-black">
             ${escapeHtml(jc?.work_summary || 'Appliance Repair & Overhaul Labor')}
-            <span class="text-[10px] text-slate-400 block font-normal font-mono">SAC 9987 · GST 18%</span>
+            <span class="text-[10px] text-neutral-600 block font-normal font-mono">Standard technical service & overhaul</span>
           </td>
-          <td class="py-2.5 px-3 text-center text-slate-600 font-semibold">1</td>
-          <td class="py-2.5 px-3 text-right text-slate-600">₹${laborCost.toFixed(2)}</td>
-          <td class="py-2.5 px-3 text-right font-bold text-slate-800">₹${laborCost.toFixed(2)}</td>
+          <td class="py-2 px-2.5 border-r border-black/40 text-center font-mono">9987</td>
+          <td class="py-2 px-2.5 border-r border-black/40 text-center font-mono font-semibold">1</td>
+          <td class="py-2 px-2.5 border-r border-black/40 text-right font-mono">₹${laborCost.toFixed(2)}</td>
+          <td class="py-2 px-2.5 text-right font-mono font-bold text-black">₹${laborCost.toFixed(2)}</td>
         </tr>
       `;
     }
@@ -2687,15 +2704,16 @@ window.openReceiptModal = async function(requestId, showPrevious = false) {
         const pTotal = Number(p.total_price || (pQty * pRate));
         const hsn = p.hsn_code || "8418";
         rowsHtml += `
-          <tr>
-            <td class="py-2.5 px-3 text-slate-400 font-mono">${(laborCost > 0 ? 3 : 2) + idx}</td>
-            <td class="py-2.5 px-3 font-medium text-slate-800">
-              ${escapeHtml(p.part_name)} ${p.part_code ? `<span class="text-blue-600 font-mono text-[10px]">[${escapeHtml(p.part_code)}]</span>` : ''}
-              <span class="text-[10px] text-slate-400 block font-normal font-mono">HSN ${escapeHtml(hsn)} · Genuine OEM Component</span>
+          <tr class="border-b border-black/20">
+            <td class="py-2 px-2.5 border-r border-black/40 text-center font-mono">${(laborCost > 0 ? 3 : 2) + idx}</td>
+            <td class="py-2 px-2.5 border-r border-black/40 font-medium text-black">
+              ${escapeHtml(p.part_name)} ${p.part_code ? `<span class="font-mono text-[10px] text-neutral-600">[${escapeHtml(p.part_code)}]</span>` : ''}
+              <span class="text-[10px] text-neutral-600 block font-normal font-mono">Genuine OEM Replacement Part</span>
             </td>
-            <td class="py-2.5 px-3 text-center text-slate-600 font-semibold">${pQty}</td>
-            <td class="py-2.5 px-3 text-right text-slate-600">₹${pRate.toFixed(2)}</td>
-            <td class="py-2.5 px-3 text-right font-bold text-slate-800">₹${pTotal.toFixed(2)}</td>
+            <td class="py-2 px-2.5 border-r border-black/40 text-center font-mono">${escapeHtml(hsn)}</td>
+            <td class="py-2 px-2.5 border-r border-black/40 text-center font-mono font-semibold">${pQty}</td>
+            <td class="py-2 px-2.5 border-r border-black/40 text-right font-mono">₹${pRate.toFixed(2)}</td>
+            <td class="py-2 px-2.5 text-right font-mono font-bold text-black">₹${pTotal.toFixed(2)}</td>
           </tr>
         `;
       });
@@ -2712,7 +2730,15 @@ window.openReceiptModal = async function(requestId, showPrevious = false) {
   }
   if ($("receiptCgstTax")) $("receiptCgstTax").textContent = `₹${cgst.toFixed(2)}`;
   if ($("receiptSgstTax")) $("receiptSgstTax").textContent = `₹${sgst.toFixed(2)}`;
-  if ($("receiptGrandTotal")) $("receiptGrandTotal").textContent = isWarranty ? "₹0.00 (Warranty)" : `₹${totalAmount.toFixed(2)}`;
+  if ($("receiptGrandTotal")) $("receiptGrandTotal").textContent = isWarranty ? "₹0.00" : `₹${totalAmount.toFixed(2)}`;
+  
+  if ($("receiptAmountWords")) {
+    if (isWarranty && totalAmount === 0) {
+      $("receiptAmountWords").textContent = "Zero Rupees (100% Covered Under OEM Brand Warranty)";
+    } else {
+      $("receiptAmountWords").textContent = numberToWordsIndian(totalAmount);
+    }
+  }
 
   // Signatures
   if ($("receiptTechSigImg") && jc && jc.technician_signature) {

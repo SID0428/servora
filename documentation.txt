@@ -4,8 +4,8 @@ PRODUCTION-GRADE TECHNICAL ARCHITECTURE & DEVELOPER ONBOARDING MANUAL
 ================================================================================
 File: documentation.txt
 Platform: ServSure (formerly Servora)
-Version: 1.4.0 (Production Release - Multi-Year Fiscal Warranty Policies & Item-Level Split Billing)
-Last Updated: October 24, 2026 (17:45 IST)
+Version: 1.5.0 (Production Release - Authentic Black & White Commercial Tax Invoice Format)
+Last Updated: October 24, 2026 (21:40 IST)
 Repository: https://github.com/SID0428/servora.git
 
 Welcome to ServSure! This manual is the definitive, authoritative reference
@@ -1144,6 +1144,31 @@ were identified between the initial rough draft documentation and the actual cod
         - Customer Portal (`customer-dashboard.html` & `dashboard.js`): Appliance cards display matched policy badges with component warranty terms.
           Pre-Repair Estimate modal and Job Card receipts clearly display itemized coverage (`🛡️ OEM Warranty Covered: ₹0.00`) and
           transparent customer-payable amounts with zero hidden fees.
+17. Discrepancy: Post-Service Invoice Format Realism & Monochrome Accounting Standard
+   - Initial Draft / Early Iteration:
+     Post-service receipts in the customer and operations dashboards were styled using colorful modern UI elements
+     (bright blue buttons, emerald green badges, gradient headers, rounded cards). While visually modern, they lacked
+     the gravitas, legal realism, and accounting structure of authentic commercial GST tax invoices issued by authorized service centers.
+   - Reality in Code:
+     1. Monochrome Legal Sheet Structure:
+        - Replaced colorful dialog cards with a structured, boxed black-and-white A4 tax invoice sheet (`border-2 border-black`).
+        - Added official statutory headers: `"TAX INVOICE"` issued in accordance with Rule 46 of the Central Goods & Services Tax (CGST) Rules, 2017,
+          with `"ORIGINAL FOR RECIPIENT"` / `"OFFICIAL COPY"` markers.
+        - Provider details formatted formally: ServSure Technologies Pvt. Ltd., Regd. Office, GSTIN, PAN, Principal SAC 9987, and Helpline.
+     2. Tabular Accounting Grid & Indian Number-to-Words Converter:
+        - 6-column boxed accounting grid: `#`, `Description of Goods / Services`, `HSN/SAC`, `Qty`, `Rate (₹)`, and `Amount (₹)` with crisp cell dividers.
+        - Full accounting summary: Replaced Parts Subtotal, Labor Charges, Warranty / Discount Waiver, CGST (9%), SGST (9%), and Total Invoice Value.
+        - Implemented `numberToWordsIndian()` in `dashboard.js` and `ops-dashboard.js` to render the formal Indian accounting line:
+          `Amount Chargeable (in words): Indian Rupees ... Only`.
+     3. Statutory Terms, Declaration & Digital Signatures:
+        - Statutory declaration: "We declare that this invoice shows the actual price of the goods & services described..."
+        - 7-Day Free Warranty Revisit and OEM spare parts warranty terms.
+        - Dual bordered boxes for Customer OTP Verification Acknowledgement and Franchise Authorized Signatory.
+     4. Cross-Portal Consistency:
+        - Applied across all 5 portals: Customer Portal (`#receiptModal` in `customer-dashboard.html`), Field Technician (`#opsReceiptDialog` in `technician-dashboard.html`),
+          Franchise Partner (`#opsReceiptDialog` in `franchise-dashboard.html`), Company OEM (`#opsReceiptDialog` in `company-dashboard.html`),
+          and Platform Administrator (`#opsReceiptDialog` in `admin-dashboard.html`).
+        - `@media print` stylesheets optimized so clicking `"Print / Download PDF"` generates an authentic, razor-sharp black-and-white physical invoice.
 
 ================================================================================
 End of Documentation
