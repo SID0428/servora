@@ -4,8 +4,8 @@ PRODUCTION-GRADE TECHNICAL ARCHITECTURE & DEVELOPER ONBOARDING MANUAL
 ================================================================================
 File: documentation.txt
 Platform: ServSure (formerly Servora)
-Version: 1.1.7 (Production Release - Cross-Account Isolation, Empty Inventory Enforcement & Hash Routing Persistence)
-Last Updated: October 24, 2026 (11:42 IST)
+Version: 1.1.8 (Production Release - Resolved ESM Parse Error & Complete Portal Hydration across All Roles)
+Last Updated: October 24, 2026 (12:08 IST)
 Repository: https://github.com/SID0428/servora.git
 
 Welcome to ServSure! This manual is the definitive, authoritative reference
@@ -969,10 +969,13 @@ were identified between the initial rough draft documentation and the actual cod
 
 13. Discrepancy: Cross-Account Cache Isolation, Empty Inventory Enforcement & Hash Routing Persistence
    - Initial Draft / Early Iteration:
-     1. Portal Refresh Failure: When refreshing franchise, company, technician, or admin portals, nothing loaded
-        or an infinite loading state occurred. Investigation revealed an unhandled JavaScript `ReferenceError: stored is not defined`
-        inside `loadDashboard()`, missing hash routing to restore the active view on refresh, and single-key
-        `servsure_*` checks in portal `<head>` redirect scripts that conflicted with `servora_*` sessions.
+     1. Portal Refresh Failure & Unhydrated Shell: When refreshing or loading franchise, company, technician, or admin portals,
+        the page was frozen with static placeholders ("Loading service requests...", empty navigation sidebar, "ServSure user",
+        "Overview"). In-depth ESM AST analysis revealed an unclosed function body (`renderHelpCenterView`) on line 880 of
+        `ops-dashboard.js` that was missing a closing brace `}` before `loadCompanyAppliances()`. Because `<script type="module">`
+        fails entirely at parse-time upon encountering `SyntaxError: Unexpected end of input`, the entire script was blocked
+        from executing, leaving the dashboard in an unhydrated HTML state. Additionally, `loadDashboard()` previously contained
+        an unhandled `ReferenceError: stored is not defined` and missing URL hash restoration.
      2. Auto-Seeded 7 Inventory Parts: Upon logging into a newly created company or franchise branch, the inventory
         table automatically displayed 7 spare parts instead of starting empty at zero. This occurred because
         `get_branch_inventory` in `inventory.py` contained an auto-seeding loop that cloned all seed catalog parts
@@ -981,10 +984,12 @@ were identified between the initial rough draft documentation and the actual cod
         dashboard before disappearing. This was caused by global un-scoped localStorage keys (`servora_cache_requests_${role}`)
         and an over-permissive fallback in `requestForRole(item)` that returned `true` for unowned tickets.
    - Reality in Code:
-     1. Portal Refresh & Hash Persistence: Fixed the `stored` reference error in `ops-dashboard.js`. Added `getPageFromHash()`
-        and hashchange event listeners so that refreshing any portal cleanly re-fetches and renders the correct active
-        tab. Updated inline `<head>` scripts across all portal HTML pages (`admin`, `company`, `franchise`, `technician`)
-        to evaluate both `servsure_*` and `servora_*` keys.
+     1. Complete Module Parsing & Portal Hydration: Fixed the missing closing brace `}` on `renderHelpCenterView()` and added
+        optional chaining on `requestSearch` and `statusFilter` inputs. Verified complete module loading with `node --input-type=module --check < frontend/js/ops-dashboard.js`
+        and multi-role simulation across Admin, Franchise, Company, and Technician workspaces. Added `getPageFromHash()` and
+        hashchange event listeners so that refreshing any portal cleanly re-fetches and renders the correct active tab. Updated
+        inline `<head>` scripts across all portal HTML pages (`admin`, `company`, `franchise`, `technician`) to evaluate both
+        `servsure_*` and `servora_*` keys.
      2. Zero-Dummy Inventory Policy: Removed the 7-part auto-seeding block from `get_branch_inventory`. Cleaned up
         the database to purge auto-created franchise inventory rows for non-demo branches. Enforced strict company scoping
         in `get_company_inventory_parts` (`SparePartModel.company_id == user.id`), ensuring all new company and franchise

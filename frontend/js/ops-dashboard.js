@@ -898,6 +898,8 @@ function renderHelpCenterView() {
   $("sidePanelTitle").textContent = "Field Guidelines";
   $("healthContent").innerHTML = `<div class="section-empty">Always carry your ServSure digital ID card, verified tool kit, and wear shoe covers during customer doorstep visits.</div>`;
   $("activityContent").innerHTML = `<div class="section-empty">Confirm diagnosis and price estimate with the customer prior to replacing any spare parts.</div>`;
+}
+
 async function loadCompanyAppliances() {
   try {
     companyAppliances = await companyApi("/appliances");
@@ -3924,8 +3926,8 @@ function priorityClass(priority) {
 
 function renderRequests() {
   const list = requests.filter(requestForRole);
-  const query = $("requestSearch") ? $("requestSearch").value.trim().toLowerCase() : "";
-  const status = $("statusFilter") ? $("statusFilter").value : "all";
+  const query = $("requestSearch")?.value ? $("requestSearch").value.trim().toLowerCase() : "";
+  const status = $("statusFilter")?.value || "all";
   const filtered = list.filter((item) => {
     const text = [item.id, item.customer_name, item.appliance_name, item.issue, item.status_badge, item.pincode].join(" ").toLowerCase();
     return (!query || text.includes(query)) && (status === "all" || item.status_badge === status);
