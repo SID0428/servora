@@ -4,8 +4,8 @@ PRODUCTION-GRADE TECHNICAL ARCHITECTURE & DEVELOPER ONBOARDING MANUAL
 ================================================================================
 File: documentation.txt
 Platform: ServSure (formerly Servora)
-Version: 1.7.1 (Production Release - Dynamic Timeslot Capacity, Customer Reschedule & Script AST Audit)
-Last Updated: October 25, 2026 (00:45 IST)
+Version: 1.7.2 (Production Release - Spare Part Classification & Explicit Warranty Eligibility)
+Last Updated: October 25, 2026 (13:40 IST)
 Repository: https://github.com/SID0428/servora.git
 
 Welcome to ServSure! This manual is the definitive, authoritative reference
@@ -765,11 +765,13 @@ Request Headers:
       "brand": "Crompton",
       "unit_price": 750.0,
       "hsn_code": "848180",
+      "part_type": "functional",
+      "is_warranty_eligible": true,
       "description": "High pressure discharge valve for inverter air conditioners",
       "stock_quantity": 40
     }
     ```
-  - Creates spare part catalog entry with initial company warehouse stock.
+  - Creates spare part catalog entry with initial company warehouse stock and explicit warranty classification (`part_type`: `functional`, `consumable`, `wear_and_tear`, `accessory` and `is_warranty_eligible`: `true`/`false`).
 - `PUT /api/inventory/company/parts/{part_id}`:
   - Body:
     ```json

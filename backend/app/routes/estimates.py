@@ -88,7 +88,16 @@ def create_or_update_estimate(
 
         is_covered = p.is_covered
         if is_covered is None:
-            is_consumable = any(word in (p.part_name or "").lower() for word in ["gas", "filter", "gasket", "seal", "cleaning", "pipe"])
+            db_part = None
+            if getattr(p, "part_id", None):
+                db_part = db.query(SparePartModel).filter(SparePartModel.id == p.part_id).first()
+            if not db_part and getattr(p, "part_code", None):
+                db_part = db.query(SparePartModel).filter(SparePartModel.part_code == p.part_code).first()
+
+            if db_part:
+                is_consumable = db_part.part_type in ("consumable", "wear_and_tear", "accessory") or not db_part.is_warranty_eligible
+            else:
+                is_consumable = any(word in (p.part_name or "").lower() for word in ["gas", "filter", "gasket", "seal", "cleaning", "pipe"])
             is_covered = is_under_warranty and not is_consumable
 
         p_dict["is_covered"] = bool(is_covered)

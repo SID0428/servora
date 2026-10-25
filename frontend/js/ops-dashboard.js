@@ -7347,6 +7347,13 @@ function initEvents() {
     }
   });
 
+  $("addPartType")?.addEventListener("change", (e) => {
+    const isFunctional = e.target.value === "functional";
+    if ($("addPartWarrantyEligible")) {
+      $("addPartWarrantyEligible").checked = isFunctional;
+    }
+  });
+
   $("addPartForm")?.addEventListener("submit", async (e) => {
     e.preventDefault();
     const btn = $("submitAddPartBtn");
@@ -7361,6 +7368,8 @@ function initEvents() {
         brand: $("addPartBrand")?.value.trim() || undefined,
         unit_price: parseFloat($("addPartPrice").value) || 0,
         stock_quantity: parseInt($("addPartStock").value, 10) || 0,
+        part_type: $("addPartType")?.value || "functional",
+        is_warranty_eligible: $("addPartWarrantyEligible") ? $("addPartWarrantyEligible").checked : true,
         hsn_code: $("addPartHsn").value.trim() || "841890",
         description: $("addPartDesc")?.value.trim() || undefined
       };
@@ -7368,7 +7377,7 @@ function initEvents() {
         method: "POST",
         body: JSON.stringify(payload)
       });
-      showToast(`Component ${payload.name} (${payload.part_code}) added with ${payload.stock_quantity} units stock.`);
+      showToast(`Component ${payload.name} (${payload.part_code}) added as ${payload.part_type}.`);
       $("addPartForm").reset();
       $("addPartDialog")?.close();
       await loadCompanyInventoryAndSpares();
