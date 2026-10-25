@@ -361,7 +361,81 @@ if (typeof window !== "undefined") {
     }
   });
 }
+let currentWorkspacePage = "";
+
+function isCurrentPage(expected) {
+  if (!currentWorkspacePage) return true;
+  const norm = (s) => (s || "").toLowerCase().trim();
+  const c = norm(currentWorkspacePage);
+  const e = norm(expected);
+  if (c === e) return true;
+  const aliases = {
+    "operating hours & calendar": ["operating hours", "operating hours & calendar"],
+    "operating hours": ["operating hours", "operating hours & calendar"],
+    "inventory & spares": ["inventory & spares", "spares catalog"],
+    "spares catalog": ["inventory & spares", "spares catalog"],
+    "escalations": ["escalations", "sla escalations"],
+    "sla escalations": ["escalations", "sla escalations"],
+    "overview": ["overview", "dashboard"],
+    "dashboard": ["overview", "dashboard"]
+  };
+  if (aliases[e] && aliases[e].includes(c)) return true;
+  return false;
+}
+
+function resetViewDom(page) {
+  const tableEl = $("requestRows")?.closest("table");
+  const techContainer = $("techJobCardsContainer");
+  const schedContainer = $("franchiseScheduleContainer");
+  const toolsEl = document.querySelector(".table-tools");
+  const footEl = document.querySelector(".panel-foot");
+  const statusFilterEl = $("statusFilter");
+
+  const isScheduleView = (role === "franchise" || role === "branch") &&
+    (page === "Operating hours & calendar" || page === "Operating hours");
+
+  // 1. Operating hours & calendar visibility isolation
+  if (schedContainer) {
+    schedContainer.style.display = isScheduleView ? "block" : "none";
+  }
+
+  // 2. Table / Tech cards / Tools visibility
+  if (isScheduleView) {
+    if (tableEl) tableEl.style.display = "none";
+    if (techContainer) techContainer.style.display = "none";
+    if (toolsEl) toolsEl.style.display = "none";
+    if (footEl) footEl.style.display = "none";
+  } else {
+    if (role === "technician") {
+      const isCardView = ["My jobs", "Dashboard", "Overview", "Active jobs"].includes(page);
+      if (tableEl) tableEl.style.display = isCardView ? "none" : "";
+      if (techContainer) techContainer.style.display = isCardView ? "block" : "none";
+    } else {
+      if (tableEl) tableEl.style.display = "";
+      if (techContainer) techContainer.style.display = "none";
+    }
+    if (toolsEl) toolsEl.style.display = "";
+    if (footEl) footEl.style.display = "";
+  }
+
+  // 3. Status filter visibility & options restoration
+  const hideStatusFilter = page === "Appliances" || page === "Reports" || page === "System settings" || page === "Settings" || isScheduleView;
+  setHidden("statusFilter", hideStatusFilter);
+
+  if (statusFilterEl && page !== "Technicians" && statusFilterEl.dataset.techStatusInit) {
+    delete statusFilterEl.dataset.techStatusInit;
+    statusFilterEl.innerHTML = `<option value="all">All status</option><option>In Progress</option><option>Scheduled</option><option>Completed</option>`;
+    statusFilterEl.value = "all";
+  }
+
+  // 4. Default search input placeholder reset
+  if ($("requestSearch") && !["Inventory & Spares", "Spares Catalog", "Warranty Claims"].includes(page)) {
+    $("requestSearch").placeholder = role === "franchise" ? "Search requests, customers, or appliances" : "Search requests";
+  }
+}
+
 function renderPage(page) {
+  currentWorkspacePage = page;
   if ($("crumbTitle")) $("crumbTitle").textContent = page;
   document.querySelectorAll(".nav-link").forEach((link) => link.classList.toggle("active", link.dataset.page === page));
   safeSessionSet(`servsure_active_page_${role}`, page);
@@ -369,6 +443,9 @@ function renderPage(page) {
   if (typeof window !== "undefined" && window.location.hash !== `#${slug}`) {
     history.replaceState(null, "", `#${slug}`);
   }
+
+  resetViewDom(page);
+
   const admin = role === "admin";
   setHidden("addCompanyButton", !admin);
   setHidden("addBranchButton", !(role === "company" && page === "Branches"));
@@ -595,20 +672,24 @@ function compileFranchiseCustomersFromRequests() {
 }
 
 async function loadFranchiseCustomers() {
+  if (!isCurrentPage("Customers")) return;
   if (franchiseCustomers && franchiseCustomers.length > 0) {
     renderFranchiseCustomers();
   } else {
     try {
       const c = localStorage.getItem("servora_cache_franchise_customers");
       if (c) franchiseCustomers = JSON.parse(c);
-      if (franchiseCustomers.length > 0) renderFranchiseCustomers();
+      if (franchiseCustomers.length > 0 && isCurrentPage("Customers")) renderFranchiseCustomers();
     } catch {}
   }
   try {
-    franchiseCustomers = await franchiseApi("/customers");
+    const data = await franchiseApi("/customers");
+    if (!isCurrentPage("Customers")) return;
+    franchiseCustomers = data || [];
     try { localStorage.setItem("servora_cache_franchise_customers", JSON.stringify(franchiseCustomers)); } catch {}
     renderFranchiseCustomers();
   } catch (error) {
+    if (!isCurrentPage("Customers")) return;
     compileFranchiseCustomersFromRequests();
     renderFranchiseCustomers();
   }
@@ -623,6 +704,19 @@ function renderFranchiseCustomers() {
   setHidden("exportButton", false);
   setHidden("pageContent", false);
   setHidden("metricGrid", true);
+
+  const tableEl = $("requestRows")?.closest("table");
+  const schedContainer = $("franchiseScheduleContainer");
+  const techContainer = $("techJobCardsContainer");
+  const toolsEl = document.querySelector(".table-tools");
+  const footEl = document.querySelector(".panel-foot");
+
+  if (schedContainer) schedContainer.style.display = "none";
+  if (techContainer) techContainer.style.display = "none";
+  if (tableEl) tableEl.style.display = "";
+  if (toolsEl) toolsEl.style.display = "";
+  if (footEl) footEl.style.display = "";
+
   if ($("tableTitle")) $("tableTitle").textContent = "Registered customers & service history";
   if ($("tableSubtitle")) $("tableSubtitle").textContent = "Customers, registered appliances, and service calls within your franchise service area.";
   if ($("sidePanelTitle")) $("sidePanelTitle").textContent = "Customer Directory";
@@ -974,16 +1068,20 @@ function renderHelpCenterView() {
 }
 
 async function loadCompanyAppliances() {
+  if (!isCurrentPage("Appliances")) return;
   if (companyAppliances && companyAppliances.length > 0) {
     renderCompanyAppliances();
   }
   try {
-    companyAppliances = await companyApi("/appliances");
+    const data = await companyApi("/appliances");
+    if (!isCurrentPage("Appliances")) return;
+    companyAppliances = data || [];
   } catch (error) {
+    if (!isCurrentPage("Appliances")) return;
     if (!companyAppliances || companyAppliances.length === 0) companyAppliances = [];
     showToast(`Could not load appliances: ${error.message}`, "error");
   }
-  renderCompanyAppliances();
+  if (isCurrentPage("Appliances")) renderCompanyAppliances();
 }
 
 function renderCompanyAppliances() {
@@ -1801,9 +1899,11 @@ async function loadFranchiseSchedule() {
   if (role !== "franchise" && role !== "branch") return;
   try {
     const data = await franchiseApi("/schedule");
+    if (!isCurrentPage("Operating hours & calendar")) return;
     franchiseScheduleData = data;
     renderFranchiseSchedulePage();
   } catch (err) {
+    if (!isCurrentPage("Operating hours & calendar")) return;
     showToast(`Could not load schedule: ${err.message}`, "error");
   }
 }
@@ -2697,11 +2797,13 @@ async function generalApi(path, options = {}) {
   return data;
 }
 async function loadFranchiseTechnicians() {
+  if (!isCurrentPage("Technicians")) return;
   if (technicians && technicians.length > 0) {
     renderFranchiseTechnicians();
   }
   try {
     const raw = await franchiseApi("/technicians");
+    if (!isCurrentPage("Technicians")) return;
     technicians = Array.isArray(raw)
       ? raw.filter((item) => {
           const nameLower = (item.name || "").toLowerCase().trim();
@@ -2712,19 +2814,24 @@ async function loadFranchiseTechnicians() {
         })
       : [];
   } catch (error) {
+    if (!isCurrentPage("Technicians")) return;
     if (!technicians || technicians.length === 0) technicians = [];
     showToast(`Technicians could not load: ${error.message}`, "error");
   }
-  renderFranchiseTechnicians();
+  if (isCurrentPage("Technicians")) renderFranchiseTechnicians();
 }
 async function loadCompanyBranches() {
+  if (!isCurrentPage("Branches")) return;
   if (branches && branches.length > 0) {
     renderCompanyBranches();
   }
   try {
-    branches = await companyApi("/branches");
+    const data = await companyApi("/branches");
+    if (!isCurrentPage("Branches")) return;
+    branches = data || [];
     renderCompanyBranches();
   } catch (error) {
+    if (!isCurrentPage("Branches")) return;
     renderCompanyBranches();
     if (!branches || branches.length === 0) {
       $("requestRows").innerHTML = `<tr><td class="empty-row" colspan="6">${safe(error.message)}. Try again after confirming your company session.</td></tr>`;
@@ -2735,6 +2842,7 @@ async function loadCompanyBranches() {
 }
 
 async function loadCompanyTechnicians() {
+  if (!isCurrentPage("Technicians")) return;
   if (companyTechnicians && companyTechnicians.length > 0) {
     renderCompanyTechnicians();
   }
@@ -2743,6 +2851,7 @@ async function loadCompanyTechnicians() {
       (!branches || branches.length === 0) ? companyApi("/branches").catch(() => []) : Promise.resolve(branches),
       companyApi("/technicians")
     ]);
+    if (!isCurrentPage("Technicians")) return;
     if (branchData && branchData.length > 0) branches = branchData;
     companyTechnicians = Array.isArray(raw)
       ? raw.filter((item) => {
@@ -2755,6 +2864,7 @@ async function loadCompanyTechnicians() {
       : [];
     renderCompanyTechnicians();
   } catch (error) {
+    if (!isCurrentPage("Technicians")) return;
     if (!companyTechnicians || companyTechnicians.length === 0) {
       companyTechnicians = [];
       renderCompanyTechnicians();
@@ -2965,13 +3075,17 @@ function renderCompanyTechnicians() {
 }
 
 async function loadCompanyCustomers() {
+  if (!isCurrentPage("Customers")) return;
   if (companyCustomers && companyCustomers.length > 0) {
     renderCompanyCustomers();
   }
   try {
-    companyCustomers = await companyApi("/customers");
+    const data = await companyApi("/customers");
+    if (!isCurrentPage("Customers")) return;
+    companyCustomers = data || [];
     renderCompanyCustomers();
   } catch (error) {
+    if (!isCurrentPage("Customers")) return;
     if (!companyCustomers || companyCustomers.length === 0) {
       companyCustomers = [];
       renderCompanyCustomers();
@@ -3404,6 +3518,7 @@ function initCustomerDetailModalEvents() {
 // Phase 2: Franchise Warehouse & Spares Inventory
 // ==========================================
 async function loadFranchiseInventory() {
+  if (!isCurrentPage("Inventory & Spares")) return;
   if (franchiseInventory && franchiseInventory.length > 0) {
     renderFranchiseInventory();
   } else {
@@ -3412,7 +3527,7 @@ async function loadFranchiseInventory() {
       const c2 = localStorage.getItem("servora_cache_part_requests_franchise");
       if (c1) franchiseInventory = JSON.parse(c1);
       if (c2) franchisePartRequests = JSON.parse(c2);
-      if (franchiseInventory.length > 0) renderFranchiseInventory();
+      if (franchiseInventory.length > 0 && isCurrentPage("Inventory & Spares")) renderFranchiseInventory();
     } catch {}
   }
   try {
@@ -3423,6 +3538,7 @@ async function loadFranchiseInventory() {
       generalApi("/api/inventory/parts"),
       generalApi(`/api/inventory/serialized-parts?branch_id=${encodeURIComponent(branchId)}`)
     ]);
+    if (!isCurrentPage("Inventory & Spares")) return;
     franchiseInventory = invData || [];
     franchisePartRequests = reqsData || [];
     allCatalogParts = catalogData || [];
@@ -3435,6 +3551,7 @@ async function loadFranchiseInventory() {
     } catch {}
     renderFranchiseInventory();
   } catch (error) {
+    if (!isCurrentPage("Inventory & Spares")) return;
     franchiseInventory = [];
     franchisePartRequests = [];
     franchiseSerializedParts = [];
@@ -3452,6 +3569,18 @@ function renderFranchiseInventory() {
   setHidden("exportButton", false);
   setHidden("pageContent", false);
   setHidden("metricGrid", true);
+
+  const tableEl = $("requestRows")?.closest("table");
+  const schedContainer = $("franchiseScheduleContainer");
+  const techContainer = $("techJobCardsContainer");
+  const toolsEl = document.querySelector(".table-tools");
+  const footEl = document.querySelector(".panel-foot");
+
+  if (schedContainer) schedContainer.style.display = "none";
+  if (techContainer) techContainer.style.display = "none";
+  if (tableEl) tableEl.style.display = "";
+  if (toolsEl) toolsEl.style.display = "";
+  if (footEl) footEl.style.display = "";
 
   const pendingCount = franchisePartRequests.filter((r) => r.status === "Pending").length;
   const receivedCount = franchisePartRequests.filter((r) => r.status === "Sent").length;
@@ -3521,6 +3650,44 @@ function renderFranchiseInventory() {
     $("requestPartForm")?.reset();
     $("requestPartDialog")?.showModal();
   });
+
+  // Side panel & widgets for Franchise Inventory
+  if ($("sidePanelTitle")) $("sidePanelTitle").textContent = "Inventory Overview";
+  if ($("healthContent")) {
+    const lowStockCount = franchiseInventory.filter((p) => (p.quantity_available || p.quantity || 0) <= (p.reorder_level || 2)).length;
+    $("healthContent").innerHTML = `
+      <div class="space-y-2.5">
+        <div class="p-3 bg-white rounded-xl border border-slate-100 flex items-center justify-between">
+          <span class="text-xs text-slate-500 font-medium">Warehouse SKUs:</span>
+          <strong class="text-sm font-bold text-slate-800">${franchiseInventory.length}</strong>
+        </div>
+        <div class="p-3 ${lowStockCount > 0 ? 'bg-amber-50 border-amber-200' : 'bg-emerald-50 border-emerald-200'} rounded-xl border flex items-center justify-between">
+          <span class="text-xs ${lowStockCount > 0 ? 'text-amber-800' : 'text-emerald-800'} font-semibold">Low stock alerts:</span>
+          <strong class="text-sm font-bold ${lowStockCount > 0 ? 'text-amber-700' : 'text-emerald-700'}">${lowStockCount} items</strong>
+        </div>
+        <div class="p-3 bg-blue-50 border border-blue-100 rounded-xl flex items-center justify-between">
+          <span class="text-xs text-blue-800 font-semibold">Ready serialized units:</span>
+          <strong class="text-sm font-bold text-blue-700">${inStockSerialCount}</strong>
+        </div>
+      </div>
+    `;
+  }
+  if ($("activityContent")) {
+    $("activityContent").innerHTML = `
+      <div class="space-y-2 text-xs">
+        <div class="p-2.5 bg-slate-50 rounded-xl border border-slate-100">
+          <span class="font-semibold text-slate-800 block">Pending Tech Requisitions</span>
+          <span class="text-slate-500">${techReqsCount} pending allocation or dispatch</span>
+        </div>
+        <div class="p-2.5 bg-slate-50 rounded-xl border border-slate-100">
+          <span class="font-semibold text-slate-800 block">Open OEM Orders</span>
+          <span class="text-slate-500">${franchisePartRequests.length} restock orders placed</span>
+        </div>
+      </div>
+    `;
+  }
+  if ($("bottomTitle")) $("bottomTitle").textContent = "Branch Spares Management";
+  if ($("bottomSubtitle")) $("bottomSubtitle").textContent = "Local warehouse inventory, technician parts allocation, and OEM logistics.";
 
   const query = $("requestSearch") ? $("requestSearch").value.trim().toLowerCase() : "";
 
@@ -4064,6 +4231,7 @@ function initRestockModalEvents() {
 // Phase 2: OEM Warranty Claims Management
 // ==========================================
 async function loadCompanyWarrantyClaims() {
+  if (!isCurrentPage("Warranty Claims")) return;
   if (companyWarrantyClaims && companyWarrantyClaims.length > 0) {
     renderCompanyWarrantyClaims();
   } else {
@@ -4073,7 +4241,7 @@ async function loadCompanyWarrantyClaims() {
     if (cachedClaims && Array.isArray(cachedClaims)) companyWarrantyClaims = cachedClaims;
     if (cachedRegs && Array.isArray(cachedRegs)) companyWarrantyRegistrations = cachedRegs;
     if (cachedPols && Array.isArray(cachedPols)) companyWarrantyPolicies = cachedPols;
-    if (companyWarrantyClaims.length > 0 || companyWarrantyRegistrations.length > 0) {
+    if ((companyWarrantyClaims.length > 0 || companyWarrantyRegistrations.length > 0) && isCurrentPage("Warranty Claims")) {
       renderCompanyWarrantyClaims();
     }
   }
@@ -4083,6 +4251,7 @@ async function loadCompanyWarrantyClaims() {
       generalApi("/api/warranty-amc/registrations").catch(() => []),
       generalApi("/api/warranty-amc/policies").catch(() => []),
     ]);
+    if (!isCurrentPage("Warranty Claims")) return;
     companyWarrantyClaims = claims || [];
     companyWarrantyRegistrations = registrations || [];
     companyWarrantyPolicies = policies || [];
@@ -4091,6 +4260,7 @@ async function loadCompanyWarrantyClaims() {
     setUserCache("servsure_cache_warranty_policies", companyWarrantyPolicies);
     renderCompanyWarrantyClaims();
   } catch (error) {
+    if (!isCurrentPage("Warranty Claims")) return;
     if (!companyWarrantyClaims || companyWarrantyClaims.length === 0) {
       companyWarrantyClaims = [];
       companyWarrantyRegistrations = [];
@@ -4114,6 +4284,18 @@ function renderCompanyWarrantyClaims() {
   setHidden("exportButton", false);
   setHidden("pageContent", false);
   setHidden("metricGrid", true);
+
+  const tableEl = $("requestRows")?.closest("table");
+  const schedContainer = $("franchiseScheduleContainer");
+  const techContainer = $("techJobCardsContainer");
+  const toolsEl = document.querySelector(".table-tools");
+  const footEl = document.querySelector(".panel-foot");
+
+  if (schedContainer) schedContainer.style.display = "none";
+  if (techContainer) techContainer.style.display = "none";
+  if (tableEl) tableEl.style.display = "";
+  if (toolsEl) toolsEl.style.display = "";
+  if (footEl) footEl.style.display = "";
 
   const pendingRegs = companyWarrantyRegistrations.filter((r) => (r.warranty_status || "").toLowerCase().includes("pending"));
   const pendingClaims = companyWarrantyClaims.filter((c) => c.status === "Pending Review");
@@ -5002,6 +5184,7 @@ window.populateComponentWarrantyDropdowns = populateComponentWarrantyDropdowns;
 // Central Company Inventory & Spare Parts Requisitions
 // ==========================================
 async function loadCompanyInventoryAndSpares() {
+  if (!isCurrentPage("Inventory & Spares")) return;
   if (companySparesCatalog && companySparesCatalog.length > 0) {
     renderCompanyInventoryAndSpares();
   } else {
@@ -5010,7 +5193,7 @@ async function loadCompanyInventoryAndSpares() {
       const c2 = localStorage.getItem("servora_cache_part_requests");
       if (c1) companySparesCatalog = JSON.parse(c1);
       if (c2) companyPartRequests = JSON.parse(c2);
-      if (companySparesCatalog.length > 0) renderCompanyInventoryAndSpares();
+      if (companySparesCatalog.length > 0 && isCurrentPage("Inventory & Spares")) renderCompanyInventoryAndSpares();
     } catch {}
   }
   try {
@@ -5019,6 +5202,7 @@ async function loadCompanyInventoryAndSpares() {
       generalApi("/api/inventory/part-requests"),
       generalApi("/api/warranty-amc/policies").catch(() => [])
     ]);
+    if (!isCurrentPage("Inventory & Spares")) return;
     companySparesCatalog = partsData || [];
     companyPartRequests = reqsData || [];
     if (policiesData && Array.isArray(policiesData) && policiesData.length > 0) {
@@ -5030,8 +5214,10 @@ async function loadCompanyInventoryAndSpares() {
       localStorage.setItem("servora_cache_part_requests", JSON.stringify(companyPartRequests));
     } catch {}
     await populateComponentWarrantyDropdowns();
+    if (!isCurrentPage("Inventory & Spares")) return;
     renderCompanyInventoryAndSpares();
   } catch (error) {
+    if (!isCurrentPage("Inventory & Spares")) return;
     companySparesCatalog = [];
     companyPartRequests = [];
     renderCompanyInventoryAndSpares();
@@ -5049,6 +5235,18 @@ function renderCompanyInventoryAndSpares() {
   setHidden("exportButton", false);
   setHidden("pageContent", false);
   setHidden("metricGrid", true);
+
+  const tableEl = $("requestRows")?.closest("table");
+  const schedContainer = $("franchiseScheduleContainer");
+  const techContainer = $("techJobCardsContainer");
+  const toolsEl = document.querySelector(".table-tools");
+  const footEl = document.querySelector(".panel-foot");
+
+  if (schedContainer) schedContainer.style.display = "none";
+  if (techContainer) techContainer.style.display = "none";
+  if (tableEl) tableEl.style.display = "";
+  if (toolsEl) toolsEl.style.display = "";
+  if (footEl) footEl.style.display = "";
 
   const pendingReqs = companyPartRequests.filter((r) => r.status === "Pending");
   const totalStockUnits = companySparesCatalog.reduce((acc, p) => acc + (p.stock_quantity || 0), 0);
@@ -5094,6 +5292,39 @@ function renderCompanyInventoryAndSpares() {
     await populateComponentWarrantyDropdowns("", "addPartWarrantyComponentType");
     $("addPartDialog")?.showModal();
   });
+
+  if ($("sidePanelTitle")) $("sidePanelTitle").textContent = "Inventory & Spares";
+  if ($("healthContent")) {
+    const outOfStockCount = companySparesCatalog.filter((p) => (p.stock_quantity || 0) === 0).length;
+    $("healthContent").innerHTML = `
+      <div class="space-y-2.5">
+        <div class="p-3 bg-white rounded-xl border border-slate-100 flex items-center justify-between">
+          <span class="text-xs text-slate-500 font-medium">Catalog SKUs:</span>
+          <strong class="text-sm font-bold text-slate-800">${companySparesCatalog.length}</strong>
+        </div>
+        <div class="p-3 ${outOfStockCount > 0 ? 'bg-rose-50 border-rose-200' : 'bg-emerald-50 border-emerald-200'} rounded-xl border flex items-center justify-between">
+          <span class="text-xs ${outOfStockCount > 0 ? 'text-rose-800' : 'text-emerald-800'} font-semibold">Out of stock:</span>
+          <strong class="text-sm font-bold ${outOfStockCount > 0 ? 'text-rose-700' : 'text-emerald-700'}">${outOfStockCount} items</strong>
+        </div>
+        <div class="p-3 bg-blue-50 border border-blue-100 rounded-xl flex items-center justify-between">
+          <span class="text-xs text-blue-800 font-semibold">Total Stock Units:</span>
+          <strong class="text-sm font-bold text-blue-700">${totalStockUnits}</strong>
+        </div>
+      </div>
+    `;
+  }
+  if ($("activityContent")) {
+    $("activityContent").innerHTML = `
+      <div class="space-y-2 text-xs">
+        <div class="p-2.5 bg-slate-50 rounded-xl border border-slate-100">
+          <span class="font-semibold text-slate-800 block">Franchise Requisitions</span>
+          <span class="text-slate-500">${pendingReqs.length} pending branch orders awaiting fulfillment</span>
+        </div>
+      </div>
+    `;
+  }
+  if ($("bottomTitle")) $("bottomTitle").textContent = "OEM Spares Catalog";
+  if ($("bottomSubtitle")) $("bottomSubtitle").textContent = "Centralized parts catalog and branch fulfillment management.";
 
   const query = $("requestSearch") ? $("requestSearch").value.trim().toLowerCase() : "";
 
@@ -5312,6 +5543,7 @@ async function sendPartToFranchise(requestId, partName, quantity, branchName) {
 }
 
 async function loadWorkspacePageData(page) {
+  currentWorkspacePage = page;
   renderPage(page);
   if (page === "Escalations" || page === "SLA Escalations") { await loadEscalationsData(); return; }
   if (role === "admin") { await loadAdminPageData(page); return; }
@@ -5328,6 +5560,7 @@ async function loadWorkspacePageData(page) {
 }
 async function loadAdminPageData(page) {
   if (role !== "admin") return;
+  if (!isCurrentPage(page)) return;
   if (page === "Escalations") { await loadEscalationsData(); return; }
   const roles = { Branches: "branch", Technicians: "technician", Customers: "customer" };
   if ((roles[page] && directoryRows && directoryRows.length > 0) || (page === "Companies" && companies && companies.length > 0)) {
@@ -5336,6 +5569,7 @@ async function loadAdminPageData(page) {
   try {
     if (roles[page]) {
       const data = await adminApi(`/directory/${roles[page]}`);
+      if (!isCurrentPage(page)) return;
       directoryRows = Array.isArray(data)
         ? data.filter((item) => {
             if (roles[page] === "technician") {
@@ -5348,8 +5582,13 @@ async function loadAdminPageData(page) {
           })
         : [];
     }
-    if (page === "Companies") companies = await adminApi("/companies");
+    if (page === "Companies") {
+      const compData = await adminApi("/companies");
+      if (!isCurrentPage(page)) return;
+      companies = compData;
+    }
   } catch (error) {
+    if (!isCurrentPage(page)) return;
     directoryRows = [];
     if (page === "Companies") {
       companies = [];
@@ -5361,7 +5600,7 @@ async function loadAdminPageData(page) {
     }
     showToast(error.message, "error");
   }
-  renderPage(page);
+  if (isCurrentPage(page)) renderPage(page);
 }
 async function openAdminTechnicianDetail(techId) {
   const dialog = $("technicianDetailModal");
@@ -7777,10 +8016,11 @@ function initEvents() {
     else if (role === "company" && page === "Technicians") renderCompanyTechnicians();
     else if (role === "company" && page === "Customers") renderCompanyCustomers();
     else if (role === "company" && page === "Warranty Claims") renderCompanyWarrantyClaims();
-    else if (role === "company" && page === "Spares Catalog") renderCompanySparesCatalog();
+    else if (role === "company" && (page === "Inventory & Spares" || page === "Spares Catalog")) renderCompanyInventoryAndSpares();
     else if (role === "franchise" && page === "Technicians") renderFranchiseTechnicians();
     else if (role === "franchise" && page === "Customers") renderFranchiseCustomers();
-    else if (role === "franchise" && page === "Inventory & Spares") renderFranchiseInventory();
+    else if (role === "franchise" && (page === "Inventory & Spares" || page === "Spares Catalog")) renderFranchiseInventory();
+    else if (page === "Escalations" || page === "SLA Escalations") renderEscalationsView();
     else if (role === "admin" && ["Branches", "Technicians", "Customers"].includes(page)) renderDirectory(page);
     else if (role === "admin" && page === "Service requests") renderRequestDirectory();
     else renderRequests();
@@ -8565,15 +8805,17 @@ async function loadEscalationsData() {
       headers: jsonHeaders(),
       credentials: "include"
     });
+    if (!isCurrentPage("Escalations")) return;
     if (res.ok) {
       escalationsList = await res.json();
     } else {
       escalationsList = [];
     }
   } catch (err) {
+    if (!isCurrentPage("Escalations")) return;
     escalationsList = [];
   }
-  renderEscalationsView();
+  if (isCurrentPage("Escalations")) renderEscalationsView();
 }
 
 function renderEscalationsView() {
@@ -8591,10 +8833,19 @@ function renderEscalationsView() {
 
   const tableEl = $("requestRows")?.closest("table");
   const techContainer = $("techJobCardsContainer");
-  if (tableEl) tableEl.style.display = "";
-  if (techContainer) techContainer.style.display = "none";
+  const schedContainer = $("franchiseScheduleContainer");
+  const toolsEl = document.querySelector(".table-tools");
+  const footEl = document.querySelector(".panel-foot");
 
-  $("healthContent").innerHTML = `
+  if (schedContainer) schedContainer.style.display = "none";
+  if (techContainer) techContainer.style.display = "none";
+  if (tableEl) tableEl.style.display = "";
+  if (toolsEl) toolsEl.style.display = "";
+  if (footEl) footEl.style.display = "";
+
+  if ($("sidePanelTitle")) $("sidePanelTitle").textContent = "SLA Escalation Matrix";
+  if ($("healthContent")) {
+    $("healthContent").innerHTML = `
     <div class="p-3 bg-purple-50 rounded-xl border border-purple-200 text-xs text-purple-900 space-y-2">
       <div class="font-bold flex items-center justify-between">
         <span>SLA Breach Rules</span>

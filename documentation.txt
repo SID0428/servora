@@ -4,8 +4,8 @@ PRODUCTION-GRADE TECHNICAL ARCHITECTURE & DEVELOPER ONBOARDING MANUAL
 ================================================================================
 File: documentation.txt
 Platform: ServSure (formerly Servora)
-Version: 1.9.0 (Production Release - Active Warranty Protection & Policy Code Exposure)
-Last Updated: October 25, 2026 (23:27 IST)
+Version: 1.9.1 (Production Release - Tab Navigation State Isolation & Async Race Condition Protection)
+Last Updated: October 26, 2026 (00:20 IST)
 Repository: https://github.com/SID0428/servora.git
 
 Welcome to ServSure! This manual is the definitive, authoritative reference
@@ -1769,6 +1769,43 @@ were identified between the initial rough draft documentation and the actual cod
         - In customer portal (Home and Appliances tabs), displayed `Policy Code: <codeTag>` badge on active warranty appliances.
         - In company portal (claims table and audit modal), displayed `Policy: <codeTag>` in status column and `Applicable Policy Code` inside the modal.
         - Fixed missing `let statusBadge = ""` declaration in `renderCompanyWarrantyClaims()` in `ops-dashboard.js` which caused a `ReferenceError` preventing table row rendering.
+
+37. DISCREPANCY: Cross-Tab DOM Bleed & Asynchronous Race Conditions in Ops Dashboard Navigation
+   - Symptoms:
+     1. In `franchise-dashboard.html` (and other dashboards), navigating from "Operating hours & calendar" to "Inventory & Spares"
+        caused the Inventory sub-tabs ("Warehouse Stock", "Tech Requisitions", etc.) to render at the top, but the body remained
+        frozen displaying "Franchise Operating Shift & Slot Interval" and "Franchise Operational Calendar", while the actual
+        inventory spare parts table was missing entirely.
+     2. Right-hand side panel widgets remained stuck displaying "Schedule & Capacity" and "Upcoming Holidays" rather than inventory metrics.
+     3. Clicking between different options intermittently failed to load or loaded data belonging to another tab.
+   - Root Causes:
+     1. Uncoordinated View DOM State: `renderFranchiseSchedulePage()` injected `franchiseScheduleContainer` into the DOM and set
+        `tableEl.style.display = "none"`, `toolsEl.style.display = "none"`, and `footEl.style.display = "none"`. When navigating to other tabs
+        (such as `Inventory & Spares`, `Technicians`, `Customers`, `Reports`), those renderers never hid `franchiseScheduleContainer`
+        nor unhid `tableEl`. Thus, `franchiseScheduleContainer` stayed visible on top while the table was hidden underneath.
+     2. Asynchronous Navigation Race Conditions: Every async loader (`loadFranchiseSchedule`, `loadFranchiseInventory`, `loadFranchiseTechnicians`,
+        `loadCompanyAppliances`, `loadCompanyBranches`, `loadCompanyTechnicians`, etc.) resolved network promises and unconditionally invoked
+        its render function without verifying if the user had already clicked away to another tab. Stale in-flight network responses arrived
+        out of order, overwriting active views.
+     3. Filter & Side Panel State Leakage: `statusFilter` and side panel widgets (`sidePanelTitle`, `healthContent`, `activityContent`) were
+        mutated on specific tabs (e.g. `Appliances`, `renderCompanyTechnicians`, `renderFranchiseSchedulePage`) without lifecycle resets,
+        leaving orphaned widgets and misaligned search listeners.
+   - Resolution (`frontend/js/ops-dashboard.js`):
+     1. Centralized View State Isolation (`resetViewDom(page)`):
+        - Implemented `resetViewDom(page)` executed at the start of `renderPage(page)` on every navigation and hashchange event.
+        - Isolates `franchiseScheduleContainer`: strictly `display = "block"` on Operating Hours & Calendar; strictly `display = "none"` on all other pages.
+        - Restores `tableEl`, `toolsEl`, and `footEl` to `display = ""` on all data table views.
+        - Normalizes `statusFilter` visibility and resets options if previously customized by Technicians or hidden by Appliances.
+        - Resets `requestSearch` placeholder to default.
+     2. Active Page Tracking & Async Guards (`isCurrentPage(expected)`):
+        - Introduced `currentWorkspacePage` tracking and `isCurrentPage(expected)` matcher supporting route aliases.
+        - Added active page verification guards across all async loaders (`loadFranchiseSchedule`, `loadFranchiseInventory`,
+          `loadFranchiseTechnicians`, `loadFranchiseCustomers`, `loadCompanyAppliances`, `loadCompanyBranches`, `loadCompanyTechnicians`,
+          `loadCompanyCustomers`, `loadCompanyWarrantyClaims`, `loadCompanyInventoryAndSpares`, `loadAdminPageData`, `loadEscalationsData`).
+        - If the user clicks away before a network request completes, the stale callback aborts cleanly without touching the DOM.
+     3. Side Panel Widget Coverage & Search Handlers:
+        - Added dedicated side panel widgets and bottom metadata for `renderFranchiseInventory`, `renderCompanyInventoryAndSpares`, and `renderEscalationsView`.
+        - Corrected search input listeners in `initEvents()` to handle both `"Inventory & Spares"` and `"Spares Catalog"`, as well as `"Escalations"`.
 
 ==================================================
 End of Documentation
