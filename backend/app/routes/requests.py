@@ -32,6 +32,7 @@ from app.notification_service import (
     notify_technician_assigned,
     notify_technician_arrival
 )
+from app.routes.warranty_amc import evaluate_part_warranty_status
 from app.schemas import (
     ServiceRequestDetail,
     ServiceBookingCreate,
@@ -1000,6 +1001,7 @@ def create_job_card(request_id: str, payload: JobCardCreatePayload, request: Req
     is_warranty_covered = bool(payload.is_warranty_covered or getattr(req, "is_under_warranty", False))
     raw_labor_cost = round(payload.labor_cost, 2)
     raw_inspection_fee = round(payload.inspection_fee if payload.inspection_fee is not None else 299.0, 2)
+    appliance_rec = db.query(ApplianceModel).filter(ApplianceModel.id == req.appliance_id).first() if req.appliance_id else None
 
     parts_used_list = []
     covered_parts_cost = 0.0
@@ -1012,19 +1014,39 @@ def create_job_card(request_id: str, payload: JobCardCreatePayload, request: Req
         p_dict["total_price"] = p_total
 
         is_part_covered = getattr(p, "is_covered", None)
+        cov_type = getattr(p, "coverage_type", None)
+        non_cov_reason = getattr(p, "non_coverage_reason", None)
+
         if is_part_covered is None:
-            is_consumable = any(word in (p.part_name or "").lower() for word in ["gas", "filter", "gasket", "seal", "cleaning", "pipe"])
-            is_part_covered = is_warranty_covered and not is_consumable
+            part_id = getattr(p, "part_id", None)
+            part_code = getattr(p, "part_code", None)
+            part_obj = None
+            if part_id:
+                part_obj = db.query(SparePartModel).filter(SparePartModel.id == part_id).first()
+            if not part_obj and part_code:
+                part_obj = db.query(SparePartModel).filter(SparePartModel.part_code == part_code).first()
+            if not part_obj and p.part_name:
+                part_obj = db.query(SparePartModel).filter(SparePartModel.name.ilike(f"%{p.part_name}%")).first()
+
+            is_part_covered, cov_type, non_cov_reason = evaluate_part_warranty_status(
+                part_name=p.part_name,
+                part_code=part_code,
+                db_part=part_obj,
+                req=req,
+                appliance=appliance_rec,
+                is_comprehensive_active=is_warranty_covered,
+                db=db
+            )
 
         p_dict["is_covered"] = bool(is_part_covered)
+        p_dict["coverage_type"] = cov_type or ("oem_warranty" if is_part_covered else "customer_billable")
+        p_dict["non_coverage_reason"] = non_cov_reason if not is_part_covered else None
+        p_dict["warranty_component_type"] = getattr(part_obj, "warranty_component_type", None) if part_obj else getattr(p, "warranty_component_type", None)
+
         if is_part_covered:
-            p_dict["coverage_type"] = "oem_warranty"
-            p_dict["non_coverage_reason"] = None
             covered_parts_cost += p_total
             covered_parts_for_claim.append(p_dict)
         else:
-            p_dict["coverage_type"] = "customer_billable"
-            p_dict["non_coverage_reason"] = getattr(p, "non_coverage_reason", None) or ("Consumable / Wear & Tear" if any(w in (p.part_name or "").lower() for w in ["gas", "filter", "seal"]) else "Out of Warranty / Excluded")
             customer_parts_cost += p_total
 
         # Serial number tracking

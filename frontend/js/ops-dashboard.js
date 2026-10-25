@@ -4234,12 +4234,20 @@ function renderCompanyInventoryAndSpares() {
                 ? `<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">✓ ${stock} units</span>`
                 : `<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-rose-50 text-rose-800 border border-rose-200">⚠️ Out of stock</span>`;
 
+              let compTagBadge = "";
+              if (item.warranty_component_type) {
+                compTagBadge = `<span class="inline-block bg-blue-50 text-blue-700 border border-blue-200 px-1.5 py-0.5 rounded text-[10px] font-mono font-bold mt-1">🛡️ ${safe(item.warranty_component_type.toUpperCase())} WARRANTY</span>`;
+              } else if (item.part_type === "consumable") {
+                compTagBadge = `<span class="inline-block bg-amber-50 text-amber-700 border border-amber-200 px-1.5 py-0.5 rounded text-[10px] font-mono font-bold mt-1">🧪 Consumable (Excluded)</span>`;
+              }
+
               return `
                 <tr>
                   <td><span class="font-mono font-bold text-blue-600">${safe(item.part_code)}</span></td>
                   <td>
                     <strong class="text-slate-900 block font-semibold">${safe(item.name)}</strong>
                     <small class="text-slate-400 block">${safe(item.description || "OEM certified replacement component")}</small>
+                    ${compTagBadge}
                   </td>
                   <td>
                     <strong class="text-slate-800 block text-xs">${safe(item.brand || "Universal")}</strong>
@@ -4302,6 +4310,19 @@ function renderCompanyInventoryAndSpares() {
         if ($("editPartPrice")) $("editPartPrice").value = part.unit_price || 0;
         if ($("editPartHsn")) $("editPartHsn").value = part.hsn_code || "841890";
         if ($("editPartDesc")) $("editPartDesc").value = part.description || "";
+        if ($("editPartType")) $("editPartType").value = part.part_type || "functional";
+        if ($("editPartWarrantyEligible")) $("editPartWarrantyEligible").checked = (part.is_warranty_eligible !== false);
+        const compTag = (part.warranty_component_type || "").toLowerCase();
+        if ($("editPartWarrantyComponentType")) {
+          const hasOption = Array.from($("editPartWarrantyComponentType").options).some(o => o.value === compTag);
+          if (hasOption) {
+            $("editPartWarrantyComponentType").value = compTag;
+            if ($("editPartCustomComponentType")) $("editPartCustomComponentType").value = "";
+          } else {
+            $("editPartWarrantyComponentType").value = "";
+            if ($("editPartCustomComponentType")) $("editPartCustomComponentType").value = compTag;
+          }
+        }
         if ($("editPartFormMessage")) $("editPartFormMessage").textContent = "";
 
         $("editPartDialog")?.showModal();
@@ -7398,6 +7419,7 @@ function initEvents() {
     if (btn) btn.disabled = true;
     if (msg) msg.textContent = "Registering component in inventory…";
     try {
+      const rawCompTag = $("addPartCustomComponentType")?.value.trim() || $("addPartWarrantyComponentType")?.value.trim() || "";
       const payload = {
         part_code: $("addPartCode").value.trim().toUpperCase(),
         name: $("addPartName").value.trim(),
@@ -7407,6 +7429,7 @@ function initEvents() {
         stock_quantity: parseInt($("addPartStock").value, 10) || 0,
         part_type: $("addPartType")?.value || "functional",
         is_warranty_eligible: $("addPartWarrantyEligible") ? $("addPartWarrantyEligible").checked : true,
+        warranty_component_type: rawCompTag ? rawCompTag.toLowerCase() : undefined,
         hsn_code: $("addPartHsn").value.trim() || "841890",
         description: $("addPartDesc")?.value.trim() || undefined
       };
@@ -7465,11 +7488,15 @@ function initEvents() {
     if (btn) btn.disabled = true;
     if (msg) msg.textContent = "Updating component specifications…";
     try {
+      const rawEditCompTag = $("editPartCustomComponentType")?.value.trim() || $("editPartWarrantyComponentType")?.value.trim() || "";
       const payload = {
         name: $("editPartName").value.trim(),
         category: $("editPartCategory").value.trim(),
         brand: $("editPartBrand")?.value.trim() || undefined,
         unit_price: parseFloat($("editPartPrice").value) || 0,
+        part_type: $("editPartType")?.value || "functional",
+        is_warranty_eligible: $("editPartWarrantyEligible") ? $("editPartWarrantyEligible").checked : true,
+        warranty_component_type: rawEditCompTag ? rawEditCompTag.toLowerCase() : null,
         hsn_code: $("editPartHsn").value.trim() || "841890",
         description: $("editPartDesc")?.value.trim() || undefined
       };

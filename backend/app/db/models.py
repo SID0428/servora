@@ -233,6 +233,7 @@ class SparePartModel(Base):
     stock_quantity = Column(Integer, default=0, nullable=False)
     part_type = Column(String(32), default="functional", nullable=False) # functional, consumable, wear_and_tear, accessory
     is_warranty_eligible = Column(Boolean, default=True, nullable=False)
+    warranty_component_type = Column(String(64), nullable=True, default=None) # e.g. compressor, motor, pcb, magnetron
     company_id = Column(String(64), ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
     is_active = Column(Boolean, default=True)
 

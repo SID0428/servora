@@ -4,8 +4,8 @@ PRODUCTION-GRADE TECHNICAL ARCHITECTURE & DEVELOPER ONBOARDING MANUAL
 ================================================================================
 File: documentation.txt
 Platform: ServSure (formerly Servora)
-Version: 1.7.3 (Production Release - Component-Specific Warranty Support & Quick Presets)
-Last Updated: October 25, 2026 (13:45 IST)
+Version: 1.7.5 (Production Release - Deterministic Component Warranty Tags & Zero False-Positive Engine)
+Last Updated: October 25, 2026 (14:30 IST)
 Repository: https://github.com/SID0428/servora.git
 
 Welcome to ServSure! This manual is the definitive, authoritative reference
@@ -418,8 +418,9 @@ All database entities are defined in `backend/app/db/models.py`:
     - `name`: String(128), Nullable: False.
     - `category`: String(64), Nullable: False.
     - `brand`: String(64), Nullable: False.
-    - `part_type`: String(32), Default: "component" ("component" vs "consumable").
+    - `part_type`: String(32), Default: "functional" ("functional", "consumable", "wear_and_tear", "accessory").
     - `is_warranty_eligible`: Boolean, Default: True.
+    - `warranty_component_type`: String(64), Nullable: True, Default: None (e.g. "compressor", "motor", "pcb", "magnetron").
     - `unit_price`: Float, Nullable: False, Default: 0.0.
     - `hsn_code`: String(32), Nullable: False, Default: "841890".
     - `description`: Text, Nullable: True.
@@ -840,6 +841,13 @@ Request Headers:
   - Frontend modal (`#companyWarrantyPolicyDialog`) provides 1-click Quick Presets (`+ Compressor (10 Yrs)`, `+ Motor (5 Yrs)`, `+ PCB (3 Yrs)`, `+ Magnetron (3 Yrs)`) and a `Clear` button to eliminate JSON syntax errors.
 - `PUT /api/warranty-amc/policies/{policy_id}`:
   - Update policy rules, duration, component coverage, or active toggle. Returns populated `component_warranty` dictionary and `component_warranty_json` string.
+- `evaluate_part_warranty_status()` Engine:
+  - Centralized decision engine in `app.routes.warranty_amc` evaluating item-level coverage across Estimates (`/api/requests/{id}/estimate`) and Job Cards (`/api/requests/{id}/job-card`).
+  - Decision Hierarchy:
+    1. **Consumable & Ineligibility Check**: Tests catalog `part_type in ("consumable", "wear_and_tear", "accessory")` or `is_warranty_eligible == False`. Excluded unless policy explicitly specifies `consumables_covered = True`.
+    2. **Comprehensive Coverage Check**: If appliance purchase date falls within `comprehensive_months` (e.g. 12m), all eligible functional parts are covered (₹0.00 customer bill, claimed from OEM).
+    3. **Deterministic Component Warranty Tag Matching**: If comprehensive warranty has expired (e.g. Year 4 of AC), the engine strictly inspects `db_part.warranty_component_type` (assigned explicitly by brand OEM in inventory, e.g. `compressor`, `motor`, `pcb`, `magnetron`). If tagged, it checks appliance age vs policy duration for that tag (`age_months <= max_months`). If within limit, part is covered under OEM component warranty (₹0 customer charge); if expired, marked customer billable with reason `"Component Warranty Expired (<TAG>: <DUR>m limit exceeded)"`.
+    4. **Untagged / Non-Extended Parts**: Parts without an explicit component tag (or non-covered parts like rubber bushes, brackets, or filters) default to customer billable once comprehensive warranty expires, completely eliminating false positives from part names.
 - `GET /api/warranty-amc/claims`: List warranty reimbursement claims.
 - `POST /api/warranty-amc/claims`: Submit parts and labor warranty claim for completed ticket (restricted to covered parts and OEM labor share).
 - `PUT /api/warranty-amc/claims/{claim_id}`: Company approves or rejects warranty reimbursement.

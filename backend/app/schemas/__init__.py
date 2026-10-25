@@ -200,6 +200,7 @@ class JobCardPartItem(BaseModel):
     is_covered: Optional[bool] = False
     coverage_type: Optional[str] = "oem_warranty" # oem_warranty or customer_billable
     non_coverage_reason: Optional[str] = None
+    warranty_component_type: Optional[str] = None
     serial_number: Optional[str] = None
 
 class JobCardResponse(BaseModel):
@@ -404,6 +405,7 @@ class SparePartSchema(BaseModel):
     stock_quantity: int = 0
     part_type: Optional[str] = "functional"
     is_warranty_eligible: Optional[bool] = True
+    warranty_component_type: Optional[str] = None
     company_id: Optional[str] = None
     is_active: bool = True
 
@@ -416,6 +418,7 @@ class SparePartCreatePayload(BaseModel):
     hsn_code: str = Field(default="8418", max_length=32)
     part_type: Optional[str] = "functional"
     is_warranty_eligible: Optional[bool] = True
+    warranty_component_type: Optional[str] = None
     description: Optional[str] = None
 
 class CompanyPartCreatePayload(BaseModel):
@@ -427,6 +430,7 @@ class CompanyPartCreatePayload(BaseModel):
     stock_quantity: int = Field(default=0, ge=0)
     part_type: Optional[str] = "functional"
     is_warranty_eligible: Optional[bool] = True
+    warranty_component_type: Optional[str] = None
     hsn_code: Optional[str] = "8418"
     description: Optional[str] = None
 
@@ -437,6 +441,7 @@ class CompanyPartUpdatePayload(BaseModel):
     unit_price: float = Field(ge=0.0)
     part_type: Optional[str] = None
     is_warranty_eligible: Optional[bool] = None
+    warranty_component_type: Optional[str] = None
     hsn_code: Optional[str] = "8418"
     description: Optional[str] = None
 
@@ -696,6 +701,7 @@ class EstimatePartItem(BaseModel):
     is_covered: Optional[bool] = False
     coverage_type: Optional[str] = "oem_warranty" # oem_warranty or customer_billable
     non_coverage_reason: Optional[str] = None
+    warranty_component_type: Optional[str] = None
     serial_number: Optional[str] = None
 
 class EstimateCreatePayload(BaseModel):

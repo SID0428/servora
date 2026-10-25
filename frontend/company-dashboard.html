@@ -1338,6 +1338,25 @@
           </div>
         </div>
 
+        <div class="rounded-xl border border-blue-100 bg-blue-50/50 p-3">
+          <label class="block font-semibold text-slate-800 text-xs mb-1">
+            Component-Specific Warranty Tag (Extended Coverage)
+          </label>
+          <p class="text-[11px] text-slate-500 mb-2">Select which component policy covers this part (e.g. 10-Yr Compressor, 5-Yr Motor). If None, standard comprehensive rules apply.</p>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <select id="addPartWarrantyComponentType" class="w-full rounded-xl border border-slate-200 p-2 text-xs text-slate-800 bg-white font-medium">
+              <option value="">None / Standard Comprehensive Only</option>
+              <option value="compressor">Compressor (Extended Policy)</option>
+              <option value="motor">Motor (Inverter / Direct Drive BLDC)</option>
+              <option value="pcb">Main PCB / Circuit Controller</option>
+              <option value="magnetron">Magnetron (Microwave)</option>
+              <option value="panel">Display / Touch Panel</option>
+              <option value="drum">Drum / Spin Tub</option>
+            </select>
+            <input type="text" id="addPartCustomComponentType" placeholder="Or custom tag (e.g. valve)" class="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs text-slate-800 bg-white placeholder-slate-400">
+          </div>
+        </div>
+
         <label class="block font-medium text-slate-700">
           Description & specifications <span class="text-slate-400 font-normal">(Optional)</span>
           <textarea name="description" id="addPartDesc" rows="2" placeholder="e.g. OEM certified linear compressor for 260L to 340L double-door models." class="mt-1 w-full rounded-xl border border-slate-200 p-2.5 text-slate-800"></textarea>
@@ -1460,6 +1479,43 @@
             HSN code *
             <input id="editPartHsn" required maxlength="32" class="mt-1 w-full rounded-xl border border-slate-200 p-2.5 font-mono text-slate-800">
           </label>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-0.5">
+          <label class="block font-medium text-slate-700">
+            Part classification / Type *
+            <select id="editPartType" class="mt-1 w-full rounded-xl border border-slate-200 p-2.5 text-slate-800 bg-white">
+              <option value="functional" selected>Functional Component</option>
+              <option value="consumable">Consumable (Refrigerant Gas, Filter, Chemical)</option>
+              <option value="wear_and_tear">Wear & Tear (Rubber Gasket, Bush, Seal)</option>
+              <option value="accessory">Accessory (Tray, Stand, Remote)</option>
+            </select>
+          </label>
+          <div class="flex flex-col justify-center pt-1 sm:pt-4">
+            <label class="inline-flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" id="editPartWarrantyEligible" checked class="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500">
+              <span class="text-xs font-semibold text-slate-800">Eligible for OEM Warranty Claims</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="rounded-xl border border-blue-100 bg-blue-50/50 p-3">
+          <label class="block font-semibold text-slate-800 text-xs mb-1">
+            Component-Specific Warranty Tag (Extended Coverage)
+          </label>
+          <p class="text-[11px] text-slate-500 mb-2">Select which component policy covers this part. If None, standard comprehensive rules apply.</p>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <select id="editPartWarrantyComponentType" class="w-full rounded-xl border border-slate-200 p-2 text-xs text-slate-800 bg-white font-medium">
+              <option value="">None / Standard Comprehensive Only</option>
+              <option value="compressor">Compressor (Extended Policy)</option>
+              <option value="motor">Motor (Inverter / Direct Drive BLDC)</option>
+              <option value="pcb">Main PCB / Circuit Controller</option>
+              <option value="magnetron">Magnetron (Microwave)</option>
+              <option value="panel">Display / Touch Panel</option>
+              <option value="drum">Drum / Spin Tub</option>
+            </select>
+            <input type="text" id="editPartCustomComponentType" placeholder="Or custom tag (e.g. valve)" class="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs text-slate-800 bg-white placeholder-slate-400">
+          </div>
         </div>
 
         <label class="block font-medium text-slate-700">

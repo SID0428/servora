@@ -16,6 +16,7 @@ from app.schemas import (
 )
 from app.security import get_authenticated_user
 from app.notification_service import notify_estimate_submitted
+from app.routes.warranty_amc import evaluate_part_warranty_status
 
 router = APIRouter(prefix="/api/requests", tags=["estimates"])
 
@@ -73,6 +74,7 @@ def create_or_update_estimate(
             tech_name = tech_model.name
 
     is_under_warranty = bool(getattr(req, "is_under_warranty", False))
+    appliance_rec = db.query(ApplianceModel).filter(ApplianceModel.id == req.appliance_id).first() if req.appliance_id else None
 
     # Calculate parts and split totals (Covered vs Customer Billable)
     parts_list = []
@@ -87,6 +89,9 @@ def create_or_update_estimate(
         p_dict["total_price"] = item_total
 
         is_covered = p.is_covered
+        cov_type = getattr(p, "coverage_type", None)
+        reason = getattr(p, "non_coverage_reason", None)
+
         if is_covered is None:
             db_part = None
             if getattr(p, "part_id", None):
@@ -94,20 +99,24 @@ def create_or_update_estimate(
             if not db_part and getattr(p, "part_code", None):
                 db_part = db.query(SparePartModel).filter(SparePartModel.part_code == p.part_code).first()
 
-            if db_part:
-                is_consumable = db_part.part_type in ("consumable", "wear_and_tear", "accessory") or not db_part.is_warranty_eligible
-            else:
-                is_consumable = any(word in (p.part_name or "").lower() for word in ["gas", "filter", "gasket", "seal", "cleaning", "pipe"])
-            is_covered = is_under_warranty and not is_consumable
+            is_covered, cov_type, reason = evaluate_part_warranty_status(
+                part_name=p.part_name,
+                part_code=getattr(p, "part_code", None),
+                db_part=db_part,
+                req=req,
+                appliance=appliance_rec,
+                is_comprehensive_active=is_under_warranty,
+                db=db
+            )
 
         p_dict["is_covered"] = bool(is_covered)
+        p_dict["coverage_type"] = cov_type or ("oem_warranty" if is_covered else "customer_billable")
+        p_dict["non_coverage_reason"] = reason if not is_covered else None
+        p_dict["warranty_component_type"] = getattr(db_part, "warranty_component_type", None) if db_part else getattr(p, "warranty_component_type", None)
+
         if is_covered:
-            p_dict["coverage_type"] = "oem_warranty"
-            p_dict["non_coverage_reason"] = None
             covered_parts_total += item_total
         else:
-            p_dict["coverage_type"] = "customer_billable"
-            p_dict["non_coverage_reason"] = p.non_coverage_reason or ("Consumable / Wear & Tear" if any(w in (p.part_name or "").lower() for w in ["gas", "filter", "seal"]) else "Out of Warranty / Excluded")
             customer_parts_total += item_total
 
         parts_list.append(p_dict)

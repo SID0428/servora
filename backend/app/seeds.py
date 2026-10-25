@@ -31,6 +31,9 @@ def seed_database(db: Session):
     if "is_warranty_eligible" not in sp_columns:
         with engine.begin() as connection:
             connection.execute(text("ALTER TABLE spare_parts ADD COLUMN is_warranty_eligible BOOLEAN NOT NULL DEFAULT 1"))
+    if "warranty_component_type" not in sp_columns:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE spare_parts ADD COLUMN warranty_component_type VARCHAR(64) NULL"))
 
     user_columns = {column["name"] for column in inspect(engine).get_columns("users")}
     if "password_hash" not in user_columns:
@@ -305,7 +308,10 @@ def seed_database(db: Session):
                 brand="LG",
                 unit_price=4500.0,
                 hsn_code="8418",
-                description="High efficiency smart inverter linear compressor"
+                description="High efficiency smart inverter linear compressor",
+                part_type="functional",
+                is_warranty_eligible=True,
+                warranty_component_type="compressor"
             ),
             SparePartModel(
                 id="part_sam_mag01",
@@ -315,7 +321,10 @@ def seed_database(db: Session):
                 brand="Samsung",
                 unit_price=1850.0,
                 hsn_code="8516",
-                description="OEM grade heating magnetron for convection & grill microwaves"
+                description="OEM grade heating magnetron for convection & grill microwaves",
+                part_type="functional",
+                is_warranty_eligible=True,
+                warranty_component_type="magnetron"
             ),
             SparePartModel(
                 id="part_whr_mtr01",
@@ -325,7 +334,10 @@ def seed_database(db: Session):
                 brand="Whirlpool",
                 unit_price=1450.0,
                 hsn_code="8450",
-                description="Submersible drain pump assembly with lint filter interface"
+                description="Submersible drain pump assembly with lint filter interface",
+                part_type="functional",
+                is_warranty_eligible=True,
+                warranty_component_type="motor"
             ),
             SparePartModel(
                 id="part_unv_thm01",
@@ -335,7 +347,10 @@ def seed_database(db: Session):
                 brand="Universal",
                 unit_price=450.0,
                 hsn_code="9032",
-                description="Snap-action defrost termination sensor with fuse"
+                description="Snap-action defrost termination sensor with fuse",
+                part_type="functional",
+                is_warranty_eligible=True,
+                warranty_component_type=None
             ),
             SparePartModel(
                 id="part_vol_pcb01",
@@ -345,7 +360,10 @@ def seed_database(db: Session):
                 brand="Voltas",
                 unit_price=3200.0,
                 hsn_code="8534",
-                description="Microcontroller drive PCB with IP65 moisture conformal coating"
+                description="Microcontroller drive PCB with IP65 moisture conformal coating",
+                part_type="functional",
+                is_warranty_eligible=True,
+                warranty_component_type="pcb"
             )
         ]
         db.add_all(parts)

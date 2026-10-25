@@ -1,4 +1,5 @@
 import json
+import re
 import uuid
 from datetime import datetime, timedelta, date
 from typing import List, Optional
@@ -9,7 +10,8 @@ from sqlalchemy import or_
 from app.db.session import get_db
 from app.db.models import (
     UserModel, WarrantyClaimModel, AMCPlanModel, AMCSubscriptionModel,
-    ApplianceModel, ServiceRequestModel, CompanyBranchModel, CompanyWarrantyPolicyModel
+    ApplianceModel, ServiceRequestModel, CompanyBranchModel, CompanyWarrantyPolicyModel,
+    SparePartModel
 )
 from app.schemas import (
     WarrantyClaimSchema, WarrantyClaimVerifyPayload,
@@ -178,6 +180,89 @@ def resolve_policy_for_appliance(company_id: str, brand: str, category: str, pur
         break
 
     return matched, p_date
+
+def evaluate_part_warranty_status(
+    part_name: str,
+    part_code: Optional[str],
+    db_part: Optional[SparePartModel],
+    req: Optional[ServiceRequestModel],
+    appliance: Optional[ApplianceModel],
+    is_comprehensive_active: bool,
+    db: Session
+) -> tuple:
+    """
+    Evaluates whether a spare part is covered under Comprehensive Warranty or Component-Specific Warranty.
+    Deterministic decision hierarchy:
+    1. Consumable check (db_part.part_type or explicit non-warranty eligibility)
+    2. Comprehensive warranty check (within active window)
+    3. Explicit component warranty check (using db_part.warranty_component_type set by Brand OEM in inventory)
+    Returns: (is_covered: bool, coverage_type: str, reason: Optional[str])
+    """
+    name_str = (part_name or "").strip()
+
+    # 1. Consumable / Explicit ineligibility check
+    is_consumable = False
+    if db_part:
+        if db_part.part_type in ("consumable", "wear_and_tear", "accessory") or not db_part.is_warranty_eligible:
+            is_consumable = True
+    else:
+        is_consumable = any(w in name_str.lower() for w in ["gas", "filter", "gasket", "seal", "cleaning", "pipe"])
+
+    consumables_covered_by_policy = False
+    comp_warranty_map = {}
+    p_date = None
+
+    if appliance:
+        p_date = parse_date(appliance.purchase_date)
+        if getattr(appliance, "policy_snapshot_json", None):
+            try:
+                snap = json.loads(appliance.policy_snapshot_json)
+                consumables_covered_by_policy = bool(snap.get("consumables_covered", False))
+                comp_warranty_map = snap.get("component_warranty", {})
+            except Exception:
+                pass
+        if not comp_warranty_map and getattr(appliance, "matched_policy_id", None):
+            pol = db.query(CompanyWarrantyPolicyModel).filter(CompanyWarrantyPolicyModel.id == appliance.matched_policy_id).first()
+            if pol:
+                consumables_covered_by_policy = bool(pol.consumables_covered)
+                try:
+                    comp_warranty_map = json.loads(pol.component_warranty_json) if pol.component_warranty_json else {}
+                except Exception:
+                    pass
+
+    # If it is a consumable and policy does not explicitly cover consumables:
+    if is_consumable and not consumables_covered_by_policy:
+        return False, "customer_billable", "Consumable / Wear & Tear (Excluded from Warranty)"
+
+    # 2. Comprehensive Warranty Coverage (Within standard warranty period)
+    if is_comprehensive_active and not is_consumable:
+        return True, "oem_warranty", "Covered under Comprehensive Warranty"
+
+    # 3. Explicit Component-Specific Warranty Tag Check
+    # Strictly checks the component tag chosen during part creation in inventory
+    comp_tag = (getattr(db_part, "warranty_component_type", None) or "").strip().lower() if db_part else ""
+
+    if comp_tag and comp_warranty_map and p_date:
+        today = datetime.now().date()
+        age_days = (today - p_date).days
+        age_months = max(0, int(age_days / 30.4375))
+
+        # Check if the part's explicit component tag matches any key in policy's component warranty map
+        comp_duration = comp_warranty_map.get(comp_tag)
+        if comp_duration is not None:
+            try:
+                max_months = int(comp_duration)
+            except (ValueError, TypeError):
+                max_months = 0
+
+            if age_months <= max_months:
+                return True, "oem_warranty", f"Covered under Component Warranty ({comp_tag.upper()}: {max_months}m, Appliance Age: {age_months}m)"
+            else:
+                return False, "customer_billable", f"Component Warranty Expired ({comp_tag.upper()}: {max_months}m limit exceeded, Age: {age_months}m)"
+
+    # 4. Default out-of-warranty fallback
+    reason = "Comprehensive Warranty Expired / Excluded" if not is_comprehensive_active else "Out of Warranty / Excluded"
+    return False, "customer_billable", reason
 
 # ==========================================
 # 1.1 WARRANTY POLICIES (Fiscal Year / Time Windows)
