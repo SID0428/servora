@@ -51,6 +51,19 @@ function apiFetch(path, options = {}) {
   });
 }
 
+function authHeaders(extraHeaders = {}) {
+  const storedUser = currentUser || readStoredUser();
+  const headers = { ...extraHeaders };
+  if (storedUser?.session_token) {
+    headers.Authorization = `Bearer ${storedUser.session_token}`;
+  }
+  if (storedUser?.id) {
+    headers["X-ServSure-User-Id"] = storedUser.id;
+    headers["X-Servora-User-Id"] = storedUser.id;
+  }
+  return headers;
+}
+
 function escapeHtml(value) {
   return String(value ?? "").replace(/[&<>"']/g, (character) => ({
     "&": "&amp;",
@@ -753,10 +766,8 @@ async function handleInvoiceFileUpload(event) {
   formData.append("file", file);
 
   try {
-    const res = await fetch(`${API_BASE_URL}/api/uploads`, {
+    const res = await apiFetch("/api/uploads", {
       method: "POST",
-      credentials: "include",
-      headers: authHeaders(),
       body: formData,
     });
     if (!res.ok) {
@@ -1821,10 +1832,8 @@ async function handleReuploadInvoiceFileUpload(event) {
   formData.append("file", file);
 
   try {
-    const res = await fetch(`${API_BASE_URL}/api/uploads`, {
+    const res = await apiFetch("/api/uploads", {
       method: "POST",
-      credentials: "include",
-      headers: authHeaders(),
       body: formData,
     });
     if (!res.ok) {

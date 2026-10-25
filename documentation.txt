@@ -4,8 +4,8 @@ PRODUCTION-GRADE TECHNICAL ARCHITECTURE & DEVELOPER ONBOARDING MANUAL
 ================================================================================
 File: documentation.txt
 Platform: ServSure (formerly Servora)
-Version: 1.8.5 (Production Release - Mandatory Customer Purchase Invoice Registration)
-Last Updated: October 25, 2026 (21:50 IST)
+Version: 1.8.6 (Production Release - Invoice Upload Transport Harmonization)
+Last Updated: October 25, 2026 (21:56 IST)
 Repository: https://github.com/SID0428/servora.git
 
 Welcome to ServSure! This manual is the definitive, authoritative reference
@@ -1639,6 +1639,21 @@ were identified between the initial rough draft documentation and the actual cod
         - `submitAppliance` in `dashboard.js` validates that `invoiceUrl` is present and that an in-progress file upload has finished;
           highlights the upload button with a rose ring/border if attempted without an uploaded invoice.
         - Modal reset clears any error highlight upon dialog opening or file selection.
+
+32. Discrepancy: Invoice Document Upload Failure Due to Missing authHeaders Reference
+   - Initial State / Observed Issue:
+     When customers selected an invoice document (image or PDF) in the appliance registration dialog on `customer-dashboard.html`,
+     the upload immediately failed and displayed red error text: `Upload failed: Can't find variable: authHeaders`.
+   - Root Causes:
+     1. Missing Helper Declaration: `frontend/js/dashboard.js` contained calls to `authHeaders()` in both `handleInvoiceFileUpload`
+        and `handleReuploadInvoiceFileUpload`. However, while `authHeaders` was defined in `ops-dashboard.js`, it was never declared
+        in `dashboard.js`. Under modern browser JavaScript execution, invoking the undeclared function triggered an unhandled
+        `ReferenceError: Can't find variable: authHeaders`.
+   - Resolution:
+     1. Defined `function authHeaders(extraHeaders = {})` in `frontend/js/dashboard.js` attaching `Authorization: Bearer <token>`,
+        `X-ServSure-User-Id`, and `X-Servora-User-Id`.
+     2. Updated `handleInvoiceFileUpload` and `handleReuploadInvoiceFileUpload` to use the unified `apiFetch` transport wrapper:
+        `await apiFetch("/api/uploads", { method: "POST", body: formData })`.
 
 ==================================================
 End of Documentation
