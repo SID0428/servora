@@ -38,6 +38,15 @@ def seed_database(db: Session):
         with engine.begin() as connection:
             connection.execute(text("ALTER TABLE spare_parts ADD COLUMN is_tax_inclusive BOOLEAN NOT NULL DEFAULT 0"))
 
+    # Ensure spare_parts part_code is scoped per company rather than globally unique
+    try:
+        with engine.begin() as connection:
+            connection.execute(text("DROP INDEX IF EXISTS ix_spare_parts_part_code"))
+            connection.execute(text("CREATE INDEX IF NOT EXISTS ix_spare_parts_part_code ON spare_parts (part_code)"))
+            connection.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS uq_company_part_code ON spare_parts (company_id, part_code)"))
+    except Exception:
+        pass
+
     user_columns = {column["name"] for column in inspect(engine).get_columns("users")}
     if "password_hash" not in user_columns:
         with engine.begin() as connection:
@@ -407,6 +416,44 @@ def seed_database(db: Session):
         db.add_all(parts)
         db.commit()
 
+    # Data Healing: Restore Crompton capacitor if it was accidentally overwritten by Samsung part,
+    # and ensure Samsung has its own distinct part entry.
+    crm_part = db.query(SparePartModel).filter(SparePartModel.id == "part_crm_cap01").first()
+    if crm_part and crm_part.brand != "Crompton":
+        sam_part = db.query(SparePartModel).filter(
+            SparePartModel.part_code == "PART-CRM-CAP01",
+            SparePartModel.company_id == "comp_0c2b691f"
+        ).first()
+        if not sam_part:
+            sam_part = SparePartModel(
+                id="part_sam_cap01_comp",
+                part_code="PART-CRM-CAP01",
+                name=crm_part.name or "Updated Compressor Unit 240V",
+                category=crm_part.category or "Refrigerator",
+                brand="Samsung",
+                unit_price=crm_part.unit_price or 4999.0,
+                hsn_code=crm_part.hsn_code or "841890",
+                description=crm_part.description or "High performance replacement compressor",
+                stock_quantity=crm_part.stock_quantity or 25,
+                part_type="functional",
+                is_warranty_eligible=True,
+                warranty_component_type=crm_part.warranty_component_type,
+                company_id="comp_0c2b691f",
+                is_active=True
+            )
+            db.add(sam_part)
+
+        crm_part.name = "Dual Run Capacitor 50+5 uF"
+        crm_part.category = "Air Conditioner"
+        crm_part.brand = "Crompton"
+        crm_part.unit_price = 650.0
+        crm_part.hsn_code = "8532"
+        crm_part.description = "Heavy duty AC run capacitor for outdoor compressor & fan motor"
+        crm_part.company_id = "comp_1"
+        crm_part.stock_quantity = 50
+        crm_part.is_active = True
+        db.commit()
+
     # 6. Seed Franchise Warehouse Stock (Phase 2 FR-INV-002, FR-INV-004)
     if not db.query(FranchiseInventoryModel).first():
         stocks = [
@@ -604,7 +651,7 @@ def seed_database(db: Session):
             comp_brand = comp.name.strip()
             catalog_items = [
                 CompanyApplianceCatalogModel(
-                    id=f"capp_{comp.id[:8]}_ac",
+                    id=f"capp_{comp.id}_ac",
                     company_id=comp.id,
                     appliance_name=f"{comp_brand} Inverter Split AC 1.5 Ton",
                     brand=comp_brand,
@@ -614,7 +661,7 @@ def seed_database(db: Session):
                     description="5 Star Inverter Split AC with Copper Condenser and Anti-Viral Filter"
                 ),
                 CompanyApplianceCatalogModel(
-                    id=f"capp_{comp.id[:8]}_ref",
+                    id=f"capp_{comp.id}_ref",
                     company_id=comp.id,
                     appliance_name=f"{comp_brand} Frost Free Double Door Refrigerator 260L",
                     brand=comp_brand,
@@ -624,7 +671,7 @@ def seed_database(db: Session):
                     description="Smart Inverter Compressor with Auto Smart Connect and Multi Air Flow"
                 ),
                 CompanyApplianceCatalogModel(
-                    id=f"capp_{comp.id[:8]}_wm",
+                    id=f"capp_{comp.id}_wm",
                     company_id=comp.id,
                     appliance_name=f"{comp_brand} Fully Automatic Front Load Washing Machine 7kg",
                     brand=comp_brand,
@@ -644,9 +691,9 @@ def seed_database(db: Session):
             comp_brand = comp.name.strip()
             policies = [
                 CompanyWarrantyPolicyModel(
-                    id=f"pol_{comp.id[:8]}_fy2425",
+                    id=f"pol_{comp.id}_fy2425",
                     company_id=comp.id,
-                    policy_code=f"FY24-25-{comp.id[:4].upper()}",
+                    policy_code=f"FY24-25-{comp.id.upper()}",
                     policy_name=f"{comp_brand} FY 2024-25 Standard Warranty Policy",
                     category="All",
                     effective_from=date(2024, 4, 1),
@@ -662,9 +709,9 @@ def seed_database(db: Session):
                     is_active=True
                 ),
                 CompanyWarrantyPolicyModel(
-                    id=f"pol_{comp.id[:8]}_fy2526",
+                    id=f"pol_{comp.id}_fy2526",
                     company_id=comp.id,
-                    policy_code=f"FY25-26-{comp.id[:4].upper()}",
+                    policy_code=f"FY25-26-{comp.id.upper()}",
                     policy_name=f"{comp_brand} FY 2025-26 Enhanced Warranty Policy",
                     category="All",
                     effective_from=date(2025, 4, 1),
@@ -680,9 +727,9 @@ def seed_database(db: Session):
                     is_active=True
                 ),
                 CompanyWarrantyPolicyModel(
-                    id=f"pol_{comp.id[:8]}_fy2627",
+                    id=f"pol_{comp.id}_fy2627",
                     company_id=comp.id,
-                    policy_code=f"FY26-27-{comp.id[:4].upper()}",
+                    policy_code=f"FY26-27-{comp.id.upper()}",
                     policy_name=f"{comp_brand} FY 2026-27 Comprehensive Pro Policy",
                     category="All",
                     effective_from=date(2026, 4, 1),

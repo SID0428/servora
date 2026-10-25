@@ -1373,9 +1373,21 @@ def create_job_card(request_id: str, payload: JobCardCreatePayload, request: Req
         if part_id:
             part_obj = db.query(SparePartModel).filter(SparePartModel.id == part_id).first()
         if not part_obj and part_code:
-            part_obj = db.query(SparePartModel).filter(SparePartModel.part_code == part_code).first()
+            if req and getattr(req, "company_id", None):
+                part_obj = db.query(SparePartModel).filter(
+                    SparePartModel.part_code == part_code,
+                    or_(SparePartModel.company_id == req.company_id, SparePartModel.company_id == None)
+                ).first()
+            else:
+                part_obj = db.query(SparePartModel).filter(SparePartModel.part_code == part_code).first()
         if not part_obj and p.part_name:
-            part_obj = db.query(SparePartModel).filter(SparePartModel.name.ilike(f"%{p.part_name}%")).first()
+            if req and getattr(req, "company_id", None):
+                part_obj = db.query(SparePartModel).filter(
+                    SparePartModel.name.ilike(f"%{p.part_name}%"),
+                    or_(SparePartModel.company_id == req.company_id, SparePartModel.company_id == None)
+                ).first()
+            else:
+                part_obj = db.query(SparePartModel).filter(SparePartModel.name.ilike(f"%{p.part_name}%")).first()
 
         if is_part_covered is None:
             is_part_covered, cov_type, non_cov_reason = evaluate_part_warranty_status(
@@ -1530,9 +1542,21 @@ def create_job_card(request_id: str, payload: JobCardCreatePayload, request: Req
             if part_id:
                 part_obj = db.query(SparePartModel).filter(SparePartModel.id == part_id).first()
             if not part_obj and part_code:
-                part_obj = db.query(SparePartModel).filter(SparePartModel.part_code == part_code).first()
+                if req and getattr(req, "company_id", None):
+                    part_obj = db.query(SparePartModel).filter(
+                        SparePartModel.part_code == part_code,
+                        or_(SparePartModel.company_id == req.company_id, SparePartModel.company_id == None)
+                    ).first()
+                else:
+                    part_obj = db.query(SparePartModel).filter(SparePartModel.part_code == part_code).first()
             if not part_obj and p.part_name:
-                part_obj = db.query(SparePartModel).filter(SparePartModel.name.ilike(f"%{p.part_name}%")).first()
+                if req and getattr(req, "company_id", None):
+                    part_obj = db.query(SparePartModel).filter(
+                        SparePartModel.name.ilike(f"%{p.part_name}%"),
+                        or_(SparePartModel.company_id == req.company_id, SparePartModel.company_id == None)
+                    ).first()
+                else:
+                    part_obj = db.query(SparePartModel).filter(SparePartModel.name.ilike(f"%{p.part_name}%")).first()
 
             if part_obj:
                 inv = db.query(FranchiseInventoryModel).filter(

@@ -4,8 +4,8 @@ PRODUCTION-GRADE TECHNICAL ARCHITECTURE & DEVELOPER ONBOARDING MANUAL
 ================================================================================
 File: documentation.txt
 Platform: ServSure (formerly Servora)
-Version: 1.8.2 (Production Release - Tax-Inclusive & Tax-Exclusive Spare Part Pricing and Smart Invoicing Engine)
-Last Updated: October 25, 2026 (19:05 IST)
+Version: 1.8.3 (Production Release - Multi-Tenant Company Spare Part Scoping & Isolation Engine)
+Last Updated: October 25, 2026 (20:50 IST)
 Repository: https://github.com/SID0428/servora.git
 
 Welcome to ServSure! This manual is the definitive, authoritative reference
@@ -423,7 +423,7 @@ All database entities are defined in `backend/app/db/models.py`:
 
 14. `SparePartModel` (`spare_parts` table):
     - `id`: String(64), Primary Key (e.g. `part_crm_cap01`).
-    - `part_code`: String(64), Unique, Indexed, Nullable: False (e.g. `PART-CRM-CAP01`).
+    - `part_code`: String(64), Indexed, Nullable: False (e.g. `PART-CRM-CAP01`). Scoped uniquely per company via `UniqueConstraint("company_id", "part_code")`.
     - `name`: String(128), Nullable: False.
     - `category`: String(64), Nullable: False.
     - `brand`: String(64), Nullable: False.
@@ -1513,8 +1513,59 @@ were identified between the initial rough draft documentation and the actual cod
         - Displayed clear visual badges (`Incl. Tax` or `+ Tax Extra`) alongside prices in company and franchise inventory tables.
      4. Smart Invoicing Engine (`backend/app/routes/requests.py`):
         - For tax-exclusive parts, labor, and inspection: 18% GST (9% CGST + 9% SGST) is added on top.
-        - For tax-inclusive parts: 18% GST is embedded in the price (`tax = price - price / 1.18`, `base = price - tax`), ensuring customers are charged exactly the listed price while tax invoices correctly break down CGST & SGST without double-charging.
+27. Discrepancy: Cross-Company Spare Part Collision & Global Part Code Uniqueness Bottleneck
+   - Initial State / Observed Issue:
+     When adding a spare part in one company's portal, entering a `part_code` that matched a part already registered in another
+     company caused the system to update the other company's part instead of creating a new part in the current company's
+     inventory. The current company never saw the part in their dashboard, while the other company's catalog specifications
+     were corrupted. Furthermore, two companies were blocked from stocking items sharing identical standard OEM or manufacturer
+     part codes (e.g., standard compressor, capacitor, or valve codes).
+   - Root Causes:
+     1. Global Unique Constraint: In `SparePartModel`, `part_code` was configured with `unique=True`, generating a global unique
+        index in SQLite (`ix_spare_parts_part_code`) that prevented any duplicate part codes across the entire database.
+     2. Unscoped Part Lookup: In `add_company_spare_part` (`POST /api/inventory/company/parts`), existing parts were queried
+        solely by `filter(SparePartModel.part_code == part_code)` without scoping to the authenticated company (`company_id == user.id`).
+     3. Cross-Tenant Mutation: When a match was found in another company, the handler updated the foreign part's name, price, and stock,
+        while leaving the foreign company's `company_id` intact, making it invisible to the creating company.
+     4. Missing Company Scoping in Update Routes: `update_company_part_details` and `update_company_part_stock` did not verify
+        that the target part's `company_id` matched the authenticated company's ID.
+   - Resolution:
+     1. Database Model & Composite Uniqueness (`backend/app/db/models.py`):
+        - Removed `unique=True` from `SparePartModel.part_code` (retaining standard non-unique index).
+        - Added composite constraint `UniqueConstraint("company_id", "part_code", name="uq_company_part_code")`.
+     2. Automatic Database Migration (`backend/app/seeds.py`):
+        - Dropped the legacy global unique index `ix_spare_parts_part_code` on SQLite.
+        - Created non-unique index `ix_spare_parts_part_code ON spare_parts (part_code)`.
+        - Created unique composite index `uq_company_part_code ON spare_parts (company_id, part_code)`.
+        - Implemented automated data healing that restored Crompton's overwritten `part_crm_cap01` ("Dual Run Capacitor 50+5 uF")
+          and preserved Samsung's part as its own distinct record (`company_id="comp_0c2b691f"`).
+     3. Company-Scoped Upsert & Catalog Isolation (`backend/app/routes/inventory.py`):
+        - Updated `add_company_spare_part` to query existing parts strictly scoped to `(SparePartModel.part_code == part_code, SparePartModel.company_id == target_company_id)`.
+        - When creating a part, explicitly sets `company_id = user.id`.
+        - In `update_company_part_details` and `update_company_part_stock`, added permission checks returning `HTTP 403 Forbidden`
+          if a company attempts to modify a part belonging to another company.
+        - In `get_parts_catalog` (`GET /api/inventory/parts`), scoped parts returned to franchise branches and companies based on their parent company and universal parts.
+     4. Downstream Lookup Scoping (`estimates.py` & `requests.py`):
+        - Scoped fallback part lookups by `req.company_id` to prevent cross-brand part matching.
 
-================================================================================
+28. Discrepancy: Inventory 'Edit' Action Inoperable Due to Strict ESM Assignment Exception
+   - Initial State / Observed Issue:
+     In `company-dashboard.html`, clicking the "⚙️ Edit" action button next to any spare part in the Central Warehouse Inventory
+     table did nothing. The edit modal dialog failed to appear.
+   - Root Causes:
+     1. Undeclared Variable Assignment: In `frontend/js/ops-dashboard.js`, line 5156 attempted an assignment to an undeclared
+        variable: `if ($editPartPrice = $("editPartPrice")) $editPartPrice.value = part.unit_price || 0;`.
+     2. Strict Mode Execution: Because `ops-dashboard.js` is loaded as an ES module (`<script type="module">`), modern browsers
+        execute it strictly under JavaScript Strict Mode. The assignment to undeclared `$editPartPrice` threw an unhandled
+        `ReferenceError: $editPartPrice is not defined`, halting the click event listener before `showModal()` could execute.
+   - Resolution:
+     1. Frontend Event Listener Sanitization:
+        - Replaced `$editPartPrice = $("editPartPrice")` with the standard guard:
+          `if ($("editPartPrice")) $("editPartPrice").value = part.unit_price || 0;`.
+     2. Backend Ownership Adoption:
+        - In `update_company_part_details` and `update_company_part_stock` (`backend/app/routes/inventory.py`), ensured that if a company
+          edits a part originally missing `company_id` (e.g. legacy/seed item), `part.company_id` is adopted as `user.id`.
+
+==================================================
 End of Documentation
-================================================================================
+==================================================

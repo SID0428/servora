@@ -5153,7 +5153,7 @@ function renderCompanyInventoryAndSpares() {
         if ($("editPartName")) $("editPartName").value = part.name;
         if ($("editPartCategory")) $("editPartCategory").value = part.category;
         if ($("editPartBrand")) $("editPartBrand").value = part.brand || "";
-        if ($editPartPrice = $("editPartPrice")) $editPartPrice.value = part.unit_price || 0;
+        if ($("editPartPrice")) $("editPartPrice").value = part.unit_price || 0;
         if ($("editPartIsTaxInclusive")) $("editPartIsTaxInclusive").value = part.is_tax_inclusive ? "true" : "false";
         if ($("editPartHsn")) $("editPartHsn").value = part.hsn_code || "841890";
         if ($("editPartDesc")) $("editPartDesc").value = part.description || "";

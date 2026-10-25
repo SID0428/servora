@@ -445,6 +445,7 @@ class CompanyPartCreatePayload(BaseModel):
     warranty_component_type: Optional[str] = None
     hsn_code: Optional[str] = "8418"
     description: Optional[str] = None
+    company_id: Optional[str] = None
 
 class CompanyPartUpdatePayload(BaseModel):
     name: str = Field(min_length=2, max_length=128)

@@ -28,9 +28,39 @@ def get_parts_catalog(
     category: Optional[str] = None,
     brand: Optional[str] = None,
     search: Optional[str] = None,
+    company_id: Optional[str] = None,
+    request: Request = None,
     db: Session = Depends(get_db)
 ):
     query = db.query(SparePartModel).filter(SparePartModel.is_active == True)
+
+    user = None
+    if request:
+        try:
+            user = get_authenticated_user(request, db)
+        except Exception:
+            user = None
+
+    if user:
+        if user.role == "company":
+            query = query.filter(or_(SparePartModel.company_id == user.id, SparePartModel.company_id == None))
+        elif user.role in ("franchise", "branch"):
+            branch = db.query(CompanyBranchModel).filter(
+                or_(CompanyBranchModel.id == user.id, CompanyBranchModel.email == user.email)
+            ).first()
+            if branch and branch.company_id:
+                query = query.filter(or_(SparePartModel.company_id == branch.company_id, SparePartModel.company_id == None))
+            elif branch and branch.brand:
+                query = query.filter(or_(SparePartModel.brand.ilike(f"%{branch.brand}%"), SparePartModel.company_id == None))
+        elif user.role == "technician":
+            tech = db.query(TechnicianModel).filter(TechnicianModel.id == user.id).first()
+            if tech and getattr(tech, "company_id", None):
+                query = query.filter(or_(SparePartModel.company_id == tech.company_id, SparePartModel.company_id == None))
+        elif user.role == "admin" and company_id:
+            query = query.filter(or_(SparePartModel.company_id == company_id, SparePartModel.company_id == None))
+    elif company_id:
+        query = query.filter(or_(SparePartModel.company_id == company_id, SparePartModel.company_id == None))
+
     if category and category.lower() != "all":
         query = query.filter(SparePartModel.category.ilike(f"%{category}%"))
     if brand and brand.lower() != "all":
@@ -75,31 +105,46 @@ def create_or_update_part(
     if user.role not in ("admin", "company", "franchise", "branch"):
         raise HTTPException(status_code=403, detail="Unauthorized to modify spare parts catalog")
 
-    existing = db.query(SparePartModel).filter(SparePartModel.part_code == payload.part_code).first()
+    part_code = payload.part_code.strip().upper()
+    target_company_id = user.id if user.role == "company" else getattr(payload, "company_id", None)
+
+    if target_company_id:
+        existing = db.query(SparePartModel).filter(
+            SparePartModel.part_code == part_code,
+            SparePartModel.company_id == target_company_id
+        ).first()
+    else:
+        existing = db.query(SparePartModel).filter(
+            SparePartModel.part_code == part_code,
+            SparePartModel.company_id == None
+        ).first()
+
     if existing:
-        existing.name = payload.name
-        existing.category = payload.category
-        existing.brand = payload.brand
+        existing.name = payload.name.strip()
+        existing.category = payload.category.strip()
+        existing.brand = payload.brand.strip()
         existing.unit_price = payload.unit_price
         if payload.is_tax_inclusive is not None:
             existing.is_tax_inclusive = bool(payload.is_tax_inclusive)
-        existing.hsn_code = payload.hsn_code
+        existing.hsn_code = payload.hsn_code.strip()
         if payload.description:
-            existing.description = payload.description
+            existing.description = payload.description.strip()
         db.commit()
         db.refresh(existing)
         part = existing
     else:
         part = SparePartModel(
             id=f"part_{uuid.uuid4().hex[:12]}",
-            part_code=payload.part_code.strip().upper(),
+            part_code=part_code,
             name=payload.name.strip(),
             category=payload.category.strip(),
             brand=payload.brand.strip(),
             unit_price=payload.unit_price,
             is_tax_inclusive=bool(payload.is_tax_inclusive) if payload.is_tax_inclusive is not None else False,
             hsn_code=payload.hsn_code.strip(),
-            description=payload.description
+            description=payload.description,
+            company_id=target_company_id,
+            is_active=True
         )
         db.add(part)
         db.commit()
@@ -177,7 +222,6 @@ def add_company_spare_part(
         raise HTTPException(status_code=403, detail="Only company or admin can add parts to inventory")
 
     part_code = payload.part_code.strip().upper()
-    existing = db.query(SparePartModel).filter(SparePartModel.part_code == part_code).first()
     brand_name = payload.brand.strip() if payload.brand else (user.name if user.role == "company" else "Universal")
     part_type = payload.part_type or "functional"
     is_w_eligible = bool(payload.is_warranty_eligible if payload.is_warranty_eligible is not None else (part_type == "functional"))
@@ -185,6 +229,19 @@ def add_company_spare_part(
     comp_type = payload.warranty_component_type.strip().lower() if (payload.warranty_component_type and payload.warranty_component_type.strip()) else None
 
     is_tax_inc = bool(payload.is_tax_inclusive) if payload.is_tax_inclusive is not None else False
+
+    target_company_id = user.id if user.role == "company" else getattr(payload, "company_id", None)
+
+    if target_company_id:
+        existing = db.query(SparePartModel).filter(
+            SparePartModel.part_code == part_code,
+            SparePartModel.company_id == target_company_id
+        ).first()
+    else:
+        existing = db.query(SparePartModel).filter(
+            SparePartModel.part_code == part_code,
+            SparePartModel.company_id == None
+        ).first()
 
     if existing:
         existing.name = payload.name.strip()
@@ -199,8 +256,8 @@ def add_company_spare_part(
         existing.part_type = part_type
         existing.is_warranty_eligible = is_w_eligible
         existing.warranty_component_type = comp_type
-        if user.role == "company" and not existing.company_id:
-            existing.company_id = user.id
+        if target_company_id and not existing.company_id:
+            existing.company_id = target_company_id
         db.commit()
         db.refresh(existing)
         part = existing
@@ -219,7 +276,7 @@ def add_company_spare_part(
             part_type=part_type,
             is_warranty_eligible=is_w_eligible,
             warranty_component_type=comp_type,
-            company_id=user.id if user.role == "company" else None,
+            company_id=target_company_id,
             is_active=True
         )
         db.add(part)
@@ -258,6 +315,10 @@ def update_company_part_stock(
     part = db.query(SparePartModel).filter(SparePartModel.id == part_id).first()
     if not part:
         raise HTTPException(status_code=404, detail="Spare part not found")
+    if user.role == "company" and part.company_id and part.company_id != user.id:
+        raise HTTPException(status_code=403, detail="You do not have permission to modify another company's spare part")
+    if user.role == "company" and not part.company_id:
+        part.company_id = user.id
 
     old_stock = part.stock_quantity or 0
     if payload.mode == "add":
@@ -296,6 +357,10 @@ def update_company_part_details(
     part = db.query(SparePartModel).filter(SparePartModel.id == part_id).first()
     if not part:
         raise HTTPException(status_code=404, detail="Spare part not found")
+    if user.role == "company" and part.company_id and part.company_id != user.id:
+        raise HTTPException(status_code=403, detail="You do not have permission to modify another company's spare part")
+    if user.role == "company" and not part.company_id:
+        part.company_id = user.id
 
     part.name = payload.name.strip()
     part.category = payload.category.strip()

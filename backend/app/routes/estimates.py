@@ -2,6 +2,7 @@ import json
 import uuid
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Request
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.db.models import (
@@ -97,7 +98,14 @@ def create_or_update_estimate(
             if getattr(p, "part_id", None):
                 db_part = db.query(SparePartModel).filter(SparePartModel.id == p.part_id).first()
             if not db_part and getattr(p, "part_code", None):
-                db_part = db.query(SparePartModel).filter(SparePartModel.part_code == p.part_code).first()
+                req_comp_id = getattr(req, "company_id", None) or (appliance_rec.company_id if appliance_rec else None)
+                if req_comp_id:
+                    db_part = db.query(SparePartModel).filter(
+                        SparePartModel.part_code == p.part_code,
+                        or_(SparePartModel.company_id == req_comp_id, SparePartModel.company_id == None)
+                    ).first()
+                else:
+                    db_part = db.query(SparePartModel).filter(SparePartModel.part_code == p.part_code).first()
 
             is_covered, cov_type, reason = evaluate_part_warranty_status(
                 part_name=p.part_name,
@@ -256,9 +264,21 @@ def respond_to_estimate(
                 if part_id:
                     part_obj = db.query(SparePartModel).filter(SparePartModel.id == part_id).first()
                 if not part_obj and part_code:
-                    part_obj = db.query(SparePartModel).filter(SparePartModel.part_code == part_code).first()
+                    if req and getattr(req, "company_id", None):
+                        part_obj = db.query(SparePartModel).filter(
+                            SparePartModel.part_code == part_code,
+                            or_(SparePartModel.company_id == req.company_id, SparePartModel.company_id == None)
+                        ).first()
+                    else:
+                        part_obj = db.query(SparePartModel).filter(SparePartModel.part_code == part_code).first()
                 if not part_obj and part_name:
-                    part_obj = db.query(SparePartModel).filter(SparePartModel.name.ilike(f"%{part_name}%")).first()
+                    if req and getattr(req, "company_id", None):
+                        part_obj = db.query(SparePartModel).filter(
+                            SparePartModel.name.ilike(f"%{part_name}%"),
+                            or_(SparePartModel.company_id == req.company_id, SparePartModel.company_id == None)
+                        ).first()
+                    else:
+                        part_obj = db.query(SparePartModel).filter(SparePartModel.name.ilike(f"%{part_name}%")).first()
 
                 inv = None
                 qty_avail = 0

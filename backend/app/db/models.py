@@ -232,9 +232,10 @@ class ServiceFeedbackModel(Base):
 
 class SparePartModel(Base):
     __tablename__ = "spare_parts"
+    __table_args__ = (UniqueConstraint("company_id", "part_code", name="uq_company_part_code"),)
 
     id = Column(String(64), primary_key=True, index=True) # e.g. PART-LG-COMP01
-    part_code = Column(String(64), unique=True, index=True, nullable=False)
+    part_code = Column(String(64), index=True, nullable=False)
     name = Column(String(128), nullable=False)
     category = Column(String(64), nullable=False) # Refrigerator, Washing Machine, AC, Microwave
     brand = Column(String(64), nullable=False) # LG, Samsung, Whirlpool, Universal
