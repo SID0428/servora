@@ -613,6 +613,7 @@ class WarrantyRegistrationVerifyPayload(BaseModel):
     action: str = Field(pattern=r"^(approve|reject)$")
     rejection_reason: Optional[str] = None
     warranty_months: Optional[int] = None
+    purchase_date: Optional[str] = None
     notes: Optional[str] = None
 
 class WarrantyInvoiceReuploadPayload(BaseModel):
@@ -628,6 +629,7 @@ class WarrantyRegistrationItem(BaseModel):
     customer_email: Optional[str] = None
     company_id: str
     company_name: Optional[str] = None
+    appliance_name: Optional[str] = None
     brand: str
     category: str
     model_no: str

@@ -232,11 +232,16 @@
 
           <div class="pt-2 border-t border-slate-200/60">
             <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Purchase & Coverage</span>
-            <div class="text-slate-600 mt-0.5">Purchase Date: <strong id="verifyPurchaseDate" class="text-slate-800">—</strong></div>
-            <div class="mt-1 flex items-center gap-2">
+            <div class="mt-1 flex items-center justify-between gap-2">
+              <label class="text-slate-600 font-medium">Purchase Date:</label>
+              <input type="date" id="verifyPurchaseDateInput" class="px-2.5 py-1 text-xs font-bold border border-slate-200 rounded-lg bg-white text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500">
+            </div>
+            <div class="mt-1.5 flex items-center justify-between gap-2">
               <label class="text-slate-600 font-medium">Warranty Duration:</label>
-              <input type="number" id="verifyWarrantyMonths" min="1" max="120" value="12" class="w-16 px-2 py-1 text-xs font-bold border border-slate-200 rounded-lg bg-white text-slate-800 text-center">
-              <span class="text-slate-500 text-[11px]">Months</span>
+              <div class="flex items-center gap-1.5">
+                <input type="number" id="verifyWarrantyMonths" min="1" max="120" value="12" class="w-16 px-2 py-1 text-xs font-bold border border-slate-200 rounded-lg bg-white text-slate-800 text-center">
+                <span class="text-slate-500 text-[11px]">Months</span>
+              </div>
             </div>
             <div class="mt-1 text-[11px] text-slate-500">Calculated Expiry: <strong id="verifyCalculatedEnd" class="text-slate-700">—</strong></div>
           </div>
@@ -247,7 +252,12 @@
           <div>
             <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Purchase Invoice</span>
             <div id="verifyInvoiceContainer" class="mt-2 min-h-[170px] rounded-xl border border-slate-200 bg-white flex flex-col items-center justify-center p-3 text-center overflow-hidden">
-              <img id="verifyInvoiceImg" src="" alt="Invoice Preview" class="max-h-40 object-contain rounded-lg shadow-xs hidden cursor-pointer" onclick="window.open(this.src, '_blank')">
+              <img id="verifyInvoiceImg" src="" alt="Invoice Preview" class="max-h-40 object-contain rounded-lg shadow-xs hidden cursor-pointer" onclick="window.open(this.src, '_blank')" onerror="this.onerror=null; this.classList.add('hidden'); document.getElementById('verifyInvoiceError')?.classList.remove('hidden');">
+              <div id="verifyInvoiceError" class="hidden p-3 bg-amber-50 border border-amber-200 rounded-xl text-center space-y-1">
+                <span class="text-xl block">⚠️</span>
+                <p class="text-xs font-semibold text-amber-900">Document unavailable</p>
+                <p class="text-[11px] text-amber-700">Uploaded file was not cached on server</p>
+              </div>
               <div id="verifyInvoicePdfWrap" class="hidden space-y-2">
                 <span class="text-3xl block">📄</span>
                 <span class="text-xs font-semibold text-slate-700 block">PDF Invoice Document</span>

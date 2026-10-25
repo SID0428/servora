@@ -4,8 +4,8 @@ PRODUCTION-GRADE TECHNICAL ARCHITECTURE & DEVELOPER ONBOARDING MANUAL
 ================================================================================
 File: documentation.txt
 Platform: ServSure (formerly Servora)
-Version: 1.8.8 (Production Release - Appliance Name, Custom Model & Deletion Management)
-Last Updated: October 25, 2026 (22:42 IST)
+Version: 1.8.9 (Production Release - Resilient Media Blob Persistence & Warranty Audit Purchase Date Management)
+Last Updated: October 25, 2026 (23:05 IST)
 Repository: https://github.com/SID0428/servora.git
 
 Welcome to ServSure! This manual is the definitive, authoritative reference
@@ -1714,7 +1714,40 @@ were identified between the initial rough draft documentation and the actual cod
         - `getApplianceDisplayName(appliance)` in `dashboard.js` guarantees that cards on both Home and Appliances tabs,
           as well as the edit modal, display the actual appliance name instead of `gelistra Other`.
 
+35. DISCREPANCY: Ephemeral Upload Disk Loss on Cloud Containers & Company Warranty Audit Name / Purchase Date Editing
+   - Symptoms:
+     1. In cloud hosting (Render free tier), container instances are ephemeral. When redeploying or waking from sleep, files stored on
+        local disk (`backend/app/static/uploads`) were wiped, causing `/uploads/{filename}` to return `{"detail":"Not Found"}` and invoice
+        previews to display broken image icons.
+     2. In Company Portal (`company-dashboard.html` & `ops-dashboard.js`), the "Audit Warranty Registration" modal and the registrations table
+        displayed generic brand/category titles (e.g. `gelistra Other`) instead of descriptive catalog appliance names (e.g. `BUILT-IN-MWO / OVEN & OTG`).
+     3. Company reviewers verifying warranty claims had no ability to correct/adjust the customer's purchase date based on the uploaded invoice document,
+        and approving the warranty only accepted `warranty_months`.
+   - Root Causes:
+     1. Ephemeral Disk File Storage: Uploads were solely written to the container's local disk without a persistent blob storage layer in the database.
+     2. Hardcoded UI Brand-Category Strings: `ops-dashboard.js` hardcoded `${safe(item.brand)} ${safe(item.category)}` in registration table rows
+        and inside `openWarrantyVerificationModal()`. Furthermore, `WarrantyRegistrationItem` Pydantic schema omitted `appliance_name`.
+     3. Static Purchase Date View in Audit Modal: Line 235 of `company-dashboard.html` rendered purchase date inside a static `<strong>` tag,
+        and `WarrantyRegistrationVerifyPayload` did not accept `purchase_date`.
+   - Resolution:
+     1. Database Binary Persistence & Resilient Static Serving (`backend/app/db/models.py`, `backend/app/routes/uploads.py`, `backend/main.py`):
+        - Added `UploadedFileModel` (`uploaded_files` table) with `filename` (PK), `content_type`, `file_data` (MediumBlob up to 16MB), and `size`.
+        - `upload_file` endpoint in `uploads.py` writes incoming files and base64 payloads to disk cache and database table simultaneously.
+        - Subclassed `ResilientStaticFiles(StaticFiles)` in `backend/main.py` and implemented `GET /api/uploads/{filename}`: on a cache miss (404),
+          the handler automatically loads file bytes from `UploadedFileModel`, restores the file to disk cache, and streams the response.
+     2. Appliance Name Display in Audit Warranty (`backend/app/routes/warranty_amc.py`, `backend/app/schemas/__init__.py`, `frontend/js/ops-dashboard.js`):
+        - Added `appliance_name: Optional[str] = None` to `WarrantyRegistrationItem`.
+        - In `list_warranty_registrations`, added catalog lookup to auto-heal generic titles and return the full descriptive `appliance_name`.
+        - Updated `renderCompanyWarrantyClaims` table row and `openWarrantyVerificationModal` in `ops-dashboard.js` to prioritize `item.appliance_name`.
+     3. Editable Purchase Date on Warranty Approval (`frontend/company-dashboard.html`, `frontend/js/ops-dashboard.js`, `backend/app/routes/warranty_amc.py`, `backend/app/schemas/__init__.py`):
+        - Replaced static `<strong>` with `<input type="date" id="verifyPurchaseDateInput">` inside the modal.
+        - Connected `oninput` to `updateCalculatedExpiry()` to update calculated warranty expiration live as the reviewer modifies the date.
+        - Added `purchase_date: Optional[str] = None` to `WarrantyRegistrationVerifyPayload`.
+        - In `verify_warranty_registration`, if `payload.purchase_date` is provided, updates `app.purchase_date` and recalculates `warranty_start_date`
+          and `warranty_end_date` using the new purchase date.
+
 ==================================================
 End of Documentation
 ==================================================
+
 

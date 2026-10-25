@@ -11,7 +11,7 @@ from app.db.session import get_db
 from app.db.models import (
     UserModel, WarrantyClaimModel, AMCPlanModel, AMCSubscriptionModel,
     ApplianceModel, ServiceRequestModel, CompanyBranchModel, CompanyWarrantyPolicyModel,
-    SparePartModel
+    SparePartModel, CompanyApplianceCatalogModel
 )
 from app.schemas import (
     WarrantyClaimSchema, WarrantyClaimVerifyPayload,
@@ -492,11 +492,39 @@ def list_warranty_registrations(
             if pol_match:
                 matched_pol_id = pol_match.id
                 matched_pol_name = pol_match.policy_name
+        # Resolve descriptive appliance name
+        app_name = getattr(app, "appliance_name", None)
+        if not app_name or not app_name.strip() or app_name.strip().lower() in (
+            f"{(app.brand or '').strip().lower()} {(app.category or '').strip().lower()}",
+            f"{(app.brand or '').strip().lower()} other",
+            (app.brand or "").strip().lower(),
+            "other", "appliance", "unknown"
+        ):
+            cat_item = None
+            if app.category:
+                cat_item = db.query(CompanyApplianceCatalogModel).filter(
+                    CompanyApplianceCatalogModel.category.ilike(app.category.strip())
+                ).first()
+            if not cat_item and app.brand:
+                cat_item = db.query(CompanyApplianceCatalogModel).filter(
+                    CompanyApplianceCatalogModel.brand.ilike(app.brand.strip())
+                ).first()
+            if cat_item and cat_item.appliance_name:
+                app_name = cat_item.appliance_name
+                app.appliance_name = app_name
+                try:
+                    db.add(app)
+                    db.commit()
+                except Exception:
+                    db.rollback()
+            else:
+                app_name = f"{app.brand} {app.category}".strip()
 
         results.append(
             WarrantyRegistrationItem(
                 id=app.id,
                 appliance_id=app.id,
+                appliance_name=app_name,
                 user_id=app.user_id,
                 customer_name=customer.name if customer else "Customer",
                 customer_phone=customer.phone if customer else None,
@@ -550,6 +578,10 @@ def verify_warranty_registration(
         app.warranty_rejection_reason = None
         app.verified_at = now
         app.verified_by = user.id
+
+        # Update purchase_date if edited by company admin
+        if payload.purchase_date and payload.purchase_date.strip():
+            app.purchase_date = payload.purchase_date.strip()
 
         # Resolve fiscal year policy matching purchase date
         matched_pol, p_date = resolve_policy_for_appliance(

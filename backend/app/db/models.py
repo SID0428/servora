@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Float, Integer, Boolean, Text, ForeignKey, DateTime, Date, UniqueConstraint
+from sqlalchemy import Column, String, Float, Integer, Boolean, Text, ForeignKey, DateTime, Date, UniqueConstraint, LargeBinary
 from datetime import datetime
 from app.db.session import Base
 
@@ -430,4 +430,15 @@ class CompanyWarrantyPolicyModel(Base):
     terms_and_conditions = Column(Text, nullable=True)
     is_active = Column(Boolean, default=True, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class UploadedFileModel(Base):
+    __tablename__ = "uploaded_files"
+
+    filename = Column(String(255), primary_key=True, index=True)
+    content_type = Column(String(64), nullable=False, default="application/octet-stream")
+    file_data = Column(LargeBinary(length=2**24), nullable=False) # MediumBlob up to 16MB
+    size = Column(Integer, nullable=False, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
 

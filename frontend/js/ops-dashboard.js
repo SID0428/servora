@@ -4202,7 +4202,7 @@ function renderCompanyWarrantyClaims() {
     if ($("requestHead")) {
       $("requestHead").innerHTML = [
         '<th style="min-width: 160px;">Customer</th>',
-        '<th style="min-width: 140px;">Appliance & Brand</th>',
+        '<th style="min-width: 170px;">Appliance Name</th>',
         '<th style="min-width: 150px;">Model & Serial</th>',
         '<th style="min-width: 120px;">Purchase Date</th>',
         '<th style="min-width: 120px;">Invoice</th>',
@@ -4215,6 +4215,7 @@ function renderCompanyWarrantyClaims() {
       [
         item.customer_name,
         item.customer_phone,
+        item.appliance_name,
         item.brand,
         item.category,
         item.model_no,
@@ -4255,7 +4256,8 @@ function renderCompanyWarrantyClaims() {
                     <small class="text-slate-400">${safe(item.customer_phone || item.customer_email || '—')}</small>
                   </td>
                   <td>
-                    <span class="font-bold text-slate-800">${safe(item.brand)} ${safe(item.category)}</span>
+                    <span class="font-bold text-slate-800 block">${safe(item.appliance_name || `${item.brand} ${item.category}`)}</span>
+                    <small class="text-slate-400 font-medium">${safe(item.category || item.brand || '')}</small>
                   </td>
                   <td>
                     <span class="font-mono text-slate-800 block">${safe(item.model_no || '—')}</span>
@@ -4478,9 +4480,23 @@ window.openWarrantyVerificationModal = function (applianceId) {
       reg.customer_email ? `✉️ ${reg.customer_email}` : ""
     ].filter(Boolean).join(" · ") || "No direct contact provided";
   }
-  if ($("verifyApplianceName")) $("verifyApplianceName").textContent = `${reg.brand} ${reg.category}`;
+  if ($("verifyApplianceName")) $("verifyApplianceName").textContent = reg.appliance_name || `${reg.brand} ${reg.category}`;
   if ($("verifyModelNo")) $("verifyModelNo").textContent = reg.model_no || "—";
   if ($("verifySerialNo")) $("verifySerialNo").textContent = reg.serial_no || "Not registered";
+  
+  const purchaseDateInput = $("verifyPurchaseDateInput");
+  if (purchaseDateInput) {
+    let pVal = "";
+    if (reg.purchase_date) {
+      const d = new Date(reg.purchase_date);
+      if (!isNaN(d.getTime())) {
+        pVal = d.toISOString().split("T")[0];
+      } else {
+        pVal = reg.purchase_date;
+      }
+    }
+    purchaseDateInput.value = pVal;
+  }
   if ($("verifyPurchaseDate")) $("verifyPurchaseDate").textContent = reg.purchase_date || reg.registered_on || "—";
 
   // Matched policy banner
@@ -4510,8 +4526,9 @@ window.openWarrantyVerificationModal = function (applianceId) {
   const updateCalculatedExpiry = () => {
     const months = parseInt(durationInput?.value, 10) || 12;
     let baseDate = new Date();
-    if (reg.purchase_date) {
-      const parsed = new Date(reg.purchase_date);
+    const curPDate = purchaseDateInput ? purchaseDateInput.value : reg.purchase_date;
+    if (curPDate) {
+      const parsed = new Date(curPDate);
       if (!isNaN(parsed.getTime())) baseDate = parsed;
     }
     const expDate = new Date(baseDate.getTime() + months * 30 * 24 * 60 * 60 * 1000);
@@ -4521,12 +4538,14 @@ window.openWarrantyVerificationModal = function (applianceId) {
   };
   updateCalculatedExpiry();
   if (durationInput) durationInput.oninput = updateCalculatedExpiry;
+  if (purchaseDateInput) purchaseDateInput.oninput = updateCalculatedExpiry;
 
   // Invoice preview
   const imgEl = $("verifyInvoiceImg");
   const pdfWrap = $("verifyInvoicePdfWrap");
   const pdfLink = $("verifyInvoicePdfLink");
   const emptyEl = $("verifyInvoiceEmpty");
+  if ($("verifyInvoiceError")) $("verifyInvoiceError").classList.add("hidden");
 
   if (reg.invoice_url) {
     if (emptyEl) emptyEl.classList.add("hidden");
@@ -4585,6 +4604,7 @@ function initWarrantyVerificationDialogEvents() {
   $("verifyApproveBtn")?.addEventListener("click", async () => {
     const applianceId = $("verifyApplianceId")?.value;
     const months = parseInt($("verifyWarrantyMonths")?.value, 10) || 12;
+    const purchaseDate = $("verifyPurchaseDateInput")?.value || null;
     if (!applianceId) return;
 
     const btn = $("verifyApproveBtn");
@@ -4597,7 +4617,8 @@ function initWarrantyVerificationDialogEvents() {
         method: "POST",
         body: JSON.stringify({
           action: "approve",
-          warranty_months: months
+          warranty_months: months,
+          purchase_date: purchaseDate
         })
       });
       if (typeof dialog.close === "function") dialog.close();

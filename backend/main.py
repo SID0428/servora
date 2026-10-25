@@ -189,9 +189,48 @@ app.include_router(warranty_amc.router)
 app.include_router(estimates.router)
 app.include_router(escalations.router)
 
+class ResilientStaticFiles(StaticFiles):
+    """
+    Subclass of StaticFiles that auto-restores missing files from the database (UploadedFileModel).
+    Ensures files persist seamlessly across Render ephemeral container restarts/redeploys.
+    """
+    async def get_response(self, path: str, scope):
+        from starlette.exceptions import HTTPException as StarletteHTTPException
+        from starlette.responses import Response
+        try:
+            response = await super().get_response(path, scope)
+            if response.status_code != 404:
+                return response
+        except StarletteHTTPException as ex:
+            if ex.status_code != 404:
+                raise
+        except Exception:
+            raise
+
+        filename = os.path.basename(path)
+        try:
+            from app.db.models import UploadedFileModel
+            db = SessionLocal()
+            try:
+                rec = db.query(UploadedFileModel).filter(UploadedFileModel.filename == filename).first()
+                if rec and rec.file_data:
+                    full_disk_path = os.path.join(self.directory, filename)
+                    try:
+                        with open(full_disk_path, "wb") as f:
+                            f.write(rec.file_data)
+                        return await super().get_response(path, scope)
+                    except Exception:
+                        return Response(content=rec.file_data, media_type=rec.content_type or "application/octet-stream")
+            finally:
+                db.close()
+        except Exception as e:
+            logger.warning(f"[ResilientStaticFiles] DB lookup failed for {filename}: {e}")
+
+        raise StarletteHTTPException(status_code=404)
+
 uploads_static_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "app", "static", "uploads")
 os.makedirs(uploads_static_dir, exist_ok=True)
-app.mount("/uploads", StaticFiles(directory=uploads_static_dir), name="uploads")
+app.mount("/uploads", ResilientStaticFiles(directory=uploads_static_dir), name="uploads")
 
 @app.get("/")
 def root():
