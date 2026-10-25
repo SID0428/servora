@@ -3468,14 +3468,14 @@ function renderCompanyWarrantyClaims() {
     if ($("requestSearch")) $("requestSearch").placeholder = "Search registrations by customer, model, serial, or status";
     if ($("requestHead")) {
       $("requestHead").innerHTML = [
-        "Customer",
-        "Appliance & Brand",
-        "Model & Serial",
-        "Purchase Date",
-        "Invoice",
-        "Warranty Status",
-        "Action"
-      ].map((label) => `<th>${safe(label)}</th>`).join("");
+        '<th style="min-width: 160px;">Customer</th>',
+        '<th style="min-width: 140px;">Appliance & Brand</th>',
+        '<th style="min-width: 150px;">Model & Serial</th>',
+        '<th style="min-width: 120px;">Purchase Date</th>',
+        '<th style="min-width: 120px;">Invoice</th>',
+        '<th style="min-width: 150px;">Warranty Status</th>',
+        '<th style="min-width: 130px;">Action</th>'
+      ].join("");
     }
 
     const filtered = companyWarrantyRegistrations.filter((item) =>
@@ -3560,15 +3560,15 @@ function renderCompanyWarrantyClaims() {
     if ($("requestSearch")) $("requestSearch").placeholder = "Search policies by code, name, category, or year";
     if ($("requestHead")) {
       $("requestHead").innerHTML = [
-        "Policy Code & Name",
-        "Category",
-        "Effective Window (Purchase Date)",
-        "Comprehensive",
-        "Component Warranties",
-        "Consumables",
-        "Status",
-        "Action"
-      ].map((label) => `<th>${safe(label)}</th>`).join("");
+        '<th style="min-width: 170px;">Policy Code & Name</th>',
+        '<th style="min-width: 90px;">Category</th>',
+        '<th style="min-width: 190px;">Effective Window (Purchase Date)</th>',
+        '<th style="min-width: 120px;">Comprehensive</th>',
+        '<th style="min-width: 240px;">Component Warranties</th>',
+        '<th style="min-width: 130px;">Consumables</th>',
+        '<th style="min-width: 110px;">Status</th>',
+        '<th style="min-width: 110px;">Action</th>'
+      ].join("");
     }
 
     const filtered = companyWarrantyPolicies.filter((item) =>
@@ -3603,36 +3603,40 @@ function renderCompanyWarrantyClaims() {
 
               if (compObj && typeof compObj === "object" && Object.keys(compObj).length > 0) {
                 compBadges = Object.entries(compObj)
-                  .map(([k, v]) => `<span class="inline-block bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded-full text-[10px] font-mono font-bold mr-1 mb-1">${k.toUpperCase()}: ${v}m</span>`)
+                  .map(([k, v]) => `<span class="inline-flex items-center bg-blue-50 text-blue-700 border border-blue-200 px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold whitespace-nowrap">${k.toUpperCase()}: ${v}m</span>`)
                   .join("");
               } else if (typeof item.component_warranty_json === "string" && item.component_warranty_json.trim() && item.component_warranty_json.trim() !== "{}") {
                 compBadges = safe(item.component_warranty_json);
               }
 
               const statusBadge = item.is_active
-                ? `<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">✓ Active</span>`
-                : `<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-slate-100 text-slate-600">Inactive</span>`;
+                ? `<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200 whitespace-nowrap">✓ Active</span>`
+                : `<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-slate-100 text-slate-600 whitespace-nowrap">Inactive</span>`;
 
               const consumablesBadge = item.consumables_covered
-                ? `<span class="text-emerald-700 font-semibold text-xs">✓ Covered</span>`
-                : `<span class="text-slate-400 text-xs">✕ Excluded</span>`;
+                ? `<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200 whitespace-nowrap">✓ Covered</span>`
+                : `<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-slate-100 text-slate-500 border border-slate-200 whitespace-nowrap">✕ Excluded</span>`;
 
               return `
                 <tr>
-                  <td>
+                  <td style="min-width: 170px;">
                     <strong class="text-blue-600 font-mono text-xs block">${safe(item.policy_code)}</strong>
                     <span class="font-bold text-slate-800 text-xs">${safe(item.policy_name)}</span>
                   </td>
-                  <td><span class="inline-block bg-blue-50 text-blue-700 font-bold px-2 py-0.5 rounded text-[11px]">${safe(item.category || 'All')}</span></td>
-                  <td>
+                  <td style="min-width: 90px;"><span class="inline-block bg-blue-50 text-blue-700 font-bold px-2 py-0.5 rounded text-[11px]">${safe(item.category || 'All')}</span></td>
+                  <td style="min-width: 190px;">
                     <div class="text-xs font-semibold text-slate-800">${safe(item.effective_from || '—')} <span class="text-slate-400">to</span> ${safe(item.effective_to || '—')}</div>
                     <small class="text-slate-400 text-[10px]">Grandfathered by purchase date</small>
                   </td>
-                  <td><span class="font-bold text-slate-800 text-xs">${item.comprehensive_months || 12} Months</span></td>
-                  <td class="max-w-[180px]">${compBadges || '<span class="text-slate-400 text-xs">—</span>'}</td>
-                  <td>${consumablesBadge}</td>
-                  <td>${statusBadge}</td>
-                  <td>
+                  <td style="min-width: 120px; white-space: nowrap;"><span class="font-bold text-slate-800 text-xs">${item.comprehensive_months || 12} Months</span></td>
+                  <td style="min-width: 240px; white-space: normal;">
+                    <div class="flex flex-wrap items-center gap-1.5 py-0.5 max-w-[280px]">
+                      ${compBadges || '<span class="text-slate-400 text-xs">—</span>'}
+                    </div>
+                  </td>
+                  <td style="min-width: 130px; white-space: nowrap;">${consumablesBadge}</td>
+                  <td style="min-width: 110px; white-space: nowrap;">${statusBadge}</td>
+                  <td style="min-width: 110px; white-space: nowrap;">
                     <button type="button" class="table-action font-semibold text-blue-600 hover:text-blue-800 flex items-center gap-1" data-edit-policy-id="${safe(item.id)}">
                       <span>✏️</span> Edit Policy
                     </button>
@@ -3662,14 +3666,14 @@ function renderCompanyWarrantyClaims() {
   if ($("requestSearch")) $("requestSearch").placeholder = "Search claims by ID, branch, appliance, or status";
   if ($("requestHead")) {
     $("requestHead").innerHTML = [
-      "Claim ID",
-      "Service request",
-      "Franchise branch",
-      "Appliance",
-      "Claim amount",
-      "Audit status",
-      "Action"
-    ].map((label) => `<th>${safe(label)}</th>`).join("");
+      '<th style="min-width: 100px;">Claim ID</th>',
+      '<th style="min-width: 140px;">Service request</th>',
+      '<th style="min-width: 150px;">Franchise branch</th>',
+      '<th style="min-width: 140px;">Appliance</th>',
+      '<th style="min-width: 120px;">Claim amount</th>',
+      '<th style="min-width: 130px;">Audit status</th>',
+      '<th style="min-width: 130px;">Action</th>'
+    ].join("");
   }
 
   const filtered = companyWarrantyClaims.filter((item) =>

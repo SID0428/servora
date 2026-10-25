@@ -4,8 +4,8 @@ PRODUCTION-GRADE TECHNICAL ARCHITECTURE & DEVELOPER ONBOARDING MANUAL
 ================================================================================
 File: documentation.txt
 Platform: ServSure (formerly Servora)
-Version: 1.7.5 (Production Release - Deterministic Component Warranty Tags & Zero False-Positive Engine)
-Last Updated: October 25, 2026 (14:30 IST)
+Version: 1.7.6 (Production Release - Fiscal Warranty Table Sizing & Flex-Wrap Badges)
+Last Updated: October 25, 2026 (16:15 IST)
 Repository: https://github.com/SID0428/servora.git
 
 Welcome to ServSure! This manual is the definitive, authoritative reference
@@ -1294,6 +1294,28 @@ were identified between the initial rough draft documentation and the actual cod
      1. Removed the duplicated syntax chunk in `openOpsReceiptModal` in `frontend/js/ops-dashboard.js`.
      2. Refactored `numberToWordsIndian(num)` in `frontend/js/dashboard.js` to module-level export before modal functions.
      3. Validated all frontend JavaScript files using `node --check --input-type=module` and automated VM browser simulation across all 4 operational roles (`admin`, `company`, `franchise`, `technician`).
+
+20. Discrepancy: Fiscal Warranty Policy Table Column Collision & Badge Overlap
+   - Initial State / Observed Issue:
+     In the Company Portal (`company-dashboard.html`) under the "Fiscal Policies" sub-tab of OEM Warranty Management,
+     inline component warranty badges (`COMPRESSOR: 120m`, `MOTOR: 60m`, `PCB: 36m`) overflowed horizontally and collided
+     directly into the adjacent "Consumables" column (`✕ Excluded`).
+   - Root Cause:
+     1. The global stylesheet `ops-dashboard.css` declares `table { white-space: nowrap; }`.
+     2. In `ops-dashboard.js`, the component warranties `<td>` had `class="max-w-[180px]"` without `white-space: normal` or a
+        flex-wrapping container. Consequently, multiple inline-block badges stretched across the cell boundary without wrapping.
+     3. Table header elements (`<th>`) and data cells lacked explicit minimum column widths (`min-width`), causing the browser's
+        table layout algorithm to collapse the "Component Warranties" and "Consumables" columns into one another.
+   - Resolution:
+     1. Updated `ops-dashboard.js` (`renderCompanyWarrantyClaims`):
+        - Assigned explicit column minimum widths to all `<th>` headers: `Policy Code & Name` (170px), `Category` (90px),
+          `Effective Window` (190px), `Comprehensive` (120px), `Component Warranties` (240px), `Consumables` (130px),
+          `Status` (110px), and `Action` (110px).
+        - Wrapped component warranty badges in a responsive flex container: `<div class="flex flex-wrap items-center gap-1.5 py-0.5 max-w-[280px]">`,
+          giving the parent cell `style="min-width: 240px; white-space: normal;"` and individual badges `whitespace-nowrap`.
+        - Styled the "Consumables" indicator with a distinct pill badge (`bg-emerald-50 text-emerald-800` for Covered, `bg-slate-100 text-slate-500` for Excluded)
+          with `min-width: 130px; white-space: nowrap;`.
+        - Also reinforced explicit minimum widths on headers for Subtab 1 (Registrations) and Subtab 2 (Reimbursement Claims).
 
 ================================================================================
 End of Documentation
