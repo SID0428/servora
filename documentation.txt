@@ -1768,6 +1768,7 @@ were identified between the initial rough draft documentation and the actual cod
         - Added `policy_code` to `ApplianceBase` and `WarrantyRegistrationItem` schemas.
         - In customer portal (Home and Appliances tabs), displayed `Policy Code: <codeTag>` badge on active warranty appliances.
         - In company portal (claims table and audit modal), displayed `Policy: <codeTag>` in status column and `Applicable Policy Code` inside the modal.
+        - Fixed missing `let statusBadge = ""` declaration in `renderCompanyWarrantyClaims()` in `ops-dashboard.js` which caused a `ReferenceError` preventing table row rendering.
 
 ==================================================
 End of Documentation

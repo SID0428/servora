@@ -4241,6 +4241,7 @@ function renderCompanyWarrantyClaims() {
               }
               const polCodeBadge = policyCode ? `<span class="inline-block mt-1 text-[10px] font-mono font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200" title="${safe(item.matched_policy_name || '')}">Policy: ${safe(policyCode)}</span>` : "";
 
+              let statusBadge = "";
               if (ws.includes("active")) {
                 statusBadge = `<div><span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">✓ Active (${safe(item.warranty_end_date || '')})</span></div>${polCodeBadge ? `<div class="mt-0.5">${polCodeBadge}</div>` : ''}`;
               } else if (ws.includes("pending")) {
