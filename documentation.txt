@@ -4,8 +4,8 @@ PRODUCTION-GRADE TECHNICAL ARCHITECTURE & DEVELOPER ONBOARDING MANUAL
 ================================================================================
 File: documentation.txt
 Platform: ServSure (formerly Servora)
-Version: 1.8.9 (Production Release - Resilient Media Blob Persistence & Warranty Audit Purchase Date Management)
-Last Updated: October 25, 2026 (23:05 IST)
+Version: 1.9.0 (Production Release - Active Warranty Protection & Policy Code Exposure)
+Last Updated: October 25, 2026 (23:27 IST)
 Repository: https://github.com/SID0428/servora.git
 
 Welcome to ServSure! This manual is the definitive, authoritative reference
@@ -1746,8 +1746,32 @@ were identified between the initial rough draft documentation and the actual cod
         - In `verify_warranty_registration`, if `payload.purchase_date` is provided, updates `app.purchase_date` and recalculates `warranty_start_date`
           and `warranty_end_date` using the new purchase date.
 
+36. DISCREPANCY: Active Warranty Edit/Delete Protection & Policy Code Exposure Across Customer & Company Portals
+   - Symptoms:
+     1. Customers were able to edit appliance details (model, serial, name) or delete appliances even after their warranty had been audited
+        and officially approved by the OEM brand.
+     2. Neither the customer portal nor the company portal clearly exposed the specific policy code (e.g. `FY25-26-AC`) under which the
+        product warranty was granted.
+   - Root Causes:
+     1. Unconditional Edit & Delete Actions: `frontend/js/dashboard.js` rendered the "✏️ Edit" and "🗑️ Delete" buttons unconditionally on
+        every appliance card. Backend routes `PATCH /api/appliances/{id}` and `DELETE /api/appliances/{id}` did not check `warranty_status == "Active"`.
+     2. Policy Code Omission: `ApplianceBase` and `WarrantyRegistrationItem` schemas did not return `policy_code`.
+   - Resolution:
+     1. Active Warranty Backend Protection (`backend/app/routes/appliances.py`):
+        - Added validation guard in `update_user_appliance`: if `app.warranty_status` is "Active" or "Approved", returns HTTP 400 prohibiting edits.
+        - Added validation guard in `delete_user_appliance`: if `app.warranty_status` is "Active" or "Approved", returns HTTP 400 prohibiting deletion.
+     2. UI Edit & Delete Removal (`frontend/js/dashboard.js`):
+        - In `renderAppliances` (My Appliances catalog), when `isWarrantyApproved` is true, the "✏️ Edit" button is replaced with a locked badge
+          (`🔒 Warranty Verified`), and the "🗑️ Delete" trash button is completely omitted.
+        - In `openEditApplianceModal` and `deleteAppliance`, added client-side guards that display a toast warning if invoked for active appliances.
+     3. Policy Code Exposure Across Portals (`backend/app/schemas/__init__.py`, `backend/app/routes/appliances.py`, `backend/app/routes/warranty_amc.py`, `frontend/js/dashboard.js`, `frontend/js/ops-dashboard.js`, `frontend/company-dashboard.html`):
+        - Added `policy_code` to `ApplianceBase` and `WarrantyRegistrationItem` schemas.
+        - In customer portal (Home and Appliances tabs), displayed `Policy Code: <codeTag>` badge on active warranty appliances.
+        - In company portal (claims table and audit modal), displayed `Policy: <codeTag>` in status column and `Applicable Policy Code` inside the modal.
+
 ==================================================
 End of Documentation
 ==================================================
+
 
 

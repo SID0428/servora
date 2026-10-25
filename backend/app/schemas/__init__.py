@@ -134,6 +134,7 @@ class ApplianceBase(BaseModel):
     warranty_rejection_reason: Optional[str] = None
     matched_policy_id: Optional[str] = None
     matched_policy_name: Optional[str] = None
+    policy_code: Optional[str] = None
     policy_snapshot_json: Optional[str] = None
     amc_active: Optional[bool] = False
     amc_plan_name: Optional[str] = None
@@ -643,6 +644,7 @@ class WarrantyRegistrationItem(BaseModel):
     warranty_rejection_reason: Optional[str] = None
     matched_policy_id: Optional[str] = None
     matched_policy_name: Optional[str] = None
+    policy_code: Optional[str] = None
     policy_snapshot_json: Optional[str] = None
     invoice_url: Optional[str] = None
     verified_at: Optional[str] = None

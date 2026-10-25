@@ -4232,11 +4232,19 @@ function renderCompanyWarrantyClaims() {
         ? filtered
             .map((item) => {
               const ws = (item.warranty_status || "").toLowerCase();
-              let statusBadge = "";
+              let policyCode = item.policy_code || item.matched_policy_id || "";
+              if (item.policy_snapshot_json) {
+                try {
+                  const snap = JSON.parse(item.policy_snapshot_json);
+                  if (snap.policy_code) policyCode = snap.policy_code;
+                } catch (e) {}
+              }
+              const polCodeBadge = policyCode ? `<span class="inline-block mt-1 text-[10px] font-mono font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200" title="${safe(item.matched_policy_name || '')}">Policy: ${safe(policyCode)}</span>` : "";
+
               if (ws.includes("active")) {
-                statusBadge = `<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">✓ Active (${safe(item.warranty_end_date || '')})</span>`;
+                statusBadge = `<div><span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">✓ Active (${safe(item.warranty_end_date || '')})</span></div>${polCodeBadge ? `<div class="mt-0.5">${polCodeBadge}</div>` : ''}`;
               } else if (ws.includes("pending")) {
-                statusBadge = `<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-50 text-amber-800 border border-amber-200">⏳ Pending Verification</span>`;
+                statusBadge = `<div><span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-50 text-amber-800 border border-amber-200">⏳ Pending Verification</span></div>${polCodeBadge ? `<div class="mt-0.5">${polCodeBadge}</div>` : ''}`;
               } else if (ws.includes("reject")) {
                 statusBadge = `<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-rose-50 text-rose-800 border border-rose-200" title="${safe(item.warranty_rejection_reason || '')}">✕ Rejected</span>`;
               } else {
@@ -4505,8 +4513,18 @@ window.openWarrantyVerificationModal = function (applianceId) {
       ? `Matched Policy: ${reg.matched_policy_name}`
       : "Standard OEM Warranty Policy";
   }
+  let polCode = reg.policy_code || reg.matched_policy_id || "STD";
+  if (reg.policy_snapshot_json) {
+    try {
+      const snap = JSON.parse(reg.policy_snapshot_json);
+      if (snap.policy_code) polCode = snap.policy_code;
+    } catch (e) {}
+  }
   if ($("verifyPolicyCodeBadge")) {
-    $("verifyPolicyCodeBadge").textContent = reg.matched_policy_id || "STD";
+    $("verifyPolicyCodeBadge").textContent = `Policy Code: ${polCode}`;
+  }
+  if ($("verifyCoveragePolicyCode")) {
+    $("verifyCoveragePolicyCode").textContent = `${polCode}${reg.matched_policy_name ? ` (${reg.matched_policy_name})` : ''}`;
   }
   if ($("verifyPolicyDetails")) {
     let details = "Comprehensive standard warranty.";

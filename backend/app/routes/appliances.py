@@ -346,6 +346,16 @@ def appliance_payload(appliance: ApplianceModel, company_name: str | None = None
         app_name = fallback_appliance_name or curr_name or f"{appliance.brand} {appliance.category}"
     else:
         app_name = curr_name
+
+    policy_code = getattr(appliance, "matched_policy_id", None)
+    if getattr(appliance, "policy_snapshot_json", None):
+        try:
+            snap = json.loads(appliance.policy_snapshot_json)
+            if snap.get("policy_code"):
+                policy_code = snap["policy_code"]
+        except Exception:
+            pass
+
     return {
         "id": appliance.id,
         "company_id": appliance.company_id,
@@ -363,6 +373,7 @@ def appliance_payload(appliance: ApplianceModel, company_name: str | None = None
         "warranty_rejection_reason": getattr(appliance, "warranty_rejection_reason", None),
         "matched_policy_id": getattr(appliance, "matched_policy_id", None),
         "matched_policy_name": getattr(appliance, "matched_policy_name", None),
+        "policy_code": policy_code,
         "policy_snapshot_json": getattr(appliance, "policy_snapshot_json", None),
         "amc_active": appliance.amc_active,
         "amc_plan_name": appliance.amc_plan_name,
@@ -390,6 +401,13 @@ def update_user_appliance(
     if not app:
         raise HTTPException(status_code=404, detail="Appliance not found")
 
+    # Guard: Cannot edit once warranty is approved/active
+    if app.warranty_status and app.warranty_status.strip().lower() in ("active", "approved"):
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot edit appliance details once warranty is approved by the manufacturer. Please contact support or the brand administrator for modifications."
+        )
+
     if payload.model_no and payload.model_no.strip():
         app.model_no = payload.model_no.strip()
     if payload.serial_no is not None:
@@ -414,6 +432,13 @@ def delete_user_appliance(appliance_id: str, request: Request, db: Session = Dep
     ).first()
     if not app:
         raise HTTPException(status_code=404, detail="Appliance not found")
+
+    # Guard: Cannot delete once warranty is approved/active
+    if app.warranty_status and app.warranty_status.strip().lower() in ("active", "approved"):
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot delete an appliance with an active/approved warranty. Please contact support if this appliance was decommissioned."
+        )
 
     # Guard: Cannot delete if active non-completed service request
     active_reqs = db.query(ServiceRequestModel).filter(

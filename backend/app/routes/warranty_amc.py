@@ -487,11 +487,21 @@ def list_warranty_registrations(
         matched_pol_name = getattr(app, "matched_policy_name", None)
         policy_snapshot = getattr(app, "policy_snapshot_json", None)
 
+        policy_code = matched_pol_id
+        if policy_snapshot:
+            try:
+                snap = json.loads(policy_snapshot)
+                if snap.get("policy_code"):
+                    policy_code = snap["policy_code"]
+            except Exception:
+                pass
+
         if not matched_pol_name and app.purchase_date:
             pol_match, _ = resolve_policy_for_appliance(app.company_id, app.brand, app.category, app.purchase_date, db)
             if pol_match:
                 matched_pol_id = pol_match.id
                 matched_pol_name = pol_match.policy_name
+                policy_code = pol_match.policy_code or pol_match.id
         # Resolve descriptive appliance name
         app_name = getattr(app, "appliance_name", None)
         if not app_name or not app_name.strip() or app_name.strip().lower() in (
@@ -544,6 +554,7 @@ def list_warranty_registrations(
                 warranty_rejection_reason=getattr(app, "warranty_rejection_reason", None),
                 matched_policy_id=matched_pol_id,
                 matched_policy_name=matched_pol_name,
+                policy_code=policy_code,
                 policy_snapshot_json=policy_snapshot,
                 invoice_url=app.invoice_url,
                 verified_at=app.verified_at.strftime("%d %b %Y, %I:%M %p") if getattr(app, "verified_at", None) else None,
@@ -629,7 +640,7 @@ def verify_warranty_registration(
                 "consumables_covered": matched_pol.consumables_covered,
                 "snapshotted_at": now_str
             }
-            app.matched_policy_id = matched_pol.id
+            app.matched_policy_id = matched_pol.policy_code or matched_pol.id
             app.matched_policy_name = matched_pol.policy_name
             app.policy_snapshot_json = json.dumps(snapshot)
         else:
@@ -643,7 +654,7 @@ def verify_warranty_registration(
                 "consumables_covered": False,
                 "snapshotted_at": now_str
             }
-            app.matched_policy_id = "DEFAULT"
+            app.matched_policy_id = "STD-DEFAULT"
             app.matched_policy_name = "Standard Manufacturer Warranty"
             app.policy_snapshot_json = json.dumps(snapshot)
 

@@ -444,6 +444,14 @@ function renderAppliances() {
           const registeredText =
             appliance.registered_on ||
             formatDate(appliance.created_at, "12 Jan 2024");
+          const isWarrantyApproved = (appliance.warranty_status || "").toLowerCase().includes("active");
+          let policyCode = appliance.policy_code || appliance.matched_policy_id || "";
+          if (appliance.policy_snapshot_json) {
+            try {
+              const snap = JSON.parse(appliance.policy_snapshot_json);
+              if (snap.policy_code) policyCode = snap.policy_code;
+            } catch (e) {}
+          }
           return `
             <div class="appliance-card bg-white rounded-2xl p-4 border border-slate-100 shadow-sm flex items-center justify-between cursor-pointer hover:border-blue-200 transition group" data-appliance-id="${escapeHtml(
               appliance.id
@@ -459,8 +467,9 @@ function renderAppliances() {
                   <p class="text-xs text-slate-500 font-medium truncate mt-0.5">
                     Model: ${escapeHtml(appliance.model_no || "N/A")}
                   </p>
-                  <p class="text-[11px] text-slate-400 mt-0.5">
-                    Registered: ${escapeHtml(registeredText)}
+                  <p class="text-[11px] text-slate-400 mt-0.5 flex flex-wrap items-center gap-1.5">
+                    ${isWarrantyApproved && policyCode ? `<span class="inline-flex items-center gap-1 font-mono font-bold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded text-[10px] border border-blue-200">Policy: ${escapeHtml(policyCode)}</span>` : ""}
+                    <span>Registered: ${escapeHtml(registeredText)}</span>
                     ${appliance.invoice_url ? `· <a href="${escapeHtml(resolveMediaUrl(appliance.invoice_url))}" target="_blank" rel="noopener noreferrer" class="text-blue-600 font-semibold hover:underline" onclick="event.stopPropagation();">📄 Invoice</a>` : ""}
                   </p>
                 </div>
@@ -504,7 +513,16 @@ function renderAppliances() {
     } else {
       catalog.innerHTML = userAppliances
         .map(
-          (appliance) => `
+          (appliance) => {
+            const isWarrantyApproved = (appliance.warranty_status || "").toLowerCase().includes("active");
+            let policyCode = appliance.policy_code || appliance.matched_policy_id || "";
+            if (appliance.policy_snapshot_json) {
+              try {
+                const snap = JSON.parse(appliance.policy_snapshot_json);
+                if (snap.policy_code) policyCode = snap.policy_code;
+              } catch (e) {}
+            }
+            return `
           <div class="bg-white rounded-2xl p-5 border border-slate-100 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div class="flex items-start gap-4">
               <div class="w-12 h-12 rounded-2xl bg-[#eff6ff] text-[#0066ff] flex items-center justify-center shrink-0">
@@ -529,15 +547,24 @@ function renderAppliances() {
                   <span>Serial: <strong class="text-slate-800">${escapeHtml(
                     appliance.serial_no || "N/A"
                   )}</strong></span>
-                  <button type="button" class="edit-appliance-btn inline-flex items-center gap-1 text-[11px] font-bold text-[#0066ff] hover:underline" data-id="${escapeHtml(appliance.id)}">
-                    ✏️ Edit
-                  </button>
+                  ${!isWarrantyApproved ? `
+                    <button type="button" class="edit-appliance-btn inline-flex items-center gap-1 text-[11px] font-bold text-[#0066ff] hover:underline" data-id="${escapeHtml(appliance.id)}">
+                      ✏️ Edit
+                    </button>
+                  ` : `
+                    <span class="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                      🔒 Warranty Verified
+                    </span>
+                  `}
                 </div>
                 <div class="mt-2 flex flex-wrap items-center gap-2">
                   ${(() => {
                     const ws = (appliance.warranty_status || "").toLowerCase();
                     if (ws.includes("pending")) {
-                      return `<span class="rounded-full px-2.5 py-0.5 text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">⏳ Warranty: Under Brand Verification</span>`;
+                      return `
+                        <span class="rounded-full px-2.5 py-0.5 text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">⏳ Warranty: Under Brand Verification</span>
+                        ${policyCode ? `<span class="rounded-full px-2.5 py-0.5 text-[10px] font-mono font-bold bg-blue-50 text-blue-700 border border-blue-200" title="Expected Warranty Policy">Policy Code: ${escapeHtml(policyCode)}</span>` : ''}
+                      `;
                     } else if (ws.includes("active") || ws.includes("covered") || ws.includes("under")) {
                       let polSnapText = "";
                       if (appliance.policy_snapshot_json) {
@@ -549,6 +576,7 @@ function renderAppliances() {
                       }
                       return `
                         <span class="rounded-full px-2.5 py-0.5 text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">✓ OEM Warranty Active${appliance.warranty_end_date ? ` (${escapeHtml(appliance.warranty_end_date)})` : ''}</span>
+                        ${policyCode ? `<span class="rounded-full px-2.5 py-0.5 text-[10px] font-bold font-mono bg-blue-100 text-blue-900 border border-blue-300">Policy Code: ${escapeHtml(policyCode)}</span>` : ''}
                         ${appliance.matched_policy_name ? `<span class="rounded-full px-2.5 py-0.5 text-[10px] font-semibold bg-blue-50 text-blue-700 border border-blue-200">📜 ${escapeHtml(appliance.matched_policy_name)}${polSnapText}</span>` : ''}
                       `;
                     } else if (ws.includes("reject")) {
@@ -592,13 +620,16 @@ function renderAppliances() {
               )}">
                 Book Service
               </button>
-              <button type="button" class="delete-appliance-btn p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition" title="Remove appliance" data-id="${escapeHtml(
-                appliance.id
-              )}">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" stroke-linecap="round" stroke-linejoin="round"/></svg>
-              </button>
+              ${!isWarrantyApproved ? `
+                <button type="button" class="delete-appliance-btn p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition" title="Remove appliance" data-id="${escapeHtml(
+                  appliance.id
+                )}">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </button>
+              ` : ''}
             </div>
-          </div>`
+          </div>`;
+          }
         )
         .join("");
 
@@ -1836,6 +1867,10 @@ window.openAddApplianceModal = function () {
 window.openEditApplianceModal = function (applianceId) {
   const app = userAppliances.find((a) => a.id === applianceId);
   if (!app) return;
+  if ((app.warranty_status || "").toLowerCase().includes("active")) {
+    showToast("This appliance has an active verified warranty and cannot be edited.", "warning");
+    return;
+  }
   if ($("editApplianceId")) $("editApplianceId").value = app.id;
   if ($("editApplianceNameInput")) $("editApplianceNameInput").value = getApplianceDisplayName(app);
   if ($("editApplianceModelInput")) $("editApplianceModelInput").value = app.model_no || "";
@@ -1902,6 +1937,10 @@ async function submitEditAppliance(event) {
 
 window.deleteAppliance = async function (applianceId) {
   const app = userAppliances.find((a) => a.id === applianceId);
+  if (app && (app.warranty_status || "").toLowerCase().includes("active")) {
+    showToast("This appliance has an active verified warranty and cannot be removed.", "warning");
+    return;
+  }
   const displayName = app ? (app.appliance_name || `${app.brand} ${app.category}`) : "this appliance";
   if (!confirm(`Are you sure you want to remove "${displayName}"? Any warranty records for this appliance will also be removed.`)) {
     return;
