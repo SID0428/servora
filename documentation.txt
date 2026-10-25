@@ -4,8 +4,8 @@ PRODUCTION-GRADE TECHNICAL ARCHITECTURE & DEVELOPER ONBOARDING MANUAL
 ================================================================================
 File: documentation.txt
 Platform: ServSure (formerly Servora)
-Version: 1.7.2 (Production Release - Spare Part Classification & Explicit Warranty Eligibility)
-Last Updated: October 25, 2026 (13:40 IST)
+Version: 1.7.3 (Production Release - Component-Specific Warranty Support & Quick Presets)
+Last Updated: October 25, 2026 (13:45 IST)
 Repository: https://github.com/SID0428/servora.git
 
 Welcome to ServSure! This manual is the definitive, authoritative reference
@@ -833,11 +833,13 @@ Request Headers:
 - `GET /api/warranty-amc/policies`:
   - Query: `?category=...&is_active=true`
   - Returns company's configured fiscal-year warranty policies with effective date windows and component warranty rules.
+  - Serialization returns both `component_warranty` (parsed dictionary of component -> months, e.g. `{"compressor": 120, "motor": 60}`) and `component_warranty_json` (raw JSON string).
 - `POST /api/warranty-amc/policies`:
   - Body: `{ policy_code, policy_name, category, effective_from, effective_to, comprehensive_months, consumables_covered, component_warranty_json, terms_and_conditions, is_active }`
-  - Company brand admin creates a new fiscal year warranty policy with grandfathered purchase-date coverage windows.
+  - Accepts `component_warranty_json` as a dictionary or JSON string. Company brand admin creates a new fiscal year warranty policy with grandfathered purchase-date coverage windows.
+  - Frontend modal (`#companyWarrantyPolicyDialog`) provides 1-click Quick Presets (`+ Compressor (10 Yrs)`, `+ Motor (5 Yrs)`, `+ PCB (3 Yrs)`, `+ Magnetron (3 Yrs)`) and a `Clear` button to eliminate JSON syntax errors.
 - `PUT /api/warranty-amc/policies/{policy_id}`:
-  - Update policy rules, duration, component coverage, or active toggle.
+  - Update policy rules, duration, component coverage, or active toggle. Returns populated `component_warranty` dictionary and `component_warranty_json` string.
 - `GET /api/warranty-amc/claims`: List warranty reimbursement claims.
 - `POST /api/warranty-amc/claims`: Submit parts and labor warranty claim for completed ticket (restricted to covered parts and OEM labor share).
 - `PUT /api/warranty-amc/claims/{claim_id}`: Company approves or rejects warranty reimbursement.

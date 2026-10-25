@@ -3590,15 +3590,23 @@ function renderCompanyWarrantyClaims() {
         ? filtered
             .map((item) => {
               let compBadges = "";
-              if (item.component_warranty_json) {
+              let compObj = null;
+              if (item.component_warranty && typeof item.component_warranty === "object" && Object.keys(item.component_warranty).length > 0) {
+                compObj = item.component_warranty;
+              } else if (item.component_warranty_json) {
                 try {
-                  const compObj = JSON.parse(item.component_warranty_json);
-                  compBadges = Object.entries(compObj)
-                    .map(([k, v]) => `<span class="inline-block bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded text-[10px] font-mono mr-1 mb-1">${k.toUpperCase()}: ${v}m</span>`)
-                    .join("");
+                  compObj = typeof item.component_warranty_json === "string" ? JSON.parse(item.component_warranty_json) : item.component_warranty_json;
                 } catch (e) {
-                  compBadges = safe(item.component_warranty_json);
+                  compObj = null;
                 }
+              }
+
+              if (compObj && typeof compObj === "object" && Object.keys(compObj).length > 0) {
+                compBadges = Object.entries(compObj)
+                  .map(([k, v]) => `<span class="inline-block bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded-full text-[10px] font-mono font-bold mr-1 mb-1">${k.toUpperCase()}: ${v}m</span>`)
+                  .join("");
+              } else if (typeof item.component_warranty_json === "string" && item.component_warranty_json.trim() && item.component_warranty_json.trim() !== "{}") {
+                compBadges = safe(item.component_warranty_json);
               }
 
               const statusBadge = item.is_active
@@ -3921,7 +3929,15 @@ window.openWarrantyPolicyModal = function(policyId = null) {
       if ($("policyEffectiveTo")) $("policyEffectiveTo").value = pol.effective_to || "";
       if ($("policyComprehensiveMonths")) $("policyComprehensiveMonths").value = pol.comprehensive_months || 12;
       if ($("policyConsumablesCovered")) $("policyConsumablesCovered").checked = Boolean(pol.consumables_covered);
-      if ($("policyComponentJson")) $("policyComponentJson").value = pol.component_warranty_json || "{}";
+      if ($("policyComponentJson")) {
+        let compVal = "{}";
+        if (pol.component_warranty_json && typeof pol.component_warranty_json === "string" && pol.component_warranty_json.trim()) {
+          compVal = pol.component_warranty_json;
+        } else if (pol.component_warranty && typeof pol.component_warranty === "object" && Object.keys(pol.component_warranty).length > 0) {
+          compVal = JSON.stringify(pol.component_warranty);
+        }
+        $("policyComponentJson").value = compVal;
+      }
       if ($("policyTerms")) $("policyTerms").value = pol.terms_and_conditions || "";
       if ($("policyIsActive")) $("policyIsActive").checked = Boolean(pol.is_active);
     }
@@ -3955,6 +3971,27 @@ function initWarrantyPolicyDialogEvents() {
   $("cancelWarrantyPolicyBtn")?.addEventListener("click", () => {
     if (typeof dialog.close === "function") dialog.close();
     else dialog.hidden = true;
+  });
+
+  document.querySelectorAll(".preset-comp-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const key = btn.getAttribute("data-key");
+      const val = parseInt(btn.getAttribute("data-val"), 10) || 12;
+      const input = $("policyComponentJson");
+      if (!input) return;
+      let curr = {};
+      try {
+        if (input.value.trim()) curr = JSON.parse(input.value.trim());
+      } catch (e) {
+        curr = {};
+      }
+      curr[key] = val;
+      input.value = JSON.stringify(curr);
+    });
+  });
+
+  $("clearComponentWarrantyBtn")?.addEventListener("click", () => {
+    if ($("policyComponentJson")) $("policyComponentJson").value = "{}";
   });
 
   $("warrantyPolicyForm")?.addEventListener("submit", async (e) => {

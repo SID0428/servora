@@ -645,6 +645,7 @@ class CompanyWarrantyPolicyResponse(BaseModel):
     effective_to: Optional[str] = None
     comprehensive_months: int
     component_warranty: dict = Field(default_factory=dict)
+    component_warranty_json: Optional[str] = "{}"
     consumables_covered: bool
     terms_and_conditions: Optional[str] = None
     is_active: bool
