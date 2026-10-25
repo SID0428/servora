@@ -88,6 +88,7 @@ const icons = {
   "Route & schedule": "🗺️",
   "Route Map": "🗺️",
   "Active jobs": "⚡",
+  "Operating hours & calendar": "📅",
   Reports: "📈",
   Companies: "🏢",
   "Help center": "❓",
@@ -96,7 +97,7 @@ const icons = {
 let role = dashboardRouteRole || initialUser?.role || (typeof document !== "undefined" ? document.body?.dataset?.role : null) || "company";
 const roleConfig = {
   technician: { title: "Technician workspace", kicker: "FIELD SERVICE", nav: ["My jobs", "Job history", "Route & schedule", "Help center"], columns: ["Ticket", "Customer", "Appliance", "Appointment", "Status", "Action"], tableTitle: "My assigned jobs", tableSubtitle: "Your service calls and the next step for each job.", bottomTitle: "Today's schedule", sideTitle: "My performance", resources: [["Assigned today", "Jobs on your schedule", "▤"], ["Completed", "Jobs closed this week", "✓"], ["Customer rating", "From recent service visits", "☆"], ["Service area", "Your assigned territory", "⌖"]] },
-  franchise: { title: "Franchise workspace", kicker: "BRANCH OPERATIONS", nav: ["Dashboard", "Service requests", "Technicians", "Inventory & Spares", "Escalations", "Active jobs", "Customers", "Reports"], columns: ["Request ID", "Customer", "Appliance", "Issue", "Technician", "Status", "Action"], tableTitle: "Incoming service requests", tableSubtitle: "Review requests and coordinate local service work.", bottomTitle: "Branch resources", sideTitle: "Branch performance", resources: [["Technicians", "Available in this branch", "♙"], ["Active jobs", "Assigned and in progress", "⚒"], ["Inventory items", "Parts in local warehouse", "📦"], ["Service area", "Local coverage", "⌖"]] },
+  franchise: { title: "Franchise workspace", kicker: "BRANCH OPERATIONS", nav: ["Dashboard", "Service requests", "Technicians", "Operating hours & calendar", "Inventory & Spares", "Escalations", "Active jobs", "Customers", "Reports"], columns: ["Request ID", "Customer", "Appliance", "Issue", "Technician", "Status", "Action"], tableTitle: "Incoming service requests", tableSubtitle: "Review requests and coordinate local service work.", bottomTitle: "Branch resources", sideTitle: "Branch performance", resources: [["Technicians", "Available in this branch", "♙"], ["Active jobs", "Assigned and in progress", "⚒"], ["Inventory items", "Parts in local warehouse", "📦"], ["Service area", "Local coverage", "⌖"]] },
   company: { title: "Company workspace", kicker: "COMPANY OPERATIONS", nav: ["Dashboard", "Appliances", "Branches", "Technicians", "Warranty Claims", "Inventory & Spares", "Escalations", "Customers", "Service requests", "Reports"], columns: ["Request ID", "Customer", "Company", "Appliance", "Status", "Date", "Action"], tableTitle: "Recent service requests", tableSubtitle: "Monitor service activity across the company network.", bottomTitle: "Network resources", sideTitle: "Network health", resources: [["Branches", "Locations in your network", "▥"], ["Warranty claims", "OEM reimbursement requests", "🛡️"], ["Technicians", "Field service professionals", "♙"], ["Customers", "Customers served", "♧"]] },
   admin: { title: "Platform overview", kicker: "SERVSURE PLATFORM", nav: ["Overview", "Companies", "Branches", "Technicians", "Escalations", "Customers", "Service requests", "Reports"], columns: ["Request ID", "Customer", "Company", "Appliance", "Status", "Date", "Action"], tableTitle: "Platform service activity", tableSubtitle: "A view of requests moving across ServSure.", bottomTitle: "Platform directory", sideTitle: "Platform health", resources: [["Companies", "Service partners", "▥"], ["Branches", "Operational locations", "⌖"], ["Technicians", "Verified professionals", "♙"], ["Customers", "Registered accounts", "♧"]] },
 };
@@ -385,6 +386,7 @@ function renderPage(page) {
 
   // Franchise routes
   if (role === "franchise" && page === "Technicians") { renderFranchiseTechnicians(); return; }
+  if (role === "franchise" && (page === "Operating hours & calendar" || page === "Operating hours")) { renderFranchiseSchedulePage(); return; }
   if (role === "franchise" && page === "Customers") { renderFranchiseCustomers(); return; }
   if (role === "franchise" && page === "Inventory & Spares") { renderFranchiseInventory(); return; }
 
@@ -437,6 +439,12 @@ function renderPage(page) {
 function renderMainDashboardView() {
   const tableEl = $("requestRows")?.closest("table");
   const techContainer = $("techJobCardsContainer");
+  const schedContainer = $("franchiseScheduleContainer");
+  const toolsEl = document.querySelector(".table-tools");
+  const footEl = document.querySelector(".panel-foot");
+  if (schedContainer) schedContainer.style.display = "none";
+  if (toolsEl) toolsEl.style.display = "";
+  if (footEl) footEl.style.display = "";
   if (role === "technician") {
     if (tableEl) tableEl.style.display = "none";
     if (techContainer) techContainer.style.display = "block";
@@ -458,6 +466,12 @@ function renderMainDashboardView() {
 function renderAllServiceRequestsView() {
   const tableEl = $("requestRows")?.closest("table");
   const techContainer = $("techJobCardsContainer");
+  const schedContainer = $("franchiseScheduleContainer");
+  const toolsEl = document.querySelector(".table-tools");
+  const footEl = document.querySelector(".panel-foot");
+  if (schedContainer) schedContainer.style.display = "none";
+  if (toolsEl) toolsEl.style.display = "";
+  if (footEl) footEl.style.display = "";
   if (role === "technician") {
     if (tableEl) tableEl.style.display = "none";
     if (techContainer) techContainer.style.display = "block";
@@ -1738,6 +1752,634 @@ function renderFranchiseTechnicians() {
     $("editTechnicianDialog")?.showModal();
   }));
 }
+
+// ==========================================
+// Franchise Operating Schedule & Calendar View
+// ==========================================
+
+let franchiseScheduleData = null;
+let calCurrentYear = new Date().getFullYear();
+let calCurrentMonth = new Date().getMonth(); // 0 = Jan, 11 = Dec
+
+function computeSlotsFromTimes(openTime, closeTime, durationMins) {
+  try {
+    const [oh, om] = (openTime || "09:00").split(":").map(Number);
+    const [ch, cm] = (closeTime || "19:00").split(":").map(Number);
+    const dur = Math.max(30, Math.min(240, Number(durationMins) || 120));
+    let cur = (oh || 0) * 60 + (om || 0);
+    const end = (ch || 0) * 60 + (cm || 0);
+    const slots = [];
+    while (cur + dur <= end) {
+      const sh = Math.floor(cur / 60);
+      const sm = cur % 60;
+      const eh = Math.floor((cur + dur) / 60);
+      const em = (cur + dur) % 60;
+      const fmt = (h, m) => {
+        const period = h < 12 ? "AM" : "PM";
+        const dh = h % 12 || 12;
+        return `${String(dh).padStart(2, "0")}:${String(m).padStart(2, "0")} ${period}`;
+      };
+      slots.push(`${fmt(sh, sm)} - ${fmt(eh, em)}`);
+      cur += dur;
+    }
+    return slots.length ? slots : ["10:00 AM - 12:00 PM", "01:00 PM - 03:00 PM", "04:00 PM - 06:00 PM", "06:00 PM - 08:00 PM"];
+  } catch {
+    return ["10:00 AM - 12:00 PM", "01:00 PM - 03:00 PM", "04:00 PM - 06:00 PM", "06:00 PM - 08:00 PM"];
+  }
+}
+
+async function loadFranchiseSchedule() {
+  if (role !== "franchise" && role !== "branch") return;
+  try {
+    const data = await franchiseApi("/schedule");
+    franchiseScheduleData = data;
+    renderFranchiseSchedulePage();
+  } catch (err) {
+    showToast(`Could not load schedule: ${err.message}`, "error");
+  }
+}
+
+function renderFranchiseSchedulePage() {
+  if ($("crumbTitle")) $("crumbTitle").textContent = "Operating hours & calendar";
+  setHidden("addCompanyButton", true);
+  setHidden("addBranchButton", true);
+  setHidden("addTechnicianButton", true);
+  setHidden("companyInlineAdd", true);
+  setHidden("exportButton", true);
+  setHidden("pageContent", false);
+  setHidden("metricGrid", true);
+
+  if ($("tableTitle")) {
+    $("tableTitle").innerHTML = `
+      <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 w-full">
+        <div>
+          <span class="text-base font-bold text-slate-900">Franchise Operating Hours & Working Calendar</span>
+          <p class="text-xs text-slate-500 font-normal mt-0.5">Set daily operating hours, working days, and manage holiday schedule overrides.</p>
+        </div>
+      </div>
+    `;
+  }
+  if ($("tableSubtitle")) $("tableSubtitle").textContent = "";
+
+  const tableEl = $("requestRows")?.closest("table");
+  const techContainer = $("techJobCardsContainer");
+  const toolsEl = document.querySelector(".table-tools");
+  const footEl = document.querySelector(".panel-foot");
+
+  if (tableEl) tableEl.style.display = "none";
+  if (techContainer) techContainer.style.display = "none";
+  if (toolsEl) toolsEl.style.display = "none";
+  if (footEl) footEl.style.display = "none";
+
+  let schedContainer = $("franchiseScheduleContainer");
+  if (!schedContainer && tableEl?.parentNode) {
+    schedContainer = document.createElement("div");
+    schedContainer.id = "franchiseScheduleContainer";
+    schedContainer.className = "p-4 sm:p-6 space-y-6";
+    tableEl.parentNode.insertBefore(schedContainer, tableEl);
+  }
+  if (schedContainer) schedContainer.style.display = "block";
+
+  const sched = franchiseScheduleData || {
+    opening_time: "09:00",
+    closing_time: "19:00",
+    slot_duration_minutes: 120,
+    operating_days: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"],
+    calendar_exceptions: {}
+  };
+
+  // Side Panels: Insights & Upcoming Holidays
+  if ($("sidePanelTitle")) $("sidePanelTitle").textContent = "Schedule & Capacity";
+  if ($("healthContent")) {
+    const activeTechs = technicians.filter((t) => t.is_active !== false).length;
+    const windowCap = Math.max(4, activeTechs * 2);
+    const slots = computeSlotsFromTimes(sched.opening_time, sched.closing_time, sched.slot_duration_minutes);
+    $("healthContent").innerHTML = `
+      <div class="p-3.5 bg-blue-50/70 rounded-2xl border border-blue-100 text-xs text-slate-800 space-y-2.5">
+        <div class="flex items-center justify-between pb-1 border-b border-blue-100">
+          <span class="font-bold text-blue-950">⚡ Active Capacity</span>
+          <span class="font-mono font-bold text-blue-700 bg-white px-2 py-0.5 rounded-lg border border-blue-200">${safe(sched.opening_time)} – ${safe(sched.closing_time)}</span>
+        </div>
+        <div class="grid grid-cols-2 gap-2 text-[11px]">
+          <div class="p-2 bg-white rounded-xl border border-slate-100">
+            <span class="text-slate-400 block text-[10px]">Active Techs:</span>
+            <strong class="text-slate-800 font-bold">${activeTechs} field techs</strong>
+          </div>
+          <div class="p-2 bg-white rounded-xl border border-slate-100">
+            <span class="text-slate-400 block text-[10px]">Visits / Slot:</span>
+            <strong class="text-emerald-700 font-bold">${windowCap} max jobs</strong>
+          </div>
+        </div>
+        <div class="text-[11px] text-slate-600">
+          <strong>${slots.length} Daily Slots</strong> · ${sched.operating_days.length} operational days/week.
+        </div>
+      </div>
+    `;
+  }
+
+  if ($("activityContent")) {
+    const exEntries = Object.entries(sched.calendar_exceptions || {})
+      .filter(([_, ex]) => ex && ex.status === "closed")
+      .sort(([a], [b]) => a.localeCompare(b));
+
+    if (!exEntries.length) {
+      $("activityContent").innerHTML = `
+        <div class="p-4 text-center text-xs text-slate-400 bg-slate-50 rounded-2xl">
+          No upcoming holidays or closed dates marked.<br>Click any calendar day to add an override.
+        </div>
+      `;
+    } else {
+      $("activityContent").innerHTML = `
+        <div class="space-y-2">
+          <span class="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">Upcoming Holidays (${exEntries.length})</span>
+          ${exEntries.slice(0, 5).map(([dStr, ex]) => {
+            return `
+              <div class="p-2.5 bg-rose-50/70 rounded-xl border border-rose-100 text-xs flex items-center justify-between">
+                <div>
+                  <strong class="text-rose-900 block font-semibold">${safe(ex.reason || "Holiday")}</strong>
+                  <span class="text-[11px] text-rose-700">${dStr}</span>
+                </div>
+                <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-200 text-rose-800">🔴 Closed</span>
+              </div>
+            `;
+          }).join("")}
+        </div>
+      `;
+    }
+  }
+
+  const allDays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+  const currentSlots = computeSlotsFromTimes(sched.opening_time, sched.closing_time, sched.slot_duration_minutes);
+
+  schedContainer.innerHTML = `
+    <!-- Card 1: Operating Hours & Operational Days -->
+    <div class="bg-white rounded-3xl border border-slate-200 p-5 sm:p-6 space-y-5 shadow-xs">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
+        <div class="flex items-center gap-2.5">
+          <span class="text-2xl">⏰</span>
+          <div>
+            <h3 class="font-display text-sm font-bold text-slate-900">Franchise Operating Shift & Slot Interval</h3>
+            <p class="text-xs text-slate-400">Appointment slots are automatically calculated to cover your opening and closing times.</p>
+          </div>
+        </div>
+        <button type="button" id="saveScheduleBtn" class="primary-action text-xs px-4 py-2 font-bold shadow-xs flex items-center gap-1.5 self-start sm:self-auto">
+          <span>💾</span> Save Operating Schedule
+        </button>
+      </div>
+
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <!-- Opening Time -->
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 mb-1">
+            Opening Time <span class="text-rose-500">*</span>
+          </label>
+          <input type="time" id="branchOpenTime" value="${safe(sched.opening_time)}" class="w-full rounded-xl border border-slate-200 p-2.5 font-bold text-slate-800 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20">
+          <p class="text-[11px] text-slate-400 mt-1">Start of first appointment</p>
+        </div>
+
+        <!-- Closing Time -->
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 mb-1">
+            Closing Time <span class="text-rose-500">*</span>
+          </label>
+          <input type="time" id="branchCloseTime" value="${safe(sched.closing_time)}" class="w-full rounded-xl border border-slate-200 p-2.5 font-bold text-slate-800 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20">
+          <p class="text-[11px] text-slate-400 mt-1">End of last appointment</p>
+        </div>
+
+        <!-- Slot Duration -->
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 mb-1">
+            Slot Duration (Interval) <span class="text-rose-500">*</span>
+          </label>
+          <select id="branchSlotDuration" class="w-full rounded-xl border border-slate-200 p-2.5 font-bold text-slate-800 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20">
+            <option value="60" ${sched.slot_duration_minutes === 60 ? 'selected' : ''}>1 Hour Interval (60 mins)</option>
+            <option value="90" ${sched.slot_duration_minutes === 90 ? 'selected' : ''}>1.5 Hours Interval (90 mins)</option>
+            <option value="120" ${sched.slot_duration_minutes === 120 ? 'selected' : ''}>2 Hours Interval (120 mins) — Recommended</option>
+            <option value="180" ${sched.slot_duration_minutes === 180 ? 'selected' : ''}>3 Hours Interval (180 mins)</option>
+          </select>
+          <p class="text-[11px] text-slate-400 mt-1">Visit duration per ticket</p>
+        </div>
+      </div>
+
+      <!-- Weekly Operating Days Selector -->
+      <div>
+        <label class="block text-xs font-semibold text-slate-700 mb-2">
+          Weekly Operational Days <span class="text-slate-400 font-normal">(Days when franchise accepts customer appointments)</span>
+        </label>
+        <div class="flex flex-wrap gap-2" id="operatingDaysContainer">
+          ${allDays.map((d) => {
+            const isChecked = sched.operating_days.includes(d);
+            return `
+              <button type="button" data-day="${d}" class="day-toggle-pill px-3.5 py-2 rounded-xl text-xs font-bold border transition flex items-center gap-1.5 ${isChecked ? 'bg-blue-50 border-blue-400 text-blue-700 shadow-xs' : 'bg-slate-50 border-slate-200 text-slate-400 hover:bg-slate-100'}">
+                <span>${isChecked ? '✓' : '＋'}</span> ${d}
+              </button>
+            `;
+          }).join("")}
+        </div>
+      </div>
+
+      <!-- Live Auto-Generated Slots Preview -->
+      <div class="p-4 bg-slate-50/80 rounded-2xl border border-slate-200 space-y-2">
+        <div class="flex items-center justify-between">
+          <span class="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+            <span>⚡</span> Auto-Generated Appointment Windows (<span id="slotsCountLabel">${currentSlots.length}</span> Slots)
+          </span>
+          <span class="text-[10px] text-slate-400">Updates dynamically as you adjust hours</span>
+        </div>
+        <div id="slotsPreviewContainer" class="flex flex-wrap gap-2 pt-1">
+          ${currentSlots.map((s) => `
+            <span class="px-3 py-1.5 rounded-xl bg-white border border-blue-200 text-blue-900 font-bold text-xs shadow-xs flex items-center gap-1">
+              <span>🕒</span> ${s}
+            </span>
+          `).join("")}
+        </div>
+      </div>
+    </div>
+
+    <!-- Card 2: Interactive Operational Month Calendar -->
+    <div class="bg-white rounded-3xl border border-slate-200 p-5 sm:p-6 space-y-5 shadow-xs">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
+        <div class="flex items-center gap-2.5">
+          <span class="text-2xl">📅</span>
+          <div>
+            <h3 class="font-display text-sm font-bold text-slate-900">Franchise Operational Calendar</h3>
+            <p class="text-xs text-slate-400">Click any date to mark it as a Holiday / Closed or Special Working Day.</p>
+          </div>
+        </div>
+
+        <!-- Month Navigation -->
+        <div class="flex items-center gap-2">
+          <button type="button" id="calPrevMonthBtn" class="p-1.5 px-2.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100 font-bold text-xs transition">◀ Prev</button>
+          <span id="calCurrentMonthLabel" class="font-display font-bold text-xs text-slate-800 min-w-[130px] text-center">Month Year</span>
+          <button type="button" id="calNextMonthBtn" class="p-1.5 px-2.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100 font-bold text-xs transition">Next ▶</button>
+          <button type="button" id="calTodayBtn" class="p-1.5 px-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition">Today</button>
+        </div>
+      </div>
+
+      <!-- Legend -->
+      <div class="flex flex-wrap items-center gap-3 text-[11px] text-slate-600 pb-1">
+        <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span> <strong>Operational (Open)</strong></span>
+        <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-slate-300"></span> <strong>Weekly Off</strong></span>
+        <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-rose-500"></span> <strong>Holiday / Closed</strong></span>
+        <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-blue-500"></span> <strong>Special Open Day</strong></span>
+        <span class="text-slate-400 italic ml-auto">Click date to edit status</span>
+      </div>
+
+      <!-- Calendar Month Grid -->
+      <div id="calendarMonthGridContainer" class="border border-slate-200 rounded-2xl overflow-hidden">
+        <!-- Rendered by renderScheduleCalendar() -->
+      </div>
+    </div>
+  `;
+
+  renderScheduleCalendar();
+  initScheduleEventHandlers();
+}
+
+function renderScheduleCalendar() {
+  const container = $("calendarMonthGridContainer");
+  const monthLabel = $("calCurrentMonthLabel");
+  if (!container) return;
+
+  const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+  const dayHeaders = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  const dayNamesFull = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
+  if (monthLabel) {
+    monthLabel.textContent = `${monthNames[calCurrentMonth]} ${calCurrentYear}`;
+  }
+
+  const sched = franchiseScheduleData || {
+    operating_days: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"],
+    calendar_exceptions: {}
+  };
+  const exceptions = sched.calendar_exceptions || {};
+  const operatingDays = sched.operating_days || [];
+
+  const firstDayIndex = new Date(calCurrentYear, calCurrentMonth, 1).getDay();
+  const daysInMonth = new Date(calCurrentYear, calCurrentMonth + 1, 0).getDate();
+  const prevMonthDays = new Date(calCurrentYear, calCurrentMonth, 0).getDate();
+
+  const today = new Date();
+  const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+
+  let html = `
+    <div class="grid grid-cols-7 bg-slate-100 border-b border-slate-200 text-center font-bold text-[11px] text-slate-600 py-2">
+      ${dayHeaders.map((dh) => `<div>${dh}</div>`).join("")}
+    </div>
+    <div class="grid grid-cols-7 divide-x divide-y divide-slate-200 bg-white">
+  `;
+
+  // Previous month padded days
+  for (let i = firstDayIndex - 1; i >= 0; i--) {
+    const dNum = prevMonthDays - i;
+    html += `
+      <div class="p-2 sm:p-2.5 min-h-[85px] sm:min-h-[100px] bg-slate-50/50 opacity-40 select-none">
+        <span class="text-xs font-bold text-slate-400">${dNum}</span>
+      </div>
+    `;
+  }
+
+  // Days in current month
+  for (let day = 1; day <= daysInMonth; day++) {
+    const dateStr = `${calCurrentYear}-${String(calCurrentMonth + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    const dayOfWeek = new Date(calCurrentYear, calCurrentMonth, day).getDay();
+    const dayName = dayNamesFull[dayOfWeek];
+    const isToday = dateStr === todayStr;
+
+    const ex = exceptions[dateStr];
+    let cellBg = "bg-white hover:bg-slate-50";
+    let statusBadge = "";
+    let reasonText = "";
+
+    if (ex) {
+      if (ex.status === "closed") {
+        cellBg = "bg-rose-50/60 hover:bg-rose-100/70 border-rose-200";
+        statusBadge = `<span class="px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-rose-200 text-rose-800">🔴 Closed</span>`;
+        reasonText = `<span class="text-[10px] text-rose-700 font-medium block truncate mt-0.5" title="${safe(ex.reason || 'Holiday')}">${safe(ex.reason || 'Holiday')}</span>`;
+      } else {
+        cellBg = "bg-blue-50/60 hover:bg-blue-100/70 border-blue-200";
+        statusBadge = `<span class="px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-blue-200 text-blue-800">🔵 Open (Special)</span>`;
+        reasonText = `<span class="text-[10px] text-blue-700 font-medium block truncate mt-0.5" title="${safe(ex.reason || 'Open Shift')}">${safe(ex.reason || 'Open Shift')}</span>`;
+      }
+    } else {
+      if (operatingDays.includes(dayName)) {
+        cellBg = "bg-emerald-50/30 hover:bg-emerald-100/50 border-emerald-100";
+        statusBadge = `<span class="px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-emerald-100 text-emerald-800">🟢 Operational</span>`;
+      } else {
+        cellBg = "bg-slate-50/70 hover:bg-slate-100/70 border-slate-200 text-slate-400";
+        statusBadge = `<span class="px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-slate-200 text-slate-600">⚪ Weekly Off</span>`;
+      }
+    }
+
+    html += `
+      <div class="p-2 sm:p-2.5 min-h-[85px] sm:min-h-[100px] cursor-pointer transition flex flex-col justify-between ${cellBg} ${isToday ? 'ring-2 ring-blue-500 ring-inset' : ''}" data-cal-date="${dateStr}">
+        <div class="flex items-center justify-between">
+          <span class="text-xs font-bold ${isToday ? 'text-blue-700' : 'text-slate-800'}">${day}</span>
+          ${isToday ? `<span class="px-1.5 py-0.2 rounded text-[9px] font-bold bg-blue-600 text-white">TODAY</span>` : ''}
+        </div>
+        <div class="mt-1 space-y-0.5">
+          ${statusBadge}
+          ${reasonText}
+        </div>
+      </div>
+    `;
+  }
+
+  // Next month padded days to complete 7-col grid
+  const totalRendered = firstDayIndex + daysInMonth;
+  const remaining = (7 - (totalRendered % 7)) % 7;
+  for (let j = 1; j <= remaining; j++) {
+    html += `
+      <div class="p-2 sm:p-2.5 min-h-[85px] sm:min-h-[100px] bg-slate-50/50 opacity-40 select-none">
+        <span class="text-xs font-bold text-slate-400">${j}</span>
+      </div>
+    `;
+  }
+
+  html += `</div>`;
+  container.innerHTML = html;
+
+  container.querySelectorAll("[data-cal-date]").forEach((cell) => {
+    cell.addEventListener("click", () => {
+      const dStr = cell.dataset.calDate;
+      openCalendarExceptionDialog(dStr);
+    });
+  });
+}
+
+function openCalendarExceptionDialog(dateStr) {
+  const dialog = $("calendarExceptionDialog");
+  if (!dialog) return;
+
+  const sched = franchiseScheduleData || { operating_days: [], calendar_exceptions: {} };
+  const exceptions = sched.calendar_exceptions || {};
+  const ex = exceptions[dateStr];
+
+  const dateObj = new Date(dateStr + "T00:00:00");
+  const options = { weekday: "long", year: "numeric", month: "long", day: "numeric" };
+  const readable = dateObj.toLocaleDateString("en-IN", options);
+
+  if ($("calExDateInput")) $("calExDateInput").value = dateStr;
+  if ($("calExDialogTitle")) $("calExDialogTitle").textContent = readable;
+  if ($("calExDialogDateLabel")) $("calExDialogDateLabel").textContent = `Selected Date: ${dateStr}`;
+
+  const closedRadio = document.querySelector('input[name="calExStatus"][value="closed"]');
+  const openRadio = document.querySelector('input[name="calExStatus"][value="open"]');
+  const reasonInput = $("calExReasonInput");
+  const deleteBtn = $("calExDeleteBtn");
+  const msgEl = $("calExFormMessage");
+
+  if (msgEl) msgEl.textContent = "";
+
+  if (ex) {
+    if (ex.status === "closed") {
+      if (closedRadio) closedRadio.checked = true;
+    } else {
+      if (openRadio) openRadio.checked = true;
+    }
+    if (reasonInput) reasonInput.value = ex.reason || "";
+    if (deleteBtn) deleteBtn.style.display = "";
+  } else {
+    const dayName = dateObj.toLocaleDateString("en-US", { weekday: "long" });
+    const isRegularOpen = (sched.operating_days || []).includes(dayName);
+    if (isRegularOpen) {
+      if (closedRadio) closedRadio.checked = true;
+    } else {
+      if (openRadio) openRadio.checked = true;
+    }
+    if (reasonInput) reasonInput.value = "";
+    if (deleteBtn) deleteBtn.style.display = "none";
+  }
+
+  dialog.showModal();
+}
+
+function initScheduleEventHandlers() {
+  const openInput = $("branchOpenTime");
+  const closeInput = $("branchCloseTime");
+  const durSelect = $("branchSlotDuration");
+
+  const updatePreview = () => {
+    const o = openInput ? openInput.value : "09:00";
+    const c = closeInput ? closeInput.value : "19:00";
+    const d = durSelect ? durSelect.value : 120;
+    const computed = computeSlotsFromTimes(o, c, d);
+    const countLabel = $("slotsCountLabel");
+    const container = $("slotsPreviewContainer");
+    if (countLabel) countLabel.textContent = computed.length;
+    if (container) {
+      container.innerHTML = computed.map((s) => `
+        <span class="px-3 py-1.5 rounded-xl bg-white border border-blue-200 text-blue-900 font-bold text-xs shadow-xs flex items-center gap-1">
+          <span>🕒</span> ${s}
+        </span>
+      `).join("");
+    }
+  };
+
+  if (openInput) openInput.addEventListener("change", updatePreview);
+  if (closeInput) closeInput.addEventListener("change", updatePreview);
+  if (durSelect) durSelect.addEventListener("change", updatePreview);
+
+  document.querySelectorAll(".day-toggle-pill").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const isSelected = btn.classList.contains("bg-blue-50");
+      if (isSelected) {
+        btn.classList.remove("bg-blue-50", "border-blue-400", "text-blue-700", "shadow-xs");
+        btn.classList.add("bg-slate-50", "border-slate-200", "text-slate-400");
+        btn.querySelector("span").textContent = "＋";
+      } else {
+        btn.classList.remove("bg-slate-50", "border-slate-200", "text-slate-400");
+        btn.classList.add("bg-blue-50", "border-blue-400", "text-blue-700", "shadow-xs");
+        btn.querySelector("span").textContent = "✓";
+      }
+    });
+  });
+
+  const saveBtn = $("saveScheduleBtn");
+  if (saveBtn) {
+    saveBtn.addEventListener("click", async () => {
+      saveBtn.disabled = true;
+      saveBtn.textContent = "Saving…";
+      const o = openInput ? openInput.value : "09:00";
+      const c = closeInput ? closeInput.value : "19:00";
+      const d = durSelect ? parseInt(durSelect.value, 10) : 120;
+
+      const selectedDays = [];
+      document.querySelectorAll(".day-toggle-pill").forEach((btn) => {
+        if (btn.classList.contains("bg-blue-50")) {
+          selectedDays.push(btn.dataset.day);
+        }
+      });
+
+      if (!selectedDays.length) {
+        showToast("Please select at least one operational day for your franchise.", "error");
+        saveBtn.disabled = false;
+        saveBtn.innerHTML = "<span>💾</span> Save Operating Schedule";
+        return;
+      }
+
+      try {
+        const updated = await franchiseApi("/schedule", {
+          method: "PUT",
+          body: JSON.stringify({
+            opening_time: o,
+            closing_time: c,
+            slot_duration_minutes: d,
+            operating_days: selectedDays
+          })
+        });
+        franchiseScheduleData = updated;
+        showToast("Operating schedule and appointment slots updated successfully!");
+        renderFranchiseSchedulePage();
+      } catch (err) {
+        showToast(err.message, "error");
+        saveBtn.disabled = false;
+        saveBtn.innerHTML = "<span>💾</span> Save Operating Schedule";
+      }
+    });
+  }
+
+  const prevBtn = $("calPrevMonthBtn");
+  const nextBtn = $("calNextMonthBtn");
+  const todayBtn = $("calTodayBtn");
+
+  if (prevBtn) {
+    prevBtn.addEventListener("click", () => {
+      calCurrentMonth--;
+      if (calCurrentMonth < 0) {
+        calCurrentMonth = 11;
+        calCurrentYear--;
+      }
+      renderScheduleCalendar();
+    });
+  }
+  if (nextBtn) {
+    nextBtn.addEventListener("click", () => {
+      calCurrentMonth++;
+      if (calCurrentMonth > 11) {
+        calCurrentMonth = 0;
+        calCurrentYear++;
+      }
+      renderScheduleCalendar();
+    });
+  }
+  if (todayBtn) {
+    todayBtn.addEventListener("click", () => {
+      const now = new Date();
+      calCurrentMonth = now.getMonth();
+      calCurrentYear = now.getFullYear();
+      renderScheduleCalendar();
+    });
+  }
+
+  const closeCalModalBtn = $("closeCalendarExceptionDialog");
+  const cancelCalModalBtn = $("cancelCalendarException");
+  const calModal = $("calendarExceptionDialog");
+  if (closeCalModalBtn && calModal) closeCalModalBtn.onclick = () => calModal.close();
+  if (cancelCalModalBtn && calModal) cancelCalModalBtn.onclick = () => calModal.close();
+
+  const calExForm = $("calendarExceptionForm");
+  if (calExForm) {
+    calExForm.onsubmit = async (e) => {
+      e.preventDefault();
+      const saveBtnModal = $("saveCalendarExceptionBtn");
+      if (saveBtnModal) saveBtnModal.disabled = true;
+
+      const dateStr = $("calExDateInput")?.value;
+      const status = document.querySelector('input[name="calExStatus"]:checked')?.value || "closed";
+      const reason = $("calExReasonInput")?.value || "";
+
+      try {
+        const res = await franchiseApi("/calendar/exception", {
+          method: "POST",
+          body: JSON.stringify({
+            date: dateStr,
+            status: status,
+            reason: reason
+          })
+        });
+        if (franchiseScheduleData) {
+          franchiseScheduleData.calendar_exceptions = res.calendar_exceptions;
+        }
+        showToast(`Schedule exception saved for ${dateStr}.`);
+        calModal?.close();
+        renderFranchiseSchedulePage();
+      } catch (err) {
+        if ($("calExFormMessage")) $("calExFormMessage").textContent = err.message;
+        showToast(err.message, "error");
+      } finally {
+        if (saveBtnModal) saveBtnModal.disabled = false;
+      }
+    };
+  }
+
+  const deleteExBtn = $("calExDeleteBtn");
+  if (deleteExBtn) {
+    deleteExBtn.onclick = async () => {
+      const dateStr = $("calExDateInput")?.value;
+      if (!dateStr) return;
+      deleteExBtn.disabled = true;
+
+      try {
+        const res = await franchiseApi(`/calendar/exception/${dateStr}`, {
+          method: "DELETE"
+        });
+        if (franchiseScheduleData) {
+          franchiseScheduleData.calendar_exceptions = res.calendar_exceptions;
+        }
+        showToast(`Reset ${dateStr} to standard weekly schedule.`);
+        calModal?.close();
+        renderFranchiseSchedulePage();
+      } catch (err) {
+        showToast(err.message, "error");
+      } finally {
+        deleteExBtn.disabled = false;
+      }
+    };
+  }
+}
+
 function renderCompanies() {
   setHidden("addCompanyButton", false);
   setHidden("companyInlineAdd", false);
@@ -4524,6 +5166,7 @@ async function loadWorkspacePageData(page) {
   if (role === "company" && page === "Warranty Claims") { await loadCompanyWarrantyClaims(); return; }
   if (role === "company" && (page === "Inventory & Spares" || page === "Spares Catalog")) { await loadCompanyInventoryAndSpares(); return; }
   if (role === "franchise" && page === "Technicians") { await loadFranchiseTechnicians(); return; }
+  if (role === "franchise" && (page === "Operating hours & calendar" || page === "Operating hours")) { await loadFranchiseSchedule(); return; }
   if (role === "franchise" && page === "Customers") { await loadFranchiseCustomers(); return; }
   if (role === "franchise" && page === "Inventory & Spares") { await loadFranchiseInventory(); return; }
 }

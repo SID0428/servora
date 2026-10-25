@@ -768,3 +768,31 @@ class NotificationLogResponse(BaseModel):
     delivery_status: str
     created_at: str
 
+class BranchSchedulePayload(BaseModel):
+    opening_time: str = Field(default="09:00", pattern=r"^\d{2}:\d{2}$")
+    closing_time: str = Field(default="19:00", pattern=r"^\d{2}:\d{2}$")
+    slot_duration_minutes: Optional[int] = Field(default=120, ge=30, le=240)
+    operating_days: List[str] = Field(default=["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"])
+
+class BranchCalendarExceptionPayload(BaseModel):
+    date: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}$")
+    status: str = Field(pattern=r"^(open|closed)$")
+    reason: Optional[str] = None
+
+class GeneratedSlotPreview(BaseModel):
+    slot: str
+    start_hour: int
+    start_min: int
+    end_hour: int
+    end_min: int
+
+class BranchScheduleResponse(BaseModel):
+    branch_id: str
+    branch_name: str
+    opening_time: str
+    closing_time: str
+    slot_duration_minutes: int
+    operating_days: List[str]
+    calendar_exceptions: dict
+    generated_slots: List[GeneratedSlotPreview]
+

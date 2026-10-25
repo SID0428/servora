@@ -204,6 +204,23 @@ def seed_database(db: Session):
         with engine.begin() as connection:
             connection.execute(text("ALTER TABLE part_requests ADD COLUMN stock_status_at_request VARCHAR(32) NOT NULL DEFAULT 'in_stock'"))
 
+    branch_columns = {column["name"] for column in inspect(engine).get_columns("company_branches")}
+    if "opening_time" not in branch_columns:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE company_branches ADD COLUMN opening_time VARCHAR(8) NULL DEFAULT '09:00'"))
+    if "closing_time" not in branch_columns:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE company_branches ADD COLUMN closing_time VARCHAR(8) NULL DEFAULT '19:00'"))
+    if "slot_duration_minutes" not in branch_columns:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE company_branches ADD COLUMN slot_duration_minutes INTEGER NULL DEFAULT 120"))
+    if "operating_days_json" not in branch_columns:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE company_branches ADD COLUMN operating_days_json TEXT NULL"))
+    if "calendar_exceptions_json" not in branch_columns:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE company_branches ADD COLUMN calendar_exceptions_json TEXT NULL"))
+
     # 1. Seed Operational Users if not present
     if not db.query(UserModel).filter(UserModel.role != "customer").first():
         users = [

@@ -321,11 +321,59 @@ def get_request(request_id: str, request: Request, db: Session = Depends(get_db)
 # ==========================================
 
 STANDARD_TIME_SLOTS = [
-    {"slot": "10:00 AM - 12:00 PM", "start_hour": 10, "start_min": 0},
-    {"slot": "01:00 PM - 03:00 PM", "start_hour": 13, "start_min": 0},
-    {"slot": "04:00 PM - 06:00 PM", "start_hour": 16, "start_min": 0},
-    {"slot": "06:00 PM - 08:00 PM", "start_hour": 18, "start_min": 0},
+    {"slot": "10:00 AM - 12:00 PM", "start_hour": 10, "start_min": 0, "end_hour": 12, "end_min": 0},
+    {"slot": "01:00 PM - 03:00 PM", "start_hour": 13, "start_min": 0, "end_hour": 15, "end_min": 0},
+    {"slot": "04:00 PM - 06:00 PM", "start_hour": 16, "start_min": 0, "end_hour": 18, "end_min": 0},
+    {"slot": "06:00 PM - 08:00 PM", "start_hour": 18, "start_min": 0, "end_hour": 20, "end_min": 0},
 ]
+
+def generate_dynamic_slots(opening_time: Optional[str] = "09:00", closing_time: Optional[str] = "19:00", duration_mins: Optional[int] = 120) -> list[dict]:
+    """
+    Generates dynamic appointment slot objects covering opening_time to closing_time.
+    Interval is defined by duration_mins (default 120 minutes = 2 hours).
+    Returns list of dicts with keys: slot, start_hour, start_min, end_hour, end_min.
+    """
+    try:
+        open_parts = (opening_time or "09:00").strip().split(":")
+        open_h, open_m = int(open_parts[0]), int(open_parts[1]) if len(open_parts) > 1 else 0
+    except Exception:
+        open_h, open_m = 9, 0
+
+    try:
+        close_parts = (closing_time or "19:00").strip().split(":")
+        close_h, close_m = int(close_parts[0]), int(close_parts[1]) if len(close_parts) > 1 else 0
+    except Exception:
+        close_h, close_m = 19, 0
+
+    duration = max(30, min(240, int(duration_mins or 120)))
+    cur_mins = open_h * 60 + open_m
+    end_mins = close_h * 60 + close_m
+
+    slots = []
+    while cur_mins + duration <= end_mins:
+        sh, sm = divmod(cur_mins, 60)
+        eh, em = divmod(cur_mins + duration, 60)
+
+        def fmt_time(h, m):
+            period = "AM" if h < 12 else "PM"
+            dh = h % 12
+            if dh == 0:
+                dh = 12
+            return f"{dh:02d}:{m:02d} {period}"
+
+        slot_label = f"{fmt_time(sh, sm)} - {fmt_time(eh, em)}"
+        slots.append({
+            "slot": slot_label,
+            "start_hour": sh,
+            "start_min": sm,
+            "end_hour": eh,
+            "end_min": em
+        })
+        cur_mins += duration
+
+    if not slots:
+        slots = STANDARD_TIME_SLOTS
+    return slots
 
 def calculate_available_slots(
     date_str: str,
@@ -355,6 +403,49 @@ def calculate_available_slots(
 
     b_id = branch.id if branch else None
     b_name = branch.branch_name if branch else "Main Service Center"
+
+    # Read branch schedule configurations
+    opening_time = getattr(branch, "opening_time", None) or "09:00"
+    closing_time = getattr(branch, "closing_time", None) or "19:00"
+    slot_duration = getattr(branch, "slot_duration_minutes", None) or 120
+
+    # Parse operating days
+    raw_days = getattr(branch, "operating_days_json", None)
+    operating_days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
+    if raw_days:
+        try:
+            parsed_days = json.loads(raw_days)
+            if isinstance(parsed_days, list) and len(parsed_days) > 0:
+                operating_days = [str(d).strip().capitalize() for d in parsed_days]
+        except Exception:
+            pass
+
+    # Parse calendar exceptions
+    raw_exceptions = getattr(branch, "calendar_exceptions_json", None)
+    calendar_exceptions = {}
+    if raw_exceptions:
+        try:
+            parsed_ex = json.loads(raw_exceptions)
+            if isinstance(parsed_ex, dict):
+                calendar_exceptions = parsed_ex
+        except Exception:
+            pass
+
+    # Determine if branch is closed on target date
+    day_name = target_date.strftime("%A")
+    date_closed_reason = None
+
+    if clean_date_str in calendar_exceptions:
+        ex_info = calendar_exceptions[clean_date_str]
+        if isinstance(ex_info, dict) and ex_info.get("status") == "closed":
+            date_closed_reason = f"Franchise is closed on this day ({ex_info.get('reason') or 'Holiday'})"
+        elif isinstance(ex_info, dict) and ex_info.get("status") == "open":
+            date_closed_reason = None  # Explicit override to open
+    elif day_name not in operating_days:
+        date_closed_reason = f"Franchise is closed on {day_name}s (Weekly off)"
+
+    # Generate dynamic slots for this branch
+    active_slots_def = generate_dynamic_slots(opening_time, closing_time, slot_duration)
 
     # 3. Dynamic capacity based on active technicians at branch
     active_tech_count = 0
@@ -394,7 +485,7 @@ def calculate_available_slots(
     is_past_date = target_date < today
     is_today = target_date == today
 
-    for slot_def in STANDARD_TIME_SLOTS:
+    for slot_def in active_slots_def:
         s_name = slot_def["slot"]
         booked = booked_counts.get(s_name, 0)
         remaining = max(0, slot_capacity - booked)
@@ -407,6 +498,17 @@ def calculate_available_slots(
                 booked=booked,
                 remaining=0,
                 reason="Past dates cannot be scheduled"
+            ))
+            continue
+
+        if date_closed_reason:
+            slots_list.append(TimeSlotInfo(
+                slot=s_name,
+                available=False,
+                capacity=slot_capacity,
+                booked=booked,
+                remaining=0,
+                reason=date_closed_reason
             ))
             continue
 

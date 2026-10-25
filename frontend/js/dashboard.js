@@ -3463,7 +3463,8 @@ async function loadAvailableSlots(dateStr, selectEl, options = {}) {
         if (text) text.textContent = `Available · ${currentSelected.remaining} capacity remaining (${data.branch_name || "Franchise Hub"})`;
       } else {
         if (dot) dot.className = "w-2 h-2 rounded-full bg-rose-500 shrink-0";
-        if (text) text.textContent = anyAvailable ? "Please select an available slot" : "All slots fully booked or past cutoff";
+        const firstReason = slots.find((s) => s.reason)?.reason;
+        if (text) text.textContent = anyAvailable ? "Please select an available slot" : (firstReason || "All slots fully booked or past cutoff");
       }
     }
     return data;

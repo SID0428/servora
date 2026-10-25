@@ -4,8 +4,8 @@ PRODUCTION-GRADE TECHNICAL ARCHITECTURE & DEVELOPER ONBOARDING MANUAL
 ================================================================================
 File: documentation.txt
 Platform: ServSure (formerly Servora)
-Version: 1.7.8 (Production Release - Persistent Tab Routing & Auto-Hydrating Dashboard on Refresh)
-Last Updated: October 25, 2026 (16:45 IST)
+Version: 1.7.9 (Production Release - Franchise Operating Hours, Dynamic Time Slots & Interactive Calendar)
+Last Updated: October 25, 2026 (17:30 IST)
 Repository: https://github.com/SID0428/servora.git
 
 Welcome to ServSure! This manual is the definitive, authoritative reference
@@ -686,6 +686,16 @@ Request Headers:
 - `PUT /api/franchise/technicians/{technician_id}/access`
   - Body: `{ "is_active": false }`
   - Deactivates technician and revokes active token.
+- `GET /api/franchise/schedule`
+  - Returns: `{ "branch_id": "...", "branch_name": "...", "opening_time": "09:00", "closing_time": "19:00", "slot_duration_minutes": 120, "operating_days": ["Monday", ...], "calendar_exceptions": { "2026-10-29": { "status": "closed", "reason": "Diwali" } }, "generated_slots": [...] }`.
+- `PUT /api/franchise/schedule`
+  - Body: `{ "opening_time": "09:00", "closing_time": "19:00", "slot_duration_minutes": 120, "operating_days": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"] }`
+  - Updates branch operational hours and automatically regenerates slot intervals.
+- `POST /api/franchise/calendar/exception`
+  - Body: `{ "date": "2026-10-29", "status": "closed", "reason": "Diwali Festival" }`
+  - Marks an override on a specific calendar date (closed for holiday or open for special shift).
+- `DELETE /api/franchise/calendar/exception/{date_str}`
+  - Removes date override, reverting the day to standard weekly schedule.
 
 5.5. Field Technician Operations (`/api/technician`)
 ----------------------------------------------------
@@ -1366,6 +1376,33 @@ were identified between the initial rough draft documentation and the actual cod
         - In `loadDashboard()`, right after `requests = await response.json()` or cached data arrives, an immediate check invokes `renderRequests()` if on the main dashboard, eliminating the need to manually click the sidebar link.
      4. Parallelized Background Startup:
         - Replaced sequential blocking `await` calls in `loadDashboard()` with concurrent `Promise.allSettled()` calls for branches, customers, warranty policies, and spare parts.
+
+23. Discrepancy: Static Appointment Windows & Lack of Franchise Operational Schedule Customization
+   - Initial State / Observed Issue:
+     The platform previously hardcoded standard 2-hour appointment slots (`10:00 AM - 12:00 PM`, `01:00 PM - 03:00 PM`,
+     `04:00 PM - 06:00 PM`, `06:00 PM - 08:00 PM`) and assumed all franchise branches operated every day. Franchise managers
+     had no mechanism to specify their actual branch operating hours, operational working days (e.g. Mon-Sat), or declare
+     holidays / store closures. Consequently, customers could book appointments on dates when a branch was closed.
+   - Root Causes:
+     1. Hardcoded Slots: `requests.py` relied exclusively on `STANDARD_TIME_SLOTS` without taking branch shift times into account.
+     2. Missing Branch Schedule Schema: `CompanyBranchModel` lacked fields for opening hours, closing hours, slot duration,
+        active days of the week, and calendar exception dates.
+     3. Absence of Franchise Schedule Management UI: The Franchise Portal lacked an interface to view or configure operational
+        shifts, live slot intervals, and an interactive month calendar to override date availability.
+   - Resolution:
+     1. Database Schema & Migration:
+        - Added `opening_time`, `closing_time`, `slot_duration_minutes`, `operating_days_json`, and `calendar_exceptions_json`
+          to `CompanyBranchModel` with automated SQLite & MySQL migrations in `seeds.py`.
+     2. Dynamic Timeslot & Calendar Exception Engine:
+        - Implemented `generate_dynamic_slots(opening_time, closing_time, duration_mins)` in `backend/app/routes/requests.py`.
+        - Updated `calculate_available_slots()` to evaluate date-specific holiday exceptions (`calendar_exceptions_json`),
+          weekly operational days (`operating_days_json`), and dynamically computed appointment windows.
+     3. Franchise Portal Schedule & Interactive Calendar (`frontend/js/ops-dashboard.js` & `franchise-dashboard.html`):
+        - Added "Operating hours & calendar" navigation tab to the Franchise Portal.
+        - Created interactive shift configuration form with real-time live preview of generated appointment windows.
+        - Implemented a complete interactive month calendar grid with status badges (Operational 🟢, Weekly Off ⚪, Holiday/Closed 🔴, Special Open 🔵) and modal dialog to add or remove date overrides.
+     4. Customer Portal Feedback (`frontend/js/dashboard.js`):
+        - Updated slot feedback engine to display exact branch closure reasons (e.g. `❌ Franchise is closed on this day (Diwali Festival)`).
 
 ================================================================================
 End of Documentation

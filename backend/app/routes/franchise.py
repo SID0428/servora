@@ -1,6 +1,7 @@
 import hashlib
 import hmac
 import html
+import json
 import logging
 import os
 import secrets
@@ -30,7 +31,12 @@ from app.schemas import (
     FranchiseTechnicianCreate,
     FranchiseTechnicianUpdate,
     TechnicianCredentialsEmail,
+    BranchSchedulePayload,
+    BranchCalendarExceptionPayload,
+    BranchScheduleResponse,
+    GeneratedSlotPreview,
 )
+from app.routes.requests import generate_dynamic_slots
 from app.security import get_authenticated_user, revoke_all_user_sessions
 
 router = APIRouter(prefix="/api/franchise", tags=["franchise portal"])
@@ -659,3 +665,172 @@ def verify_technician_setup_otp(payload: CompanyOtpVerify, db: Session = Depends
         "confirmation_email_sent": confirmation_email_sent,
         "portal_login_url": portal_url,
     }
+
+
+# ==========================================
+# Franchise Operating Schedule & Calendar
+# ==========================================
+
+@router.get("/schedule", response_model=BranchScheduleResponse)
+def get_franchise_schedule(request: Request, db: Session = Depends(get_db)):
+    _, branch = require_franchise(request, db)
+
+    opening = branch.opening_time or "09:00"
+    closing = branch.closing_time or "19:00"
+    duration = branch.slot_duration_minutes or 120
+
+    operating_days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
+    if branch.operating_days_json:
+        try:
+            parsed = json.loads(branch.operating_days_json)
+            if isinstance(parsed, list) and len(parsed) > 0:
+                operating_days = [str(d).strip().capitalize() for d in parsed]
+        except Exception:
+            pass
+
+    exceptions = {}
+    if branch.calendar_exceptions_json:
+        try:
+            parsed_ex = json.loads(branch.calendar_exceptions_json)
+            if isinstance(parsed_ex, dict):
+                exceptions = parsed_ex
+        except Exception:
+            pass
+
+    slots_raw = generate_dynamic_slots(opening, closing, duration)
+    slots_preview = [GeneratedSlotPreview(**s) for s in slots_raw]
+
+    return BranchScheduleResponse(
+        branch_id=branch.id,
+        branch_name=branch.branch_name,
+        opening_time=opening,
+        closing_time=closing,
+        slot_duration_minutes=duration,
+        operating_days=operating_days,
+        calendar_exceptions=exceptions,
+        generated_slots=slots_preview,
+    )
+
+
+@router.put("/schedule", response_model=BranchScheduleResponse)
+def update_franchise_schedule(payload: BranchSchedulePayload, request: Request, db: Session = Depends(get_db)):
+    _, branch = require_franchise(request, db)
+
+    # Validate opening vs closing time
+    try:
+        oh, om = map(int, payload.opening_time.split(":")[:2])
+        ch, cm = map(int, payload.closing_time.split(":")[:2])
+        if (oh * 60 + om) >= (ch * 60 + cm):
+            raise HTTPException(status_code=400, detail="Opening time must be earlier than closing time")
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid time format. Expected HH:MM")
+
+    # Validate operating days
+    valid_days = {"Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"}
+    cleaned_days = []
+    for d in payload.operating_days:
+        cap_d = str(d).strip().capitalize()
+        if cap_d in valid_days and cap_d not in cleaned_days:
+            cleaned_days.append(cap_d)
+    if not cleaned_days:
+        raise HTTPException(status_code=400, detail="At least one operating day must be selected")
+
+    duration = max(30, min(240, payload.slot_duration_minutes or 120))
+
+    branch.opening_time = payload.opening_time
+    branch.closing_time = payload.closing_time
+    branch.slot_duration_minutes = duration
+    branch.operating_days_json = json.dumps(cleaned_days)
+
+    db.commit()
+    db.refresh(branch)
+
+    exceptions = {}
+    if branch.calendar_exceptions_json:
+        try:
+            parsed_ex = json.loads(branch.calendar_exceptions_json)
+            if isinstance(parsed_ex, dict):
+                exceptions = parsed_ex
+        except Exception:
+            pass
+
+    slots_raw = generate_dynamic_slots(branch.opening_time, branch.closing_time, duration)
+    slots_preview = [GeneratedSlotPreview(**s) for s in slots_raw]
+
+    return BranchScheduleResponse(
+        branch_id=branch.id,
+        branch_name=branch.branch_name,
+        opening_time=branch.opening_time,
+        closing_time=branch.closing_time,
+        slot_duration_minutes=duration,
+        operating_days=cleaned_days,
+        calendar_exceptions=exceptions,
+        generated_slots=slots_preview,
+    )
+
+
+@router.post("/calendar/exception")
+def set_calendar_exception(payload: BranchCalendarExceptionPayload, request: Request, db: Session = Depends(get_db)):
+    _, branch = require_franchise(request, db)
+
+    # Validate date
+    try:
+        datetime.strptime(payload.date, "%Y-%m-%d")
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid date format. Expected YYYY-MM-DD")
+
+    exceptions = {}
+    if branch.calendar_exceptions_json:
+        try:
+            parsed_ex = json.loads(branch.calendar_exceptions_json)
+            if isinstance(parsed_ex, dict):
+                exceptions = parsed_ex
+        except Exception:
+            pass
+
+    exceptions[payload.date] = {
+        "status": payload.status,
+        "reason": (payload.reason or "").strip() or ("Holiday / Closed" if payload.status == "closed" else "Special Working Day"),
+        "updated_at": datetime.utcnow().isoformat(),
+    }
+
+    branch.calendar_exceptions_json = json.dumps(exceptions)
+    db.commit()
+    db.refresh(branch)
+
+    return {
+        "status": "success",
+        "message": f"Calendar exception saved for {payload.date}",
+        "date": payload.date,
+        "exception": exceptions[payload.date],
+        "calendar_exceptions": exceptions,
+    }
+
+
+@router.delete("/calendar/exception/{date_str}")
+def delete_calendar_exception(date_str: str, request: Request, db: Session = Depends(get_db)):
+    _, branch = require_franchise(request, db)
+
+    clean_date = date_str.strip()[:10]
+    exceptions = {}
+    if branch.calendar_exceptions_json:
+        try:
+            parsed_ex = json.loads(branch.calendar_exceptions_json)
+            if isinstance(parsed_ex, dict):
+                exceptions = parsed_ex
+        except Exception:
+            pass
+
+    if clean_date in exceptions:
+        del exceptions[clean_date]
+        branch.calendar_exceptions_json = json.dumps(exceptions)
+        db.commit()
+        db.refresh(branch)
+
+    return {
+        "status": "success",
+        "message": f"Calendar exception removed for {clean_date}",
+        "date": clean_date,
+        "calendar_exceptions": exceptions,
+    }
+

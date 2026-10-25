@@ -68,6 +68,11 @@ class CompanyBranchModel(Base):
     mobile = Column(String(32), nullable=False)
     address = Column(Text, nullable=False)
     pincode = Column(String(10), nullable=False)
+    opening_time = Column(String(8), nullable=True, default="09:00")
+    closing_time = Column(String(8), nullable=True, default="19:00")
+    slot_duration_minutes = Column(Integer, nullable=True, default=120)
+    operating_days_json = Column(Text, nullable=True, default='["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]')
+    calendar_exceptions_json = Column(Text, nullable=True, default='{}')
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
 
 class TechnicianModel(Base):
