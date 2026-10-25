@@ -84,6 +84,32 @@ function resolveMediaUrl(url) {
   return `${base}${path}`;
 }
 
+function getApplianceDisplayName(appliance) {
+  if (!appliance) return "Appliance";
+  let appTitle = (appliance.appliance_name || "").trim();
+  const bLower = (appliance.brand || "").trim().toLowerCase();
+  const cLower = (appliance.category || "").trim().toLowerCase();
+  const isGeneric = !appTitle || [
+    `${bLower} ${cLower}`,
+    `${bLower} other`,
+    "other",
+    bLower
+  ].includes(appTitle.toLowerCase()) || appTitle.toLowerCase().endsWith(" other");
+
+  if (isGeneric) {
+    if (typeof currentCompanyCatalog !== "undefined" && currentCompanyCatalog?.appliances?.length) {
+      const matchedCat = currentCompanyCatalog.appliances.find(
+        (a) => (!a.brand || a.brand.toLowerCase() === bLower) && (a.category?.toLowerCase() === cLower || a.category?.toLowerCase() === "other")
+      );
+      if (matchedCat && matchedCat.appliance_name) {
+        return matchedCat.appliance_name;
+      }
+    }
+    return appTitle || `${appliance.brand} ${appliance.category}`;
+  }
+  return appTitle;
+}
+
 function showToast(message, type = "info") {
   const container = $("toast-container");
   if (!container) return;
@@ -428,7 +454,7 @@ function renderAppliances() {
                 </div>
                 <div class="min-w-0">
                   <h3 class="font-display font-bold text-[15px] text-slate-900 truncate">
-                    ${escapeHtml(appliance.appliance_name || `${appliance.brand} ${appliance.category}`)}
+                    ${escapeHtml(getApplianceDisplayName(appliance))}
                   </h3>
                   <p class="text-xs text-slate-500 font-medium truncate mt-0.5">
                     Model: ${escapeHtml(appliance.model_no || "N/A")}
@@ -487,7 +513,7 @@ function renderAppliances() {
               <div>
                 <div class="flex items-center gap-2 flex-wrap">
                   <h3 class="font-display font-bold text-base text-slate-900">${escapeHtml(
-                    appliance.appliance_name || `${appliance.brand} ${appliance.category}`
+                    getApplianceDisplayName(appliance)
                   )}</h3>
                   <span class="rounded-full px-2 py-0.5 text-[10px] font-bold bg-slate-100 text-slate-700 uppercase tracking-wide">${escapeHtml(
                     appliance.brand || ""
@@ -1811,7 +1837,7 @@ window.openEditApplianceModal = function (applianceId) {
   const app = userAppliances.find((a) => a.id === applianceId);
   if (!app) return;
   if ($("editApplianceId")) $("editApplianceId").value = app.id;
-  if ($("editApplianceNameInput")) $("editApplianceNameInput").value = app.appliance_name || `${app.brand} ${app.category}`;
+  if ($("editApplianceNameInput")) $("editApplianceNameInput").value = getApplianceDisplayName(app);
   if ($("editApplianceModelInput")) $("editApplianceModelInput").value = app.model_no || "";
   if ($("editApplianceSerialInput")) $("editApplianceSerialInput").value = app.serial_no || "";
   if ($("editApplianceMessage")) $("editApplianceMessage").textContent = "";
@@ -2145,8 +2171,13 @@ async function submitAppliance(event) {
     return;
   }
 
-  const catalogItem = currentCompanyCatalog.appliances?.find((a) => a.id === appId);
-  const applianceName = catalogItem ? catalogItem.appliance_name : "";
+  const appSelectEl = $("newApplianceName");
+  const selectedOptText = appSelectEl?.selectedOptions?.[0]?.textContent || "";
+  const catalogItem = currentCompanyCatalog.appliances?.find((a) => String(a.id) === String(appId));
+  let applianceName = catalogItem ? catalogItem.appliance_name : "";
+  if (!applianceName && selectedOptText) {
+    applianceName = selectedOptText.replace(/\s*\([^)]*\)\s*$/, "").trim();
+  }
 
   try {
     const appliance = await readApiJson("/api/appliances", {

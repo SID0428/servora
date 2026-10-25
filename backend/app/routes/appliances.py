@@ -12,6 +12,23 @@ from app.routes.warranty_amc import resolve_policy_for_appliance
 
 router = APIRouter(prefix="/api/appliances", tags=["appliances"])
 
+def is_generic_name(name: str | None, brand: str | None = None, category: str | None = None) -> bool:
+    if not name or not name.strip():
+        return True
+    n = name.strip().lower()
+    b = (brand or "").strip().lower()
+    c = (category or "").strip().lower()
+    if b and c and n == f"{b} {c}":
+        return True
+    if b and n in (f"{b} other", b):
+        return True
+    if n in ("other", "appliance", "unknown"):
+        return True
+    if n.endswith(" other"):
+        return True
+    return False
+
+
 @router.get("", response_model=List[ApplianceBase])
 def get_user_appliances(request: Request, db: Session = Depends(get_db)):
     user = get_authenticated_user(request, db)
@@ -21,24 +38,68 @@ def get_user_appliances(request: Request, db: Session = Depends(get_db)):
         UserModel, ApplianceModel.company_id == UserModel.id
     ).filter(ApplianceModel.user_id == user.id).all()
 
-    # Pre-map company catalog appliance names to backfill legacy rows where appliance_name is NULL
     catalog_items = db.query(CompanyApplianceCatalogModel).all()
-    cat_name_map = {}
+    
+    catalog_by_model = {}
+    catalog_by_brand_cat = {}
+    catalog_by_comp_cat = {}
+    catalog_by_brand = {}
+
     for ci in catalog_items:
-        cat_key = (ci.company_id, (ci.category or "").lower())
-        if cat_key not in cat_name_map:
-            cat_name_map[cat_key] = ci.appliance_name
+        if not ci.appliance_name or is_generic_name(ci.appliance_name, ci.brand, ci.category):
+            continue
+        c_brand = (ci.brand or "").strip().lower()
+        c_cat = (ci.category or "").strip().lower()
+        c_comp = ci.company_id
+        
         try:
             m_list = json.loads(ci.model_numbers) if ci.model_numbers else []
         except Exception:
             m_list = [m.strip() for m in str(ci.model_numbers).split(",") if m.strip()]
         for m in m_list:
-            cat_name_map[(ci.company_id, m.lower())] = ci.appliance_name
+            m_clean = m.strip().lower()
+            if m_clean:
+                catalog_by_model[(c_comp, m_clean)] = ci.appliance_name
+                catalog_by_model[(c_brand, m_clean)] = ci.appliance_name
+        
+        if c_brand and c_cat:
+            catalog_by_brand_cat[(c_brand, c_cat)] = ci.appliance_name
+        if c_comp and c_cat:
+            catalog_by_comp_cat[(c_comp, c_cat)] = ci.appliance_name
+        if c_brand and c_brand not in catalog_by_brand:
+            catalog_by_brand[c_brand] = ci.appliance_name
 
     payloads = []
+    has_healed = False
     for appliance, company_name in rows:
-        fallback = cat_name_map.get((appliance.company_id, (appliance.model_no or "").lower())) or cat_name_map.get((appliance.company_id, (appliance.category or "").lower()))
+        app_model = (appliance.model_no or "").strip().lower()
+        app_brand = (appliance.brand or "").strip().lower()
+        app_cat = (appliance.category or "").strip().lower()
+        app_comp = appliance.company_id
+
+        fallback = (
+            catalog_by_model.get((app_comp, app_model)) or
+            catalog_by_model.get((app_brand, app_model)) or
+            catalog_by_brand_cat.get((app_brand, app_cat)) or
+            catalog_by_comp_cat.get((app_comp, app_cat)) or
+            catalog_by_brand_cat.get((app_brand, "other")) or
+            catalog_by_comp_cat.get((app_comp, "other")) or
+            catalog_by_brand.get(app_brand)
+        )
+
+        curr_name = getattr(appliance, "appliance_name", None)
+        if is_generic_name(curr_name, appliance.brand, appliance.category) and fallback:
+            appliance.appliance_name = fallback
+            has_healed = True
+
         payloads.append(appliance_payload(appliance, company_name, fallback_appliance_name=fallback))
+
+    if has_healed:
+        try:
+            db.commit()
+        except Exception:
+            db.rollback()
+
     return payloads
 
 
@@ -184,10 +245,20 @@ def add_appliance(payload: NewApplianceCreate, request: Request, db: Session = D
     w_status = "Pending Verification"
 
     raw_app_name = payload.appliance_name.strip() if payload.appliance_name else None
+    if is_generic_name(raw_app_name, payload.brand, cat):
+        raw_app_name = None
     if not raw_app_name:
         for cm in cat_match:
-            if cm.appliance_name:
+            if cm.appliance_name and not is_generic_name(cm.appliance_name, payload.brand, cat):
                 raw_app_name = cm.appliance_name
+                break
+    if not raw_app_name:
+        all_comp_cats = db.query(CompanyApplianceCatalogModel).filter(
+            CompanyApplianceCatalogModel.company_id == company.id
+        ).all()
+        for cc in all_comp_cats:
+            if cc.appliance_name and not is_generic_name(cc.appliance_name, payload.brand, cat):
+                raw_app_name = cc.appliance_name
                 break
     if not raw_app_name:
         raw_app_name = f"{payload.brand.strip()} {cat}"
@@ -270,7 +341,11 @@ def serialize_app_date(val) -> str | None:
     return str(val)
 
 def appliance_payload(appliance: ApplianceModel, company_name: str | None = None, fallback_appliance_name: str | None = None) -> dict:
-    app_name = getattr(appliance, "appliance_name", None) or fallback_appliance_name or f"{appliance.brand} {appliance.category}"
+    curr_name = getattr(appliance, "appliance_name", None)
+    if is_generic_name(curr_name, appliance.brand, appliance.category):
+        app_name = fallback_appliance_name or curr_name or f"{appliance.brand} {appliance.category}"
+    else:
+        app_name = curr_name
     return {
         "id": appliance.id,
         "company_id": appliance.company_id,

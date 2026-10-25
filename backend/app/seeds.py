@@ -278,6 +278,30 @@ def seed_database(db: Session):
         with engine.begin() as connection:
             connection.execute(text("ALTER TABLE company_branches ADD COLUMN longitude FLOAT NULL"))
 
+    # Auto-heal legacy appliances where appliance_name is NULL or generic 'brand category' (e.g. 'gelistra Other')
+    try:
+        catalog_items = db.query(CompanyApplianceCatalogModel).all()
+        legacy_apps = db.query(ApplianceModel).all()
+        healed_any = False
+        for ci in catalog_items:
+            if not ci.appliance_name:
+                continue
+            ci_brand = (ci.brand or "").strip().lower()
+            ci_cat = (ci.category or "").strip().lower()
+            for app in legacy_apps:
+                app_brand = (app.brand or "").strip().lower()
+                app_cat = (app.category or "").strip().lower()
+                curr_name = (app.appliance_name or "").strip().lower()
+                is_gen = (not curr_name) or curr_name in (f"{app_brand} {app_cat}", f"{app_brand} other", "other", app_brand) or curr_name.endswith(" other")
+                if is_gen:
+                    if (app_brand == ci_brand or app.company_id == ci.company_id) and (app_cat == ci_cat or ci_cat == "other" or not app_cat):
+                        app.appliance_name = ci.appliance_name
+                        healed_any = True
+        if healed_any:
+            db.commit()
+    except Exception:
+        db.rollback()
+
     # 1. Seed Operational Users if not present
     if not db.query(UserModel).filter(UserModel.role != "customer").first():
         users = [

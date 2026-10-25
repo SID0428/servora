@@ -5,7 +5,7 @@ PRODUCTION-GRADE TECHNICAL ARCHITECTURE & DEVELOPER ONBOARDING MANUAL
 File: documentation.txt
 Platform: ServSure (formerly Servora)
 Version: 1.8.8 (Production Release - Appliance Name, Custom Model & Deletion Management)
-Last Updated: October 25, 2026 (22:30 IST)
+Last Updated: October 25, 2026 (22:42 IST)
 Repository: https://github.com/SID0428/servora.git
 
 Welcome to ServSure! This manual is the definitive, authoritative reference
@@ -1707,6 +1707,12 @@ were identified between the initial rough draft documentation and the actual cod
         - Added `PATCH /api/appliances/{appliance_id}` allowing customers to update `appliance_name`, `model_no`, and `serial_no`.
         - Added `DELETE /api/appliances/{appliance_id}` with safety guard prohibiting removal of appliances with active service requests.
         - Added `#editApplianceDialog` modal dialog and "✏️ Edit" / "🗑️ Remove" buttons directly on customer appliance cards.
+     5. Generic Appliance Title Auto-Healing (`backend/app/routes/appliances.py` & `frontend/js/dashboard.js`):
+        - Introduced `is_generic_name()` to recognize titles that defaulted to `{brand} {category}` (such as `gelistra Other`).
+        - `get_user_appliances` automatically resolves the real catalog appliance name (e.g. `BUILT-IN-MWO / OVEN & OTG`),
+          heals the database record permanently, and returns the descriptive name.
+        - `getApplianceDisplayName(appliance)` in `dashboard.js` guarantees that cards on both Home and Appliances tabs,
+          as well as the edit modal, display the actual appliance name instead of `gelistra Other`.
 
 ==================================================
 End of Documentation
