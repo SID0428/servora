@@ -427,6 +427,19 @@
               <button type="button" id="rescheduleBtn" class="text-xs font-bold text-[#0066ff] hover:underline px-2 py-1">Reschedule</button>
             </div>
 
+            <!-- Outstation / Far Away Franchise Notice Banner -->
+            <div id="outstationNoticeBanner" class="hidden rounded-2xl border border-amber-300 bg-amber-50/90 p-4 transition-all shadow-xs">
+              <div class="flex items-start gap-3">
+                <div class="w-8 h-8 rounded-xl bg-amber-100 border border-amber-300 text-amber-700 flex items-center justify-center shrink-0">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+                </div>
+                <div class="text-xs">
+                  <span class="text-[10px] font-bold text-amber-800 uppercase tracking-wider block">Outstation Service Area</span>
+                  <p id="outstationNoticeText" class="text-amber-900 mt-0.5 leading-relaxed font-medium">Time slot is not applicable here because nearest franchise is far away. Our dispatch team will schedule a flexible doorstep visit directly.</p>
+                </div>
+              </div>
+            </div>
+
             <!-- 4. Connected Vertical Service Timeline (with clickable Live Tracking) -->
             <div class="rounded-2xl border border-slate-200/80 p-5 bg-white shadow-xs">
               <div class="flex items-center justify-between mb-4">
@@ -860,6 +873,15 @@
             <option>06:00 PM - 08:00 PM</option>
           </select>
         </label>
+      </div>
+
+      <!-- Dynamic Booking Slot Outstation Notice Banner -->
+      <div id="bookingSlotNoticeBanner" class="hidden rounded-xl border border-amber-300 bg-amber-50/90 p-3 text-xs text-amber-900 shadow-xs flex items-start gap-2.5">
+        <svg class="w-4 h-4 text-amber-600 shrink-0 mt-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+        <div>
+          <span class="font-bold text-amber-800 uppercase tracking-wider text-[10px] block">Notice on Time Slot</span>
+          <p id="bookingSlotNoticeText" class="mt-0.5 leading-relaxed font-medium">Time slot is not applicable here because nearest franchise is far away. Our dispatch team will schedule a flexible doorstep visit directly.</p>
+        </div>
       </div>
 
       <!-- Defect / Appliance Photo Upload (Optional, Phase 1 FR-TKT-004) -->

@@ -4774,6 +4774,7 @@ function initWarrantyPolicyDialogEvents() {
 
       showToast(`✓ Policy ${policy_code} saved successfully!`, "success");
       await loadCompanyWarrantyClaims();
+      await populateComponentWarrantyDropdowns();
     } catch (err) {
       if ($("policyModalMsg")) $("policyModalMsg").textContent = err.message || "Failed to save policy.";
     } finally {
@@ -4850,6 +4851,101 @@ function initClaimReviewModalEvents() {
 }
 
 // ==========================================
+// Dynamic Component Warranty Tags for Inventory
+// ==========================================
+async function populateComponentWarrantyDropdowns(selectedVal = "", targetSelectId = null) {
+  if (!companyWarrantyPolicies || companyWarrantyPolicies.length === 0) {
+    try {
+      const cached = getUserCache("servsure_cache_warranty_policies");
+      if (cached && Array.isArray(cached) && cached.length > 0) {
+        companyWarrantyPolicies = cached;
+      } else {
+        const pols = await generalApi("/api/warranty-amc/policies").catch(() => []);
+        if (Array.isArray(pols) && pols.length > 0) {
+          companyWarrantyPolicies = pols;
+          setUserCache("servsure_cache_warranty_policies", companyWarrantyPolicies);
+        }
+      }
+    } catch (e) {
+      console.warn("Could not load warranty policies for component tags:", e);
+    }
+  }
+
+  const targets = targetSelectId ? [targetSelectId] : ["addPartWarrantyComponentType", "editPartWarrantyComponentType"];
+
+  // Collect component tags ONLY from active policies created by admin / company
+  const tagsMap = new Map(); // key -> array of { months, policyName, policyCode, category }
+  (companyWarrantyPolicies || []).forEach((pol) => {
+    if (pol.is_active === false) return;
+
+    let compObj = pol.component_warranty;
+    if (!compObj && pol.component_warranty_json) {
+      try {
+        compObj = typeof pol.component_warranty_json === "string" ? JSON.parse(pol.component_warranty_json) : pol.component_warranty_json;
+      } catch (e) {}
+    }
+    if (typeof compObj === "string") {
+      try {
+        compObj = JSON.parse(compObj);
+      } catch (e) {}
+    }
+    if (compObj && typeof compObj === "object" && !Array.isArray(compObj)) {
+      Object.entries(compObj).forEach(([rawKey, val]) => {
+        const cleanKey = String(rawKey || "").trim().toLowerCase();
+        if (!cleanKey) return;
+        if (!tagsMap.has(cleanKey)) {
+          tagsMap.set(cleanKey, []);
+        }
+        tagsMap.get(cleanKey).push({
+          months: val,
+          policyName: pol.policy_name || "",
+          policyCode: pol.policy_code || "",
+          category: pol.category || ""
+        });
+      });
+    }
+  });
+
+  targets.forEach((selId) => {
+    const sel = $(selId);
+    if (!sel) return;
+    const currentVal = (selectedVal !== undefined && selectedVal !== null && selectedVal !== "") ? selectedVal : (sel.value || "");
+
+    // Clear and build options: ALWAYS has "None / Standard Comprehensive Only" as the first option
+    sel.innerHTML = `<option value="">None / Standard Comprehensive Only</option>`;
+
+    tagsMap.forEach((details, key) => {
+      const opt = document.createElement("option");
+      opt.value = key;
+      const formattedTitle = key
+        .replace(/[_-]+/g, " ")
+        .replace(/\b\w/g, (c) => c.toUpperCase());
+
+      const summaries = details.map((d) => {
+        const m = d.months ? `${d.months} Months` : "";
+        const p = d.policyCode || d.policyName || "";
+        return [m, p].filter(Boolean).join(" · ");
+      }).filter(Boolean);
+
+      const summaryText = summaries.length ? ` (${summaries.join(" / ")})` : "";
+      opt.textContent = `${formattedTitle}${summaryText}`;
+      sel.appendChild(opt);
+    });
+
+    // If an existing part had a tag that is not in current active policies, preserve it
+    if (currentVal && !tagsMap.has(currentVal.toLowerCase())) {
+      const opt = document.createElement("option");
+      opt.value = currentVal.toLowerCase();
+      opt.textContent = `${currentVal} (Custom / Preserved)`;
+      sel.appendChild(opt);
+    }
+
+    sel.value = currentVal ? currentVal.toLowerCase() : "";
+  });
+}
+window.populateComponentWarrantyDropdowns = populateComponentWarrantyDropdowns;
+
+// ==========================================
 // Central Company Inventory & Spare Parts Requisitions
 // ==========================================
 async function loadCompanyInventoryAndSpares() {
@@ -4865,16 +4961,22 @@ async function loadCompanyInventoryAndSpares() {
     } catch {}
   }
   try {
-    const [partsData, reqsData] = await Promise.all([
+    const [partsData, reqsData, policiesData] = await Promise.all([
       generalApi("/api/inventory/company/parts"),
-      generalApi("/api/inventory/part-requests")
+      generalApi("/api/inventory/part-requests"),
+      generalApi("/api/warranty-amc/policies").catch(() => [])
     ]);
     companySparesCatalog = partsData || [];
     companyPartRequests = reqsData || [];
+    if (policiesData && Array.isArray(policiesData) && policiesData.length > 0) {
+      companyWarrantyPolicies = policiesData;
+      setUserCache("servsure_cache_warranty_policies", companyWarrantyPolicies);
+    }
     try {
       localStorage.setItem("servora_cache_catalog", JSON.stringify(companySparesCatalog));
       localStorage.setItem("servora_cache_part_requests", JSON.stringify(companyPartRequests));
     } catch {}
+    await populateComponentWarrantyDropdowns();
     renderCompanyInventoryAndSpares();
   } catch (error) {
     companySparesCatalog = [];
@@ -4932,9 +5034,10 @@ function renderCompanyInventoryAndSpares() {
     companyInventorySubTab = "requests";
     renderCompanyInventoryAndSpares();
   });
-  $("openAddPartBtn")?.addEventListener("click", () => {
+  $("openAddPartBtn")?.addEventListener("click", async () => {
     if ($("addPartFormMessage")) $("addPartFormMessage").textContent = "";
     $("addPartForm")?.reset();
+    await populateComponentWarrantyDropdowns("", "addPartWarrantyComponentType");
     $("addPartDialog")?.showModal();
   });
 
@@ -5033,7 +5136,7 @@ function renderCompanyInventoryAndSpares() {
     });
 
     document.querySelectorAll("[data-open-edit-part]").forEach((btn) => {
-      btn.addEventListener("click", () => {
+      btn.addEventListener("click", async () => {
         const partId = btn.dataset.openEditPart;
         const part = companySparesCatalog.find((p) => p.id === partId);
         if (!part) return;
@@ -5049,15 +5152,10 @@ function renderCompanyInventoryAndSpares() {
         if ($("editPartType")) $("editPartType").value = part.part_type || "functional";
         if ($("editPartWarrantyEligible")) $("editPartWarrantyEligible").checked = (part.is_warranty_eligible !== false);
         const compTag = (part.warranty_component_type || "").toLowerCase();
-        if ($("editPartWarrantyComponentType")) {
-          const hasOption = Array.from($("editPartWarrantyComponentType").options).some(o => o.value === compTag);
-          if (hasOption) {
-            $("editPartWarrantyComponentType").value = compTag;
-            if ($("editPartCustomComponentType")) $("editPartCustomComponentType").value = "";
-          } else {
-            $("editPartWarrantyComponentType").value = "";
-            if ($("editPartCustomComponentType")) $("editPartCustomComponentType").value = compTag;
-          }
+        await populateComponentWarrantyDropdowns(compTag, "editPartWarrantyComponentType");
+        if ($("editPartCustomComponentType")) {
+          const hasPolicyOption = Array.from($("editPartWarrantyComponentType").options).some(o => o.value === compTag && !o.textContent.includes("Custom"));
+          $("editPartCustomComponentType").value = hasPolicyOption ? "" : (compTag || "");
         }
         if ($("editPartFormMessage")) $("editPartFormMessage").textContent = "";
 
@@ -8138,6 +8236,28 @@ function initEvents() {
     const isFunctional = e.target.value === "functional";
     if ($("addPartWarrantyEligible")) {
       $("addPartWarrantyEligible").checked = isFunctional;
+    }
+  });
+
+  $("addPartWarrantyComponentType")?.addEventListener("change", (e) => {
+    if (e.target.value && $("addPartCustomComponentType")) {
+      $("addPartCustomComponentType").value = "";
+    }
+  });
+  $("addPartCustomComponentType")?.addEventListener("input", (e) => {
+    if (e.target.value.trim() && $("addPartWarrantyComponentType")) {
+      $("addPartWarrantyComponentType").value = "";
+    }
+  });
+
+  $("editPartWarrantyComponentType")?.addEventListener("change", (e) => {
+    if (e.target.value && $("editPartCustomComponentType")) {
+      $("editPartCustomComponentType").value = "";
+    }
+  });
+  $("editPartCustomComponentType")?.addEventListener("input", (e) => {
+    if (e.target.value.trim() && $("editPartWarrantyComponentType")) {
+      $("editPartWarrantyComponentType").value = "";
     }
   });
 

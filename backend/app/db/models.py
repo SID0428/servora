@@ -68,6 +68,8 @@ class CompanyBranchModel(Base):
     mobile = Column(String(32), nullable=False)
     address = Column(Text, nullable=False)
     pincode = Column(String(10), nullable=False)
+    latitude = Column(Float, nullable=True)
+    longitude = Column(Float, nullable=True)
     opening_time = Column(String(8), nullable=True, default="09:00")
     closing_time = Column(String(8), nullable=True, default="19:00")
     slot_duration_minutes = Column(Integer, nullable=True, default=120)
@@ -183,6 +185,10 @@ class ServiceRequestModel(Base):
     reopened_at = Column(String(64), nullable=True)
     is_escalated = Column(Boolean, nullable=True, default=False)
     escalation_level = Column(Integer, nullable=True, default=0)
+    is_outstation = Column(Boolean, nullable=True, default=False)
+    distance_km = Column(Float, nullable=True)
+    slot_applicable = Column(Boolean, nullable=True, default=True)
+    outstation_note = Column(String(256), nullable=True)
 
 class JobCardModel(Base):
     __tablename__ = "job_cards"

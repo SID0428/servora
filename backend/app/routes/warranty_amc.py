@@ -247,8 +247,13 @@ def evaluate_part_warranty_status(
         age_days = (today - p_date).days
         age_months = max(0, int(age_days / 30.4375))
 
-        # Check if the part's explicit component tag matches any key in policy's component warranty map
+        # Check if the part's explicit component tag matches any key in policy's component warranty map (case-insensitive)
         comp_duration = comp_warranty_map.get(comp_tag)
+        if comp_duration is None:
+            for k, v in comp_warranty_map.items():
+                if str(k).strip().lower() == comp_tag:
+                    comp_duration = v
+                    break
         if comp_duration is not None:
             try:
                 max_months = int(comp_duration)

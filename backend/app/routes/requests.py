@@ -1,4 +1,5 @@
 import json
+import math
 import random
 import re
 import uuid
@@ -237,7 +238,11 @@ def format_request_detail(req: ServiceRequestModel, db: Session, user: Optional[
         reopened_at=req.reopened_at,
         is_escalated=bool(getattr(req, "is_escalated", False)),
         escalation_level=int(getattr(req, "escalation_level", 0) or 0),
-        has_estimate=bool(db.query(EstimateModel.id).filter(EstimateModel.request_id == req.id).first())
+        has_estimate=bool(db.query(EstimateModel.id).filter(EstimateModel.request_id == req.id).first()),
+        is_outstation=bool(getattr(req, "is_outstation", False)),
+        distance_km=getattr(req, "distance_km", None),
+        slot_applicable=bool(getattr(req, "slot_applicable", True)),
+        outstation_note=getattr(req, "outstation_note", None)
     )
 
 @router.get("", response_model=List[ServiceRequestDetail])
@@ -375,10 +380,135 @@ def generate_dynamic_slots(opening_time: Optional[str] = "09:00", closing_time: 
         slots = STANDARD_TIME_SLOTS
     return slots
 
+LOCAL_SERVICE_RADIUS_KM = 25.0
+
+def calculate_distance_km(
+    lat1: Optional[float],
+    lon1: Optional[float],
+    pin1: Optional[str],
+    lat2: Optional[float],
+    lon2: Optional[float],
+    pin2: Optional[str]
+) -> float:
+    # 1. High precision Haversine if both GPS coordinates are available and non-zero
+    if lat1 is not None and lon1 is not None and lat2 is not None and lon2 is not None:
+        try:
+            f_lat1, f_lon1 = float(lat1), float(lon1)
+            f_lat2, f_lon2 = float(lat2), float(lon2)
+            if not (f_lat1 == 0.0 and f_lon1 == 0.0) and not (f_lat2 == 0.0 and f_lon2 == 0.0):
+                r = 6371.0 # Earth radius in km
+                d_lat = math.radians(f_lat2 - f_lat1)
+                d_lon = math.radians(f_lon2 - f_lon1)
+                a = (
+                    math.sin(d_lat / 2.0) ** 2
+                    + math.cos(math.radians(f_lat1))
+                    * math.cos(math.radians(f_lat2))
+                    * math.sin(d_lon / 2.0) ** 2
+                )
+                c = 2.0 * math.atan2(math.sqrt(a), math.sqrt(max(0.0, 1.0 - a)))
+                return round(r * c, 2)
+        except Exception:
+            pass
+
+    # 2. Postal PIN Code distance heuristics fallback (India 6-digit postal system)
+    clean_p1 = re.sub(r"\D", "", str(pin1 or ""))
+    clean_p2 = re.sub(r"\D", "", str(pin2 or ""))
+    if clean_p1 and clean_p2 and len(clean_p1) == 6 and len(clean_p2) == 6:
+        if clean_p1 == clean_p2:
+            return 0.0
+        # Same sub-district (first 4 digits match) -> ~8 km
+        if clean_p1[:4] == clean_p2[:4]:
+            diff = abs(int(clean_p1) - int(clean_p2))
+            return round(min(12.0, 3.0 + diff * 0.8), 1)
+        # Same district/sorting zone (first 3 digits match) -> ~18 km
+        if clean_p1[:3] == clean_p2[:3]:
+            diff = abs(int(clean_p1) - int(clean_p2))
+            return round(min(24.0, 14.0 + (diff % 100) * 0.1), 1)
+        # Same state postal circle (first 2 digits match) -> ~50-80 km (Outstation)
+        if clean_p1[:2] == clean_p2[:2]:
+            diff = abs(int(clean_p1) - int(clean_p2))
+            return round(min(120.0, 35.0 + (diff % 1000) * 0.08), 1)
+        # Same regional zone (first digit matches) -> ~180 km (Outstation)
+        if clean_p1[:1] == clean_p2[:1]:
+            return 180.0
+        # Different national zones -> ~450 km (Outstation)
+        return 450.0
+
+    return 0.0
+
+
+def find_nearest_brand_branch(
+    company_id: Optional[str],
+    customer_pincode: Optional[str],
+    customer_lat: Optional[float],
+    customer_lon: Optional[float],
+    db: Session
+):
+    """
+    Strictly locates the closest authorized franchise branch belonging ONLY to the appliance's brand.
+    Never assigns to third-party or competitor branches.
+    Returns: (matched_branch, distance_km, is_outstation, slot_applicable, note)
+    """
+    if not company_id:
+        return None, None, False, False, "Brand company not registered. Ticket pending dispatch."
+
+    brand_branches = db.query(CompanyBranchModel).filter(
+        CompanyBranchModel.company_id == company_id
+    ).all()
+
+    if not brand_branches:
+        # Strict brand isolation: no franchise registered for this brand!
+        return None, None, False, False, "No authorized franchise registered for this brand. Direct OEM dispatch required."
+
+    # 1. Check exact PIN match first
+    clean_cust_pin = re.sub(r"\D", "", str(customer_pincode or ""))
+    if clean_cust_pin:
+        for b in brand_branches:
+            b_pin = re.sub(r"\D", "", str(b.pincode or ""))
+            if b_pin and b_pin == clean_cust_pin:
+                return b, 0.0, False, True, None
+
+    # 2. Calculate distance to all brand branches to find the closest one
+    best_branch = None
+    min_dist = float("inf")
+
+    for b in brand_branches:
+        dist = calculate_distance_km(
+            lat1=customer_lat,
+            lon1=customer_lon,
+            pin1=customer_pincode,
+            lat2=getattr(b, "latitude", None),
+            lon2=getattr(b, "longitude", None),
+            pin2=b.pincode
+        )
+        if dist < min_dist:
+            min_dist = dist
+            best_branch = b
+
+    if not best_branch:
+        best_branch = brand_branches[0]
+        min_dist = 0.0
+
+    is_outstation = min_dist > LOCAL_SERVICE_RADIUS_KM
+    slot_applicable = not is_outstation
+    outstation_note = None
+    if is_outstation:
+        outstation_note = (
+            f"Time slot is not applicable here because nearest franchise "
+            f"({best_branch.branch_name}) is far away ({round(min_dist, 1)} km away). "
+            f"Our dispatch team will schedule a flexible doorstep visit directly."
+        )
+
+    return best_branch, round(min_dist, 1), is_outstation, slot_applicable, outstation_note
+
 def calculate_available_slots(
     date_str: str,
     branch_id: Optional[str] = None,
     pincode: Optional[str] = None,
+    company_id: Optional[str] = None,
+    appliance_id: Optional[str] = None,
+    latitude: Optional[float] = None,
+    longitude: Optional[float] = None,
     exclude_request_id: Optional[str] = None,
     db: Session = None
 ) -> AvailableSlotsResponse:
@@ -392,19 +522,106 @@ def calculate_available_slots(
     today = datetime.now().date()
     now_dt = datetime.now()
 
-    # 2. Resolve servicing branch
+    # If rescheduling, load existing request data
+    if exclude_request_id:
+        ex_req = db.query(ServiceRequestModel).filter(ServiceRequestModel.id == exclude_request_id).first()
+        if ex_req:
+            if not company_id:
+                company_id = ex_req.company_id
+            if not branch_id:
+                branch_id = ex_req.branch_id
+            if not pincode:
+                pincode = ex_req.pincode
+            if latitude is None:
+                latitude = ex_req.latitude
+            if longitude is None:
+                longitude = ex_req.longitude
+
+    # Resolve company_id from appliance_id if provided
+    if appliance_id and not company_id:
+        app_obj = db.query(ApplianceModel).filter(ApplianceModel.id == appliance_id).first()
+        if app_obj and app_obj.company_id:
+            company_id = app_obj.company_id
+        elif app_obj and app_obj.brand:
+            comp_u = db.query(UserModel).filter(UserModel.role == "company", UserModel.name.ilike(app_obj.brand.strip())).first()
+            if comp_u:
+                company_id = comp_u.id
+
+    # 2. Strict Brand Branch Isolation & Proximity Lookup
     branch = None
+    distance_km = 0.0
+    is_outstation = False
+    slot_applicable = True
+    outstation_message = None
+
     if branch_id:
         branch = db.query(CompanyBranchModel).filter(CompanyBranchModel.id == branch_id).first()
-    if not branch and pincode:
+        # Verify brand isolation if company_id is known
+        if branch and company_id and branch.company_id != company_id:
+            branch = None
+
+    if not branch and company_id:
+        branch, distance_km, is_outstation, slot_applicable, outstation_message = find_nearest_brand_branch(
+            company_id=company_id,
+            customer_pincode=pincode,
+            customer_lat=latitude,
+            customer_lon=longitude,
+            db=db
+        )
+    elif not branch and not company_id and pincode:
+        # Generic fallback only when company is unspecified
         branch = db.query(CompanyBranchModel).filter(CompanyBranchModel.pincode == pincode.strip()).first()
+        if not branch:
+            branch = db.query(CompanyBranchModel).first()
+
+    # If no branch exists for this brand, strictly do NOT assign third party!
     if not branch:
-        branch = db.query(CompanyBranchModel).first()
+        return AvailableSlotsResponse(
+            date=clean_date_str,
+            branch_id=None,
+            branch_name="Brand OEM Dispatch",
+            slot_applicable=False,
+            is_outstation=False,
+            distance_km=None,
+            outstation_message="No authorized franchise registered in your area. Service will be scheduled directly by the brand OEM.",
+            slots=[
+                TimeSlotInfo(
+                    slot="Flexible / Outstation Visit",
+                    available=True,
+                    capacity=999,
+                    booked=0,
+                    remaining=999,
+                    reason="Direct OEM Scheduling"
+                )
+            ]
+        )
 
-    b_id = branch.id if branch else None
-    b_name = branch.branch_name if branch else "Main Service Center"
+    b_id = branch.id
+    b_name = branch.branch_name
 
-    # Read branch schedule configurations
+    # If nearest franchise is far away (> 25 km), slots are not applicable!
+    if is_outstation or not slot_applicable:
+        return AvailableSlotsResponse(
+            date=clean_date_str,
+            branch_id=b_id,
+            branch_name=b_name,
+            slot_applicable=False,
+            is_outstation=True,
+            distance_km=distance_km,
+            outstation_message=outstation_message or f"Time slot is not applicable here because nearest franchise is far away ({distance_km} km away).",
+            slots=[
+                TimeSlotInfo(
+                    slot="Flexible / Outstation Visit",
+                    available=True,
+                    capacity=999,
+                    booked=0,
+                    remaining=999,
+                    reason="Flexible Outstation Doorstep Visit"
+                )
+            ]
+        )
+
+    # Read branch schedule configurations for local franchise
     opening_time = getattr(branch, "opening_time", None) or "09:00"
     closing_time = getattr(branch, "closing_time", None) or "19:00"
     slot_duration = getattr(branch, "slot_duration_minutes", None) or 120
@@ -461,7 +678,7 @@ def calculate_available_slots(
     if active_tech_count == 0:
         active_tech_count = db.query(TechnicianModel).count() or 1
 
-    # Max 2 concurrent doorstep visits per active technician per 2-hour window, minimum 4 per slot
+    # Max 2 concurrent doorstep visits per active technician per window, minimum 4 per slot
     slot_capacity = max(4, active_tech_count * 2)
 
     # 4. Count existing active bookings for this date and branch
@@ -556,14 +773,23 @@ def calculate_available_slots(
         date=clean_date_str,
         branch_id=b_id,
         branch_name=b_name,
+        slot_applicable=True,
+        is_outstation=False,
+        distance_km=distance_km,
+        outstation_message=None,
         slots=slots_list
     )
+
 
 @router.get("/available-slots", response_model=AvailableSlotsResponse)
 def get_available_slots(
     date: str = Query(..., description="Target appointment date in YYYY-MM-DD format"),
     pincode: Optional[str] = Query(None, description="6-digit customer pincode"),
     branch_id: Optional[str] = Query(None, description="Servicing franchise branch ID"),
+    company_id: Optional[str] = Query(None, description="Brand company ID"),
+    appliance_id: Optional[str] = Query(None, description="Customer appliance ID"),
+    latitude: Optional[float] = Query(None, description="Customer GPS latitude"),
+    longitude: Optional[float] = Query(None, description="Customer GPS longitude"),
     request_id: Optional[str] = Query(None, description="Current request ID when rescheduling"),
     db: Session = Depends(get_db)
 ):
@@ -571,6 +797,10 @@ def get_available_slots(
         date_str=date,
         branch_id=branch_id,
         pincode=pincode,
+        company_id=company_id,
+        appliance_id=appliance_id,
+        latitude=latitude,
+        longitude=longitude,
         exclude_request_id=request_id,
         db=db
     )
@@ -611,46 +841,43 @@ def create_request(payload: ServiceBookingCreate, request: Request, db: Session 
         if pin_match:
             pincode = pin_match.group(1)
 
-    # Route to matching or nearest Franchise branch by PIN code
-    branch_id = None
-    matched_branch = None
-    if pincode and company_id:
-        matched_branch = db.query(CompanyBranchModel).filter(
-            CompanyBranchModel.company_id == company_id,
-            CompanyBranchModel.pincode == pincode
-        ).first()
+    # Strict Brand Franchise Isolation & Proximity Routing
+    # DO NOT send to third-party or competitor branches if no brand franchise exists in this PIN code.
+    # Search for the nearest authorized brand franchise to the customer's address.
+    matched_branch, distance_km, is_outstation, slot_applicable, outstation_note = find_nearest_brand_branch(
+        company_id=company_id,
+        customer_pincode=pincode,
+        customer_lat=payload.latitude,
+        customer_lon=payload.longitude,
+        db=db
+    )
+    branch_id = matched_branch.id if matched_branch else None
 
-    if not matched_branch and company_id:
-        matched_branch = db.query(CompanyBranchModel).filter(
-            CompanyBranchModel.company_id == company_id
-        ).first()
-
-    if not matched_branch and pincode:
-        matched_branch = db.query(CompanyBranchModel).filter(
-            CompanyBranchModel.pincode == pincode
-        ).first()
-
-    if not matched_branch:
-        matched_branch = db.query(CompanyBranchModel).first()
-
-    if matched_branch:
-        branch_id = matched_branch.id
-
-    # Validate appointment timeslot availability & cutoff
-    if payload.preferred_date and payload.preferred_slot:
+    # Handle appointment slot logic:
+    # If the franchise is away from the customer (outstation > 25 km) or no branch exists:
+    # time slots are not applicable.
+    preferred_slot_val = payload.preferred_slot or "10:00 AM - 12:00 PM"
+    if is_outstation or not slot_applicable:
+        slot_applicable = False
+        preferred_slot_val = "Flexible / Outstation Visit"
+    elif payload.preferred_date and payload.preferred_slot:
         slot_res = calculate_available_slots(
             date_str=payload.preferred_date,
             branch_id=branch_id,
             pincode=pincode,
+            company_id=company_id,
+            latitude=payload.latitude,
+            longitude=payload.longitude,
             exclude_request_id=None,
             db=db
         )
-        selected_slot = next((s for s in slot_res.slots if s.slot == payload.preferred_slot), None)
-        if selected_slot and not selected_slot.available:
-            raise HTTPException(
-                status_code=400,
-                detail=f"The selected appointment slot '{payload.preferred_slot}' on {payload.preferred_date} is unavailable ({selected_slot.reason or 'Capacity reached'}). Please choose an open slot."
-            )
+        if slot_res.slot_applicable:
+            selected_slot = next((s for s in slot_res.slots if s.slot == payload.preferred_slot), None)
+            if selected_slot and not selected_slot.available:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"The selected appointment slot '{payload.preferred_slot}' on {payload.preferred_date} is unavailable ({selected_slot.reason or 'Capacity reached'}). Please choose an open slot."
+                )
 
     req_num = random.randint(7850, 9999)
     new_id = f"SR-{req_num}"
@@ -660,19 +887,25 @@ def create_request(payload: ServiceBookingCreate, request: Request, db: Session 
     while completion_otp_code == start_otp_code:
         completion_otp_code = str(random.randint(1000, 9999))
 
+    step1_desc = "Service ticket registered in ServSure platform"
+    if is_outstation and distance_km is not None:
+        step1_desc = f"Service ticket registered · Outstation flexible scheduling ({distance_km} km away)"
+    elif not branch_id:
+        step1_desc = "Service ticket registered · Waiting for Brand OEM dispatch"
+
     initial_timeline = [
         {
             "id": "step_1",
             "title": "Request Created",
             "timestamp": now_str,
-            "description": "Service ticket registered in ServSure platform",
+            "description": step1_desc,
             "state": "completed"
         },
         {
             "id": "step_2",
             "title": "Technician Assignment",
             "timestamp": None,
-            "description": "Awaiting assignment by local franchise",
+            "description": "Awaiting assignment by local franchise" if branch_id else "Awaiting brand central dispatch",
             "state": "pending"
         },
         {
@@ -730,13 +963,17 @@ def create_request(payload: ServiceBookingCreate, request: Request, db: Session 
         status_badge="Pending",
         created_at=now_str,
         appointment_date=payload.preferred_date,
-        appointment_slot=payload.preferred_slot,
+        appointment_slot=preferred_slot_val,
         technician_id=None,
         branch_id=branch_id,
         company_id=company_id,
         pincode=pincode or "201310",
         latitude=payload.latitude,
         longitude=payload.longitude,
+        is_outstation=is_outstation,
+        distance_km=distance_km,
+        slot_applicable=slot_applicable,
+        outstation_note=outstation_note,
         defect_photo=payload.defect_photo,
         verification_otp=start_otp_code,
         start_otp=start_otp_code,
@@ -788,27 +1025,35 @@ def reschedule_request(
         )
 
     # Validate availability of new date & slot
-    slot_res = calculate_available_slots(
-        date_str=payload.new_date,
-        branch_id=req.branch_id,
-        pincode=req.pincode,
-        exclude_request_id=req.id,
-        db=db
-    )
-    matched_slot = next((s for s in slot_res.slots if s.slot == payload.new_slot), None)
-    if not matched_slot:
-        raise HTTPException(status_code=400, detail=f"Invalid slot '{payload.new_slot}'.")
-    if not matched_slot.available:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Slot '{payload.new_slot}' on {payload.new_date} is unavailable: {matched_slot.reason or 'Slot full'}."
+    new_slot_val = payload.new_slot
+    if not req.slot_applicable or req.is_outstation:
+        new_slot_val = "Flexible / Outstation Visit"
+    else:
+        slot_res = calculate_available_slots(
+            date_str=payload.new_date,
+            branch_id=req.branch_id,
+            pincode=req.pincode,
+            company_id=req.company_id,
+            latitude=req.latitude,
+            longitude=req.longitude,
+            exclude_request_id=req.id,
+            db=db
         )
+        if slot_res.slot_applicable:
+            matched_slot = next((s for s in slot_res.slots if s.slot == payload.new_slot), None)
+            if not matched_slot:
+                raise HTTPException(status_code=400, detail=f"Invalid slot '{payload.new_slot}'.")
+            if not matched_slot.available:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Slot '{payload.new_slot}' on {payload.new_date} is unavailable: {matched_slot.reason or 'Slot full'}."
+                )
 
     old_date = req.appointment_date
     old_slot = req.appointment_slot
 
     req.appointment_date = payload.new_date
-    req.appointment_slot = payload.new_slot
+    req.appointment_slot = new_slot_val
 
     now_str = datetime.now().strftime("%d %b %Y, %I:%M %p")
     reason_text = payload.reason.strip() if payload.reason else "Customer requested alternative doorstep slot"

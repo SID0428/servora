@@ -4,8 +4,8 @@ PRODUCTION-GRADE TECHNICAL ARCHITECTURE & DEVELOPER ONBOARDING MANUAL
 ================================================================================
 File: documentation.txt
 Platform: ServSure (formerly Servora)
-Version: 1.7.9 (Production Release - Franchise Operating Hours, Dynamic Time Slots & Interactive Calendar)
-Last Updated: October 25, 2026 (17:30 IST)
+Version: 1.8.1 (Production Release - Dynamic Policy-Driven Component Warranty Tags in Inventory)
+Last Updated: October 25, 2026 (18:45 IST)
 Repository: https://github.com/SID0428/servora.git
 
 Welcome to ServSure! This manual is the definitive, authoritative reference
@@ -335,6 +335,11 @@ All database entities are defined in `backend/app/db/models.py`:
    - `company_id`: String(64), ForeignKey("users.id", CASCADE).
    - UniqueConstraint("company_id", "email").
    - `branch_name`, `manager_name`, `email`, `mobile`, `address`, `pincode`.
+   - `latitude`, `longitude`: Float, Nullable: True (Physical GPS coordinates for proximity routing).
+   - `opening_time`, `closing_time`: String(8) (e.g. '09:00', '19:00').
+   - `slot_duration_minutes`: Integer (60, 90, 120, 180).
+   - `operating_days_json`: Text (JSON array of active working days).
+   - `calendar_exceptions_json`: Text (JSON map of date holiday/open overrides).
 
 7. `TechnicianModel` (`technicians` table):
    - `id`: String(64), Primary Key.
@@ -380,15 +385,19 @@ All database entities are defined in `backend/app/db/models.py`:
     - `customer_id`: String(64), ForeignKey("users.id", CASCADE).
     - `appliance_id`: String(64), ForeignKey("appliances.id", CASCADE).
     - `technician_id`: String(64), Nullable: True.
-    - `branch_id`, `company_id`: String(64), Nullable: True.
-    - `issue_description`: Text.
+    - `branch_id`, `company_id`: String(64), Nullable: True (Strict brand franchise isolation).
+    - `issue`: String(256), `description`: Text.
     - `status`: String(32) ("Request Created", "Assigned", "In Progress", "Completed", "Cancelled").
-    - `latitude`, `longitude`: Float (Customer location).
+    - `latitude`, `longitude`: Float (Customer doorstep GPS location).
     - `tech_latitude`, `tech_longitude`: Float (Live technician coordinates).
     - `start_otp`: String(16) (Customer gives to tech to begin).
     - `completion_otp`: String(16) (Customer gives to tech to close).
     - `is_escalated`: Boolean, `escalation_level`: Integer (1, 2, 3).
     - `payment_status`: String(32) ("Pending", "Paid").
+    - `is_outstation`: Boolean, Default: False (True when nearest brand franchise > 25.0 km).
+    - `distance_km`: Float, Nullable: True (Proximity distance in km to servicing brand franchise).
+    - `slot_applicable`: Boolean, Default: True (False when outstation > 25 km or no brand franchise exists).
+    - `outstation_note`: String(256), Nullable: True (Customer notice explanation).
 
 12. `JobCardModel` (`job_cards` table):
     - `id`: String(64), Primary Key (e.g., `JC-8921`).
@@ -726,23 +735,40 @@ Request Headers:
     - `date` (required, string `YYYY-MM-DD`): Target appointment date.
     - `pincode` (optional, string): Customer pincode used to resolve servicing branch.
     - `branch_id` (optional, string): Servicing franchise branch ID.
+    - `company_id` (optional, string): Brand company ID (enforces brand isolation).
+    - `appliance_id` (optional, string): Customer appliance ID (auto-resolves brand company ID).
+    - `latitude`, `longitude` (optional, float): Customer doorstep GPS coordinates for proximity calculations.
     - `request_id` (optional, string): Active service ticket ID if rescheduling (excludes this ticket's existing slot from count).
-  - Dynamic Capacity & Cutoff Calculation:
-    - Slots: `10:00 AM - 12:00 PM`, `01:00 PM - 03:00 PM`, `04:00 PM - 06:00 PM`, `06:00 PM - 08:00 PM`.
-    - Dynamic Capacity Formula: `max(4, active_technician_count * 2)` jobs per 2-hour window.
+  - Strict Brand Franchise Isolation:
+    - Only branches belonging strictly to the appliance's brand (`CompanyBranchModel.company_id == company_id`) are evaluated.
+    - Never routes to third-party or competitor branches. If brand has zero branches registered, returns `branch_id: null, slot_applicable: false` with notice that the Brand OEM will dispatch directly.
+  - Nearest Brand Franchise Proximity Engine:
+    - If customer's exact PIN code has no branch, evaluates all branches of that brand.
+    - Computes physical distance using the high-precision Haversine formula (when GPS coordinates exist) and India PIN code postal heuristics (same sub-district ~8 km, same district ~18 km, same state circle ~50-80 km, different zones ~180-450 km).
+  - Outstation Service Radius & Slot Inapplicability (`LOCAL_SERVICE_RADIUS_KM = 25.0 km`):
+    - When distance > 25.0 km: marks `slot_applicable: false`, `is_outstation: true`, returns `distance_km` and an outstation message.
+    - Returns a single open appointment window: `Flexible / Outstation Visit` (rigid 1h/2h hourly capacity locks and same-day lead time cuts do not block booking).
+  - Dynamic Capacity & Cutoff Calculation (for Local Visits <= 25.0 km):
+    - Generated from branch operating hours (`opening_time` to `closing_time`) and duration intervals (`slot_duration_minutes`).
+    - Dynamic Capacity Formula: `max(4, active_technician_count * 2)` jobs per appointment window.
     - Past Dates: Strictly blocked (`available: false, reason: "Past dates cannot be scheduled"`).
-    - Same-Day Lead-Time Cutoff: Requires at least 1 hour lead time before slot start (`available: false, reason: "Slot booking cutoff passed (1 hr lead time required)"`).
+    - Calendar Overrides: Checks `calendar_exceptions_json` for store closures/holidays and `operating_days_json` for weekly offs.
+    - Same-Day Lead-Time Cutoff: Requires at least 1 hour lead time before slot start (`available: false, reason: "Booking window closed for this slot"`).
     - Full Bookings: When booked >= capacity (`available: false, reason: "Fully Booked"`).
-  - Returns: `{ "date": "2026-10-25", "branch_id": "br_1", "branch_name": "South Delhi Branch", "slots": [{ "slot": "10:00 AM - 12:00 PM", "available": true, "capacity": 6, "booked": 1, "remaining": 5, "reason": null }] }`.
+  - Returns: `{ "date": "2026-10-25", "branch_id": "br_1", "branch_name": "South Delhi Branch", "slot_applicable": true, "is_outstation": false, "distance_km": 12.2, "outstation_message": null, "slots": [...] }`.
 - `POST /api/requests`:
-  - Body: `{ "appliance_id": "app_1", "issue": "Water leaking", "preferred_date": "2026-10-25", "preferred_slot": "10:00 AM - 12:00 PM", "address": "...", "pincode": "..." }`
-  - Validates preferred slot capacity and same-day lead time cutoff before ticket creation.
+  - Body: `{ "appliance_id": "app_1", "issue": "Water leaking", "preferred_date": "2026-10-25", "preferred_slot": "10:00 AM - 12:00 PM", "address": "...", "pincode": "...", "latitude": 28.4744, "longitude": 77.5040 }`
+  - Strict Brand Isolation & Routing: Automatically invokes `find_nearest_brand_branch()`. Strictly assigns to the closest authorized franchise of that brand.
+  - If brand has no registered branch: leaves `branch_id = null`, ticket goes to Brand OEM queue for manual dispatch.
+  - Outstation Detection: If nearest branch is > 25.0 km away, sets `is_outstation = true`, `slot_applicable = false`, `distance_km = ...`, and `appointment_slot = "Flexible / Outstation Visit"`.
+  - Validates preferred slot capacity and same-day lead time cutoff only when `slot_applicable == true`.
   - Automatically generates 4-digit start and completion OTPs.
 - `POST /api/requests/{request_id}/reschedule`:
   - Body: `{ "new_date": "2026-10-26", "new_slot": "04:00 PM - 06:00 PM", "reason": "Customer unavailable" }`
   - Access Control: Customer can only reschedule their own requests; Franchise/Admin can reschedule assigned tickets.
   - Lifecycle Lock: Rescheduling is strictly rejected with HTTP 400 once doorstep service has commenced or concluded (`Service In Progress`, `Repair in Progress`, `Completed`, `Cancelled`).
-  - Validation: Verifies slot availability and lead-time cutoff on `new_date`.
+  - Outstation Requests: If `slot_applicable == false` or `is_outstation == true`, allows flexible date rescheduling without failing hourly slot capacity checks.
+  - Local Requests: Verifies dynamic slot availability, branch calendar exceptions, and lead-time cutoff on `new_date`.
   - Side Effects: Updates `appointment_date`, `appointment_slot`, appends `Appointment Rescheduled` event to `timeline_json`, and dispatches Brevo transactional notification (`notify_appointment_rescheduled`).
 
 5.7. Customer Appliances & Warranty (`/api/appliances`)
@@ -1403,6 +1429,64 @@ were identified between the initial rough draft documentation and the actual cod
         - Implemented a complete interactive month calendar grid with status badges (Operational 🟢, Weekly Off ⚪, Holiday/Closed 🔴, Special Open 🔵) and modal dialog to add or remove date overrides.
      4. Customer Portal Feedback (`frontend/js/dashboard.js`):
         - Updated slot feedback engine to display exact branch closure reasons (e.g. `❌ Franchise is closed on this day (Diwali Festival)`).
+
+24. Discrepancy: Third-Party Branch Cross-Routing, Missing Proximity Selection & Outstation Slot Inapplicability
+   - Initial State / Observed Issue:
+     When a customer booked a service request in a PIN code where the appliance's brand had no direct franchise registered,
+     the platform previously fell back to matching any arbitrary branch sharing the same PIN code (`CompanyBranchModel.pincode == pincode`)
+     or defaulted to `CompanyBranchModel.first()`. This caused service tickets to leak across brands to third-party or competitor
+     franchises. Furthermore, when the nearest brand branch was far away (outstation > 25 km), the system still enforced rigid
+     1-hour or 2-hour appointment slots with normal capacity checks and lead times, confusing customers and technicians.
+   - Root Causes:
+     1. Unrestricted Cross-Brand Fallback: `create_request` in `requests.py` fell back to any branch in the customer's PIN code
+        or any branch in the database without checking `CompanyBranchModel.company_id == company_id`.
+     2. Lack of Geographic Proximity Search: The routing engine had no distance calculation algorithm to discover the closest
+        authorized branch of that brand when an exact PIN code match was unavailable.
+     3. Rigid Slots for Outstation Visits: The slot booking and detail views lacked an outstation flag and distance radius threshold,
+        failing to inform customers that fixed hourly time slots do not apply to outstation doorstep visits.
+   - Resolution:
+     1. Strict Brand Franchise Isolation:
+        - Query branches strictly filtered by `CompanyBranchModel.company_id == company_id`.
+        - If the brand has zero registered franchise branches, `branch_id` is set to `null` (never routed to a third-party branch).
+          The ticket stays in the Brand OEM's queue for direct dispatch.
+     2. Nearest Brand Franchise Proximity Routing:
+        - Implemented `find_nearest_brand_branch(company_id, customer_pincode, customer_lat, customer_lon, db)` using the
+          great-circle Haversine formula (for GPS coordinates) and India PIN code postal division heuristics.
+        - Assigned the request to the brand's physically closest authorized franchise.
+     3. Outstation Service Radius & Slot Inapplicability (`LOCAL_SERVICE_RADIUS_KM = 25.0 km`):
+        - When distance > 25.0 km, marked `is_outstation = true`, `slot_applicable = false`, and computed `distance_km`.
+        - Bypassed rigid hourly capacity locks and set appointment slot to `"Flexible / Outstation Visit"`.
+     4. Customer Portal UI & Notices (`frontend/js/dashboard.js` & `customer-dashboard.html`):
+        - Added `#bookingSlotNoticeBanner` in booking form alerting customers when nearest franchise is far away.
+        - Added `#outstationNoticeBanner` in Confirmed Appointment Card:
+          `⚠️ Time slot is not applicable here because nearest franchise is far away (<X> km away). Our dispatch team will schedule a flexible doorstep visit directly.`
+        - Rendered flexible visit indicators in request cards list and reschedule modal.
+
+25. Discrepancy: Hardcoded Inventory Component-Specific Warranty Dropdown Options & Policy Synchronization
+   - Initial State / Observed Issue:
+     When adding or editing a spare part in the Central Company Inventory modal (`company-dashboard.html`), the dropdown for
+     'Component-Specific Warranty Tag (Extended Coverage)' displayed fixed hardcoded options (Compressor, Motor, Main PCB,
+     Magnetron, Display / Touch Panel, Drum / Spin Tub) regardless of whether the company or admin had ever defined any such
+     component warranties in their warranty policies.
+   - Root Causes:
+     1. Static HTML options: `<select id="addPartWarrantyComponentType">` and `<select id="editPartWarrantyComponentType">`
+        contained hardcoded dummy `<option>` tags in `frontend/company-dashboard.html`.
+     2. Missing Dynamic Policy Tag Synchronization: The inventory loader (`loadCompanyInventoryAndSpares`) did not fetch or
+        populate active component warranty tags from `/api/warranty-amc/policies`.
+     3. Case-Sensitivity in Backend Engine: Component warranty evaluation relied on direct dictionary lookup (`comp_warranty_map.get(comp_tag)`),
+        which could fail if component tags had casing differences in policy JSON definitions.
+   - Resolution:
+     1. HTML Cleanup: Removed all hardcoded component warranty options from `addPartWarrantyComponentType` and `editPartWarrantyComponentType`
+        in `company-dashboard.html`, retaining only `<option value="">None / Standard Comprehensive Only</option>`.
+     2. Dynamic Tag Extraction & Population (`frontend/js/ops-dashboard.js`):
+        - Implemented `populateComponentWarrantyDropdowns(selectedVal, targetSelectId)` which extracts active component warranty
+          tags exclusively from `companyWarrantyPolicies` (`pol.component_warranty` / `pol.component_warranty_json`).
+        - Integrated with `loadCompanyInventoryAndSpares()`, `openAddPartBtn`, and `data-open-edit-part`.
+        - Options display the component title, coverage months, and policy references dynamically (e.g. `Compressor (120 Months · FY25-26)`).
+        - If no component warranties are configured in any policy, only the `None` option is shown.
+        - Preserves legacy or custom tags when editing existing spare parts.
+     3. Input Synchronization: Added bi-directional clearing between dropdown selections and the custom tag text input.
+     4. Resilient Backend Lookup: Added case-insensitive key matching in `evaluate_warranty()` (`backend/app/routes/warranty_amc.py`).
 
 ================================================================================
 End of Documentation

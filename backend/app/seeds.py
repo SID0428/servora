@@ -166,6 +166,18 @@ def seed_database(db: Session):
     if "escalation_level" not in req_columns:
         with engine.begin() as connection:
             connection.execute(text("ALTER TABLE service_requests ADD COLUMN escalation_level INTEGER DEFAULT 0"))
+    if "is_outstation" not in req_columns:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE service_requests ADD COLUMN is_outstation BOOLEAN DEFAULT 0"))
+    if "distance_km" not in req_columns:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE service_requests ADD COLUMN distance_km FLOAT NULL"))
+    if "slot_applicable" not in req_columns:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE service_requests ADD COLUMN slot_applicable BOOLEAN DEFAULT 1"))
+    if "outstation_note" not in req_columns:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE service_requests ADD COLUMN outstation_note VARCHAR(256) NULL"))
 
     jc_columns = {column["name"] for column in inspect(engine).get_columns("job_cards")}
     if "inspection_fee" not in jc_columns:
@@ -220,6 +232,12 @@ def seed_database(db: Session):
     if "calendar_exceptions_json" not in branch_columns:
         with engine.begin() as connection:
             connection.execute(text("ALTER TABLE company_branches ADD COLUMN calendar_exceptions_json TEXT NULL"))
+    if "latitude" not in branch_columns:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE company_branches ADD COLUMN latitude FLOAT NULL"))
+    if "longitude" not in branch_columns:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE company_branches ADD COLUMN longitude FLOAT NULL"))
 
     # 1. Seed Operational Users if not present
     if not db.query(UserModel).filter(UserModel.role != "customer").first():

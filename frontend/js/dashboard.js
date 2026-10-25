@@ -812,13 +812,13 @@ function renderRequests() {
     } else {
       activeList.innerHTML = listToRender
         .map((request) => {
+          const isOutstation = Boolean(request.is_outstation || request.slot_applicable === false);
+          const slotText = isOutstation
+            ? `Flexible Visit · Slot not applicable${request.distance_km ? ` (${request.distance_km} km)` : ""}`
+            : (request.appointment_slot || "Scheduled");
           const appointmentInfo = request.technician
-            ? `Technician assigned · ${formatDate(
-                request.appointment_date
-              )}, ${request.appointment_slot || "4:00 PM"}`
-            : `${formatDate(request.appointment_date)} · ${
-                request.appointment_slot || "Scheduled"
-              }`;
+            ? `Technician assigned · ${formatDate(request.appointment_date)}, ${slotText}`
+            : `${formatDate(request.appointment_date)} · ${slotText}`;
           return `
             <div class="request-card bg-white rounded-2xl p-4 border border-slate-100 shadow-sm space-y-3 cursor-pointer hover:border-blue-200 transition group" data-request-id="${escapeHtml(
               request.id
@@ -911,8 +911,8 @@ function renderRequests() {
           </td>
           <td class="whitespace-nowrap px-4 py-4 text-slate-600">
             ${escapeHtml(formatDate(request.appointment_date))}
-            <span class="mt-0.5 block text-[10px] text-slate-400">${escapeHtml(
-              request.appointment_slot || ""
+            <span class="mt-0.5 block text-[10px] ${request.is_outstation || request.slot_applicable === false ? 'text-amber-600 font-semibold' : 'text-slate-400'}">${escapeHtml(
+              (request.is_outstation || request.slot_applicable === false) ? 'Flexible Visit · Slot not applicable' : (request.appointment_slot || "")
             )}</span>
           </td>
           <td class="whitespace-nowrap px-4 py-4">
@@ -1200,9 +1200,26 @@ function populateTracking(request) {
     }
   }
 
+  const isOutstation = Boolean(request.is_outstation || request.slot_applicable === false);
+  const outstationBanner = $("outstationNoticeBanner");
+  const outstationText = $("outstationNoticeText");
+  if (outstationBanner && outstationText) {
+    if (isOutstation) {
+      outstationBanner.classList.remove("hidden");
+      const distStr = request.distance_km ? `nearest franchise is far away (${request.distance_km} km away)` : "nearest franchise is far away";
+      outstationText.textContent = request.outstation_note || `Time slot is not applicable here because ${distStr}. Our dispatch team will schedule a flexible doorstep visit directly.`;
+    } else {
+      outstationBanner.classList.add("hidden");
+    }
+  }
+
   if ($("trackingAppointmentText")) {
     const isRescheduled = (request.timeline || []).some(t => t.title === "Appointment Rescheduled");
-    $("trackingAppointmentText").innerHTML = `${formatDate(request.appointment_date)} • ${request.appointment_slot || "Scheduled Slot"}${isRescheduled ? ' <span class="inline-flex items-center text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200 ml-1">🔄 Rescheduled</span>' : ''}`;
+    if (isOutstation) {
+      $("trackingAppointmentText").innerHTML = `${formatDate(request.appointment_date)} • <span class="text-amber-800 font-semibold">Flexible Visit (Time slot not applicable)</span>${isRescheduled ? ' <span class="inline-flex items-center text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200 ml-1">🔄 Rescheduled</span>' : ''}`;
+    } else {
+      $("trackingAppointmentText").innerHTML = `${formatDate(request.appointment_date)} • ${request.appointment_slot || "Scheduled Slot"}${isRescheduled ? ' <span class="inline-flex items-center text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200 ml-1">🔄 Rescheduled</span>' : ''}`;
+    }
   }
   if ($("rescheduleBtn")) {
     const lockedStates = ["Service In Progress", "Repair in Progress", "Completed", "Cancelled"];
@@ -1699,8 +1716,13 @@ window.openBookingModal = function (applianceId = "") {
   syncBookingAddress();
   openDialog("bookingDialog");
   if ($("bookDate") && $("bookSlot")) {
+    const lat = $("bookLat")?.value ? parseFloat($("bookLat").value) : null;
+    const lng = $("bookLng")?.value ? parseFloat($("bookLng").value) : null;
     loadAvailableSlots($("bookDate").value, $("bookSlot"), {
-      pincode: $("bookPincode")?.value || currentUser?.pincode
+      pincode: $("bookPincode")?.value || currentUser?.pincode,
+      applianceId: $("bookApplianceSelect")?.value || applianceId,
+      latitude: lat,
+      longitude: lng
     });
   }
 };
@@ -3257,11 +3279,21 @@ document.addEventListener("DOMContentLoaded", async () => {
   if ($("bookDate")) {
     $("bookDate").min = localToday;
     $("bookDate").value = localToday;
-    $("bookDate").addEventListener("change", () => {
+    const triggerBookingSlotCheck = () => {
+      if (!$("bookDate") || !$("bookSlot")) return;
+      const lat = $("bookLat")?.value ? parseFloat($("bookLat").value) : null;
+      const lng = $("bookLng")?.value ? parseFloat($("bookLng").value) : null;
       loadAvailableSlots($("bookDate").value, $("bookSlot"), {
-        pincode: $("bookPincode")?.value || currentUser?.pincode
+        pincode: $("bookPincode")?.value || currentUser?.pincode,
+        applianceId: $("bookApplianceSelect")?.value,
+        latitude: lat,
+        longitude: lng
       });
-    });
+    };
+    $("bookDate").addEventListener("change", triggerBookingSlotCheck);
+    if ($("bookApplianceSelect")) {
+      $("bookApplianceSelect").addEventListener("change", triggerBookingSlotCheck);
+    }
   }
 
   // Reschedule Modal listeners
@@ -3281,7 +3313,11 @@ document.addEventListener("DOMContentLoaded", async () => {
       await loadAvailableSlots($("rescheduleDate").value, $("rescheduleSlotSelect"), {
         requestId: reqId,
         feedbackEl: $("rescheduleSlotFeedback"),
-        branchId: req?.branch_id
+        branchId: req?.branch_id,
+        pincode: req?.pincode,
+        applianceId: req?.appliance_id,
+        latitude: req?.latitude,
+        longitude: req?.longitude
       });
     });
   }
@@ -3407,7 +3443,16 @@ window.respondToCustomerEstimate = async function(action) {
 // ==========================================
 async function loadAvailableSlots(dateStr, selectEl, options = {}) {
   if (!dateStr || !selectEl) return;
-  const { requestId = null, branchId = null, pincode = null, selectedSlot = null, feedbackEl = null } = options;
+  const {
+    requestId = null,
+    branchId = null,
+    pincode = null,
+    applianceId = null,
+    latitude = null,
+    longitude = null,
+    selectedSlot = null,
+    feedbackEl = null
+  } = options;
 
   const currentVal = selectEl.value;
   selectEl.disabled = true;
@@ -3418,9 +3463,39 @@ async function loadAvailableSlots(dateStr, selectEl, options = {}) {
     if (requestId) params.append("request_id", requestId);
     if (branchId) params.append("branch_id", branchId);
     if (pincode) params.append("pincode", pincode);
+    if (applianceId) params.append("appliance_id", applianceId);
+    if (latitude !== null && latitude !== undefined) params.append("latitude", latitude);
+    if (longitude !== null && longitude !== undefined) params.append("longitude", longitude);
 
     const data = await readApiJson(`/api/requests/available-slots?${params.toString()}`);
     selectEl.innerHTML = "";
+
+    // Outstation Notice Banner check (for booking dialog)
+    const noticeBanner = $("bookingSlotNoticeBanner");
+    const noticeText = $("bookingSlotNoticeText");
+    const isOutstation = Boolean(data.slot_applicable === false || data.is_outstation);
+
+    if (noticeBanner && noticeText) {
+      if (isOutstation) {
+        noticeBanner.classList.remove("hidden");
+        const distNotice = data.distance_km ? `nearest franchise is far away (${data.distance_km} km away)` : "nearest franchise is far away";
+        noticeText.textContent = data.outstation_message || `Time slot is not applicable here because ${distNotice}. Our dispatch team will schedule a flexible doorstep visit directly.`;
+      } else {
+        noticeBanner.classList.add("hidden");
+      }
+    }
+
+    if (isOutstation) {
+      selectEl.innerHTML = `<option value="Flexible / Outstation Visit" selected>Flexible / Outstation Visit (Time slot not applicable)</option>`;
+      if (feedbackEl) {
+        feedbackEl.classList.remove("hidden");
+        const dot = feedbackEl.querySelector("#rescheduleSlotFeedbackDot");
+        const text = feedbackEl.querySelector("#rescheduleSlotFeedbackText");
+        if (dot) dot.className = "w-2 h-2 rounded-full bg-amber-500 shrink-0";
+        if (text) text.textContent = `Flexible Scheduling · Fixed slots not applicable (${data.distance_km ? data.distance_km + ' km' : 'outstation'})`;
+      }
+      return data;
+    }
 
     const slots = data.slots || [];
     if (!slots.length) {
@@ -3511,7 +3586,11 @@ window.openRescheduleModal = async function(requestId) {
       requestId: req.id,
       selectedSlot: req.appointment_slot,
       feedbackEl: $("rescheduleSlotFeedback"),
-      branchId: req.branch_id
+      branchId: req.branch_id,
+      pincode: req.pincode,
+      applianceId: req.appliance_id,
+      latitude: req.latitude,
+      longitude: req.longitude
     });
   }
 };

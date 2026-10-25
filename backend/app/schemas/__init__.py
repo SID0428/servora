@@ -274,6 +274,10 @@ class ServiceRequestDetail(BaseModel):
     is_escalated: Optional[bool] = False
     escalation_level: Optional[int] = 0
     has_estimate: Optional[bool] = False
+    is_outstation: Optional[bool] = False
+    distance_km: Optional[float] = None
+    slot_applicable: Optional[bool] = True
+    outstation_note: Optional[str] = None
 
 class ServiceBookingCreate(BaseModel):
     appliance_id: str
@@ -300,6 +304,10 @@ class AvailableSlotsResponse(BaseModel):
     date: str
     branch_id: Optional[str] = None
     branch_name: Optional[str] = None
+    slot_applicable: Optional[bool] = True
+    is_outstation: Optional[bool] = False
+    distance_km: Optional[float] = None
+    outstation_message: Optional[str] = None
     slots: List[TimeSlotInfo]
 
 class RescheduleRequestPayload(BaseModel):
