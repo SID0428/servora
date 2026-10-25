@@ -155,12 +155,14 @@ def add_appliance(payload: NewApplianceCreate, request: Request, db: Session = D
             w_start = parsed_dt.strftime("%d %b %Y")
             w_end = (parsed_dt + timedelta(days=warranty_months * 30)).strftime("%d %b %Y")
     
-    # 3. If invoice attached -> Pending Verification by Company OEM; if not -> Invoice Required
-    inv_url = payload.invoice_url.strip() if payload.invoice_url else None
-    if inv_url:
-        w_status = "Pending Verification"
-    else:
-        w_status = "Invoice Required"
+    # 3. Invoice is mandatory for customer appliance registration
+    inv_url = payload.invoice_url.strip() if (payload.invoice_url and payload.invoice_url.strip()) else None
+    if not inv_url:
+        raise HTTPException(
+            status_code=422,
+            detail="Invoice upload is mandatory. Please upload a clear copy of your purchase invoice (image or PDF)."
+        )
+    w_status = "Pending Verification"
 
     new_app = ApplianceModel(
         id=f"app_{uuid.uuid4().hex[:6]}",

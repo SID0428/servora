@@ -148,7 +148,7 @@ class NewApplianceCreate(BaseModel):
     appliance_name: Optional[str] = None
     model_no: str
     serial_no: Optional[str] = None
-    invoice_url: Optional[str] = None
+    invoice_url: str = Field(min_length=1, description="Uploaded purchase invoice URL (Mandatory)")
     purchase_date: Optional[str] = None
 
 class CompanyApplianceCreate(BaseModel):

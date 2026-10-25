@@ -744,6 +744,7 @@ async function handleInvoiceFileUpload(event) {
   }
 
   if ($("invoiceFileNameDisplay")) $("invoiceFileNameDisplay").textContent = file.name;
+  if ($("triggerInvoiceUploadBtn")) $("triggerInvoiceUploadBtn").classList.remove("ring-2", "ring-rose-500", "border-rose-400");
   if ($("invoiceUploadProgress")) $("invoiceUploadProgress").classList.remove("hidden");
   if ($("invoiceUploadedNotice")) $("invoiceUploadedNotice").classList.add("hidden");
   if ($("applianceMessage")) $("applianceMessage").textContent = "";
@@ -1736,6 +1737,7 @@ window.openAddApplianceModal = function () {
     $("newAppPurchaseDate").value = todayStr;
   }
   if ($("invoiceFileNameDisplay")) $("invoiceFileNameDisplay").textContent = "No file chosen";
+  if ($("triggerInvoiceUploadBtn")) $("triggerInvoiceUploadBtn").classList.remove("ring-2", "ring-rose-500", "border-rose-400");
   if ($("invoiceUploadedNotice")) $("invoiceUploadedNotice").classList.add("hidden");
   if ($("invoiceUploadProgress")) $("invoiceUploadProgress").classList.add("hidden");
   if ($("newAppInvoiceUrl")) $("newAppInvoiceUrl").value = "";
@@ -1993,6 +1995,21 @@ async function submitAppliance(event) {
     button.textContent = "Save appliance & Register Warranty";
     return;
   }
+  if ($("invoiceUploadProgress") && !$("invoiceUploadProgress").classList.contains("hidden")) {
+    if ($("applianceMessage")) $("applianceMessage").textContent = "Please wait for your invoice upload to complete before saving.";
+    button.disabled = false;
+    button.textContent = "Save appliance & Register Warranty";
+    return;
+  }
+  if (!invoiceUrl) {
+    if ($("applianceMessage")) $("applianceMessage").textContent = "Please upload a copy of your purchase invoice (image or PDF) to proceed.";
+    if ($("triggerInvoiceUploadBtn")) {
+      $("triggerInvoiceUploadBtn").classList.add("ring-2", "ring-rose-500", "border-rose-400");
+    }
+    button.disabled = false;
+    button.textContent = "Save appliance & Register Warranty";
+    return;
+  }
 
   const catalogItem = currentCompanyCatalog.appliances?.find((a) => a.id === appId);
   const applianceName = catalogItem ? catalogItem.appliance_name : "";
@@ -2015,15 +2032,14 @@ async function submitAppliance(event) {
     closeDialog("applianceDialog");
     $("applianceForm").reset();
     if ($("invoiceFileNameDisplay")) $("invoiceFileNameDisplay").textContent = "No file chosen";
+    if ($("triggerInvoiceUploadBtn")) $("triggerInvoiceUploadBtn").classList.remove("ring-2", "ring-rose-500", "border-rose-400");
     if ($("invoiceUploadedNotice")) $("invoiceUploadedNotice").classList.add("hidden");
     if ($("newAppInvoiceUrl")) $("newAppInvoiceUrl").value = "";
     if ($("invoiceBtnLabel")) $("invoiceBtnLabel").textContent = "Choose Invoice File";
     await loadDashboardData();
     if ($("bookApplianceSelect")) $("bookApplianceSelect").value = appliance.id;
     showToast(
-      invoiceUrl
-        ? `${appliance.brand} ${appliance.category} registered! Warranty submitted for OEM verification.`
-        : `${appliance.brand} ${appliance.category} registered! Upload invoice anytime to activate warranty.`,
+      `${appliance.brand} ${appliance.category} registered! Warranty submitted for OEM verification.`,
       "success"
     );
   } catch (error) {

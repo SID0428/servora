@@ -4,8 +4,8 @@ PRODUCTION-GRADE TECHNICAL ARCHITECTURE & DEVELOPER ONBOARDING MANUAL
 ================================================================================
 File: documentation.txt
 Platform: ServSure (formerly Servora)
-Version: 1.8.4 (Production Release - Default Tax-Inclusive Inventory Architecture)
-Last Updated: October 25, 2026 (21:45 IST)
+Version: 1.8.5 (Production Release - Mandatory Customer Purchase Invoice Registration)
+Last Updated: October 25, 2026 (21:50 IST)
 Repository: https://github.com/SID0428/servora.git
 
 Welcome to ServSure! This manual is the definitive, authoritative reference
@@ -780,8 +780,8 @@ Request Headers:
   - Returns `{ "brands": ["..."], "appliances": [{ "id", "appliance_name", "brand", "category", "model_numbers": [...], "warranty_months": 12 }] }`
   - Used for cascading dropdowns in customer registration flow.
 - `POST /api/appliances`:
-  - Body: `{ "company_id": "comp_1", "brand": "Crompton", "category": "Air Conditioner", "appliance_name": "Inverter Split AC 1.5 Ton", "model_no": "CRO-AC15-INV", "serial_no": "SN-2026-9921", "invoice_url": "data:image/png;base64,...", "purchase_date": "2025-01-15" }`
-  - Validates company selection and registers customer appliance. Automatically queries `CompanyApplianceCatalogModel` to assign standard warranty months (default 12), sets `warranty_start_date` and `warranty_end_date` relative to `purchase_date`, and sets `warranty_status` to `"Pending Verification"` (or `"Invoice Required"` if invoice is missing). Single-step registration covers both appliance registration and warranty initiation.
+  - Body: `{ "company_id": "comp_1", "brand": "Crompton", "category": "Air Conditioner", "appliance_name": "Inverter Split AC 1.5 Ton", "model_no": "CRO-AC15-INV", "serial_no": "SN-2026-9921", "invoice_url": "https://...", "purchase_date": "2025-01-15" }`
+  - Validates company selection, purchase date, and mandatory `invoice_url` (returns `HTTP 422 Unprocessable Entity` if invoice is omitted or empty). Automatically queries `CompanyApplianceCatalogModel` to assign standard warranty months (default 12), sets `warranty_start_date` and `warranty_end_date` relative to `purchase_date`, and sets `warranty_status` to `"Pending Verification"` by the brand OEM.
 - `PUT /api/appliances/{appliance_id}/invoice`:
   - Body: `{ "invoice_url": "data:image/png;base64,...", "purchase_date": "2025-01-15" }`
   - Allows customer to re-upload clear invoice or correct purchase date if rejected by OEM or previously missing. Automatically resets `warranty_status` to `"Pending Verification"` and clears `warranty_rejection_reason`.
@@ -1616,6 +1616,29 @@ were identified between the initial rough draft documentation and the actual cod
         - Updated `openAddPartBtn` listener to reset `addPartIsTaxInclusive.value = "true"`.
         - Updated `addPartForm` submit listener to evaluate `$("addPartIsTaxInclusive").value !== "false"`.
         - Admins and company managers retain complete flexibility to toggle to `Excluded (+ GST Extra)` whenever cataloguing wholesale/B2B parts.
+
+31. Discrepancy: Optional Invoice Upload During Customer Appliance Registration
+   - Initial State / Observed Issue:
+     When customers added appliances via `customer-dashboard.html` or `POST /api/appliances`, invoice attachment was optional.
+     Registering without an invoice flagged the unit as `warranty_status = "Invoice Required"`, resulting in delayed OEM
+     warranty claim validations and requiring technicians to manually request purchase receipts on doorstep visits.
+   - Root Causes:
+     1. Pydantic Schema: `NewApplianceCreate.invoice_url` in `backend/app/schemas/__init__.py` was declared as `Optional[str] = None`.
+     2. Route Logic: `add_appliance` in `backend/app/routes/appliances.py` permitted missing invoice URLs and defaulted status to `"Invoice Required"`.
+     3. Portal UI & Validation: Step 6 in `customer-dashboard.html` marked the invoice upload as optional in its label without a required indicator,
+        and `submitAppliance` in `frontend/js/dashboard.js` submitted payloads with `invoice_url = null` without prompting the user.
+   - Resolution:
+     1. Schema Validation (`backend/app/schemas/__init__.py`):
+        - Updated `NewApplianceCreate.invoice_url: str = Field(min_length=1, description="Uploaded purchase invoice URL (Mandatory)")`.
+     2. Backend Route Enactment (`backend/app/routes/appliances.py`):
+        - `add_appliance` strictly requires `invoice_url` (strips whitespace and returns `HTTP 422 Unprocessable Entity` if missing or blank).
+        - Registered appliances now immediately enter `"Pending Verification"` by the company OEM.
+     3. Customer Portal UI & Client Validation (`customer-dashboard.html` & `frontend/js/dashboard.js`):
+        - Updated Step 6 header in `customer-dashboard.html` with a mandatory asterisk (`6. Purchase Invoice <span class="text-rose-500">*</span>`)
+          and explicit `(Mandatory — Image or PDF, max 5MB)` helper copy.
+        - `submitAppliance` in `dashboard.js` validates that `invoiceUrl` is present and that an in-progress file upload has finished;
+          highlights the upload button with a rose ring/border if attempted without an uploaded invoice.
+        - Modal reset clears any error highlight upon dialog opening or file selection.
 
 ==================================================
 End of Documentation
