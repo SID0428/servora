@@ -286,11 +286,25 @@ function setProfile() {
   if ($("todayLabel")) $("todayLabel").textContent = new Intl.DateTimeFormat("en-IN", { dateStyle: "medium" }).format(new Date());
 }
 function greeting() { const hour = new Date().getHours(); return hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening"; }
+function safeSessionGet(key) {
+  try { return typeof sessionStorage !== "undefined" ? sessionStorage.getItem(key) : null; } catch { return null; }
+}
+function safeSessionSet(key, val) {
+  try { if (typeof sessionStorage !== "undefined") sessionStorage.setItem(key, val); } catch {}
+}
+
 function getPageFromHash() {
   const hash = (window.location.hash || "").replace(/^#/, "").trim().toLowerCase();
-  if (!hash) return null;
   const navItems = role === "technician" ? [...config.nav, "Route Map"] : config.nav;
-  return navItems.find((item) => item.toLowerCase().replaceAll(/[^a-z0-9]+/g, "-") === hash) || null;
+  if (hash) {
+    const match = navItems.find((item) => item.toLowerCase().replaceAll(/[^a-z0-9]+/g, "-") === hash);
+    if (match) return match;
+  }
+  const saved = safeSessionGet(`servsure_active_page_${role}`);
+  if (saved && navItems.includes(saved)) {
+    return saved;
+  }
+  return null;
 }
 
 function buildNav() {
@@ -313,13 +327,15 @@ function buildNav() {
       return;
     }
     const slug = pageName.toLowerCase().replaceAll(/[^a-z0-9]+/g, "-");
-    if (window.location.hash !== `#${slug}`) {
-      window.location.hash = slug;
-    }
     document.querySelectorAll(".nav-link").forEach((item) => item.classList.remove("active"));
     link.classList.add("active");
-    loadWorkspacePageData(pageName);
     document.querySelector(".ops-sidebar")?.classList.remove("open");
+    safeSessionSet(`servsure_active_page_${role}`, pageName);
+    if (window.location.hash !== `#${slug}`) {
+      window.location.hash = slug;
+    } else {
+      loadWorkspacePageData(pageName);
+    }
   }));
 }
 
@@ -330,6 +346,7 @@ if (typeof window !== "undefined") {
       document.querySelectorAll(".nav-link").forEach((link) => {
         link.classList.toggle("active", link.dataset.page === page);
       });
+      safeSessionSet(`servsure_active_page_${role}`, page);
       loadWorkspacePageData(page);
     }
   });
@@ -337,6 +354,11 @@ if (typeof window !== "undefined") {
 function renderPage(page) {
   if ($("crumbTitle")) $("crumbTitle").textContent = page;
   document.querySelectorAll(".nav-link").forEach((link) => link.classList.toggle("active", link.dataset.page === page));
+  safeSessionSet(`servsure_active_page_${role}`, page);
+  const slug = page.toLowerCase().replaceAll(/[^a-z0-9]+/g, "-");
+  if (typeof window !== "undefined" && window.location.hash !== `#${slug}`) {
+    history.replaceState(null, "", `#${slug}`);
+  }
   const admin = role === "admin";
   setHidden("addCompanyButton", !admin);
   setHidden("addBranchButton", !(role === "company" && page === "Branches"));
@@ -550,6 +572,15 @@ function compileFranchiseCustomersFromRequests() {
 }
 
 async function loadFranchiseCustomers() {
+  if (franchiseCustomers && franchiseCustomers.length > 0) {
+    renderFranchiseCustomers();
+  } else {
+    try {
+      const c = localStorage.getItem("servora_cache_franchise_customers");
+      if (c) franchiseCustomers = JSON.parse(c);
+      if (franchiseCustomers.length > 0) renderFranchiseCustomers();
+    } catch {}
+  }
   try {
     franchiseCustomers = await franchiseApi("/customers");
     try { localStorage.setItem("servora_cache_franchise_customers", JSON.stringify(franchiseCustomers)); } catch {}
@@ -920,10 +951,13 @@ function renderHelpCenterView() {
 }
 
 async function loadCompanyAppliances() {
+  if (companyAppliances && companyAppliances.length > 0) {
+    renderCompanyAppliances();
+  }
   try {
     companyAppliances = await companyApi("/appliances");
   } catch (error) {
-    companyAppliances = [];
+    if (!companyAppliances || companyAppliances.length === 0) companyAppliances = [];
     showToast(`Could not load appliances: ${error.message}`, "error");
   }
   renderCompanyAppliances();
@@ -2012,6 +2046,9 @@ async function generalApi(path, options = {}) {
   return data;
 }
 async function loadFranchiseTechnicians() {
+  if (technicians && technicians.length > 0) {
+    renderFranchiseTechnicians();
+  }
   try {
     const raw = await franchiseApi("/technicians");
     technicians = Array.isArray(raw)
@@ -2024,29 +2061,38 @@ async function loadFranchiseTechnicians() {
         })
       : [];
   } catch (error) {
-    technicians = [];
+    if (!technicians || technicians.length === 0) technicians = [];
     showToast(`Technicians could not load: ${error.message}`, "error");
   }
   renderFranchiseTechnicians();
 }
 async function loadCompanyBranches() {
+  if (branches && branches.length > 0) {
+    renderCompanyBranches();
+  }
   try {
     branches = await companyApi("/branches");
     renderCompanyBranches();
   } catch (error) {
     renderCompanyBranches();
-    $("requestRows").innerHTML = `<tr><td class="empty-row" colspan="6">${safe(error.message)}. Try again after confirming your company session.</td></tr>`;
-    $("requestCount").textContent = "Could not load branches";
+    if (!branches || branches.length === 0) {
+      $("requestRows").innerHTML = `<tr><td class="empty-row" colspan="6">${safe(error.message)}. Try again after confirming your company session.</td></tr>`;
+      $("requestCount").textContent = "Could not load branches";
+    }
     showToast(`Branches could not load: ${error.message}`, "error");
   }
 }
 
 async function loadCompanyTechnicians() {
+  if (companyTechnicians && companyTechnicians.length > 0) {
+    renderCompanyTechnicians();
+  }
   try {
-    if (!branches || branches.length === 0) {
-      try { branches = await companyApi("/branches"); } catch (_) {}
-    }
-    const raw = await companyApi("/technicians");
+    const [branchData, raw] = await Promise.all([
+      (!branches || branches.length === 0) ? companyApi("/branches").catch(() => []) : Promise.resolve(branches),
+      companyApi("/technicians")
+    ]);
+    if (branchData && branchData.length > 0) branches = branchData;
     companyTechnicians = Array.isArray(raw)
       ? raw.filter((item) => {
           const nameLower = (item.name || "").toLowerCase().trim();
@@ -2058,12 +2104,14 @@ async function loadCompanyTechnicians() {
       : [];
     renderCompanyTechnicians();
   } catch (error) {
-    companyTechnicians = [];
-    renderCompanyTechnicians();
-    if ($("requestRows")) {
-      $("requestRows").innerHTML = `<tr><td class="empty-row" colspan="8">${safe(error.message)}. Try again after confirming your company session.</td></tr>`;
+    if (!companyTechnicians || companyTechnicians.length === 0) {
+      companyTechnicians = [];
+      renderCompanyTechnicians();
+      if ($("requestRows")) {
+        $("requestRows").innerHTML = `<tr><td class="empty-row" colspan="8">${safe(error.message)}. Try again after confirming your company session.</td></tr>`;
+      }
+      if ($("requestCount")) $("requestCount").textContent = "Could not load technicians";
     }
-    if ($("requestCount")) $("requestCount").textContent = "Could not load technicians";
     showToast(`Technicians could not load: ${error.message}`, "error");
   }
 }
@@ -2266,14 +2314,19 @@ function renderCompanyTechnicians() {
 }
 
 async function loadCompanyCustomers() {
+  if (companyCustomers && companyCustomers.length > 0) {
+    renderCompanyCustomers();
+  }
   try {
     companyCustomers = await companyApi("/customers");
     renderCompanyCustomers();
   } catch (error) {
-    companyCustomers = [];
-    renderCompanyCustomers();
-    $("requestRows").innerHTML = `<tr><td class="empty-row" colspan="7">${safe(error.message)}. Try again after confirming your company session.</td></tr>`;
-    $("requestCount").textContent = "Could not load customers";
+    if (!companyCustomers || companyCustomers.length === 0) {
+      companyCustomers = [];
+      renderCompanyCustomers();
+      $("requestRows").innerHTML = `<tr><td class="empty-row" colspan="7">${safe(error.message)}. Try again after confirming your company session.</td></tr>`;
+      $("requestCount").textContent = "Could not load customers";
+    }
     showToast(`Customers could not load: ${error.message}`, "error");
   }
 }
@@ -2700,6 +2753,17 @@ function initCustomerDetailModalEvents() {
 // Phase 2: Franchise Warehouse & Spares Inventory
 // ==========================================
 async function loadFranchiseInventory() {
+  if (franchiseInventory && franchiseInventory.length > 0) {
+    renderFranchiseInventory();
+  } else {
+    try {
+      const c1 = localStorage.getItem("servora_cache_inventory");
+      const c2 = localStorage.getItem("servora_cache_part_requests_franchise");
+      if (c1) franchiseInventory = JSON.parse(c1);
+      if (c2) franchisePartRequests = JSON.parse(c2);
+      if (franchiseInventory.length > 0) renderFranchiseInventory();
+    } catch {}
+  }
   try {
     const branchId = user?.branch_id || user?.id || "me";
     const [invData, reqsData, catalogData, serializedData] = await Promise.all([
@@ -3346,6 +3410,19 @@ function initRestockModalEvents() {
 // Phase 2: OEM Warranty Claims Management
 // ==========================================
 async function loadCompanyWarrantyClaims() {
+  if (companyWarrantyClaims && companyWarrantyClaims.length > 0) {
+    renderCompanyWarrantyClaims();
+  } else {
+    const cachedClaims = getUserCache("servsure_cache_claims");
+    const cachedRegs = getUserCache("servsure_cache_warranty_registrations");
+    const cachedPols = getUserCache("servsure_cache_warranty_policies");
+    if (cachedClaims && Array.isArray(cachedClaims)) companyWarrantyClaims = cachedClaims;
+    if (cachedRegs && Array.isArray(cachedRegs)) companyWarrantyRegistrations = cachedRegs;
+    if (cachedPols && Array.isArray(cachedPols)) companyWarrantyPolicies = cachedPols;
+    if (companyWarrantyClaims.length > 0 || companyWarrantyRegistrations.length > 0) {
+      renderCompanyWarrantyClaims();
+    }
+  }
   try {
     const [claims, registrations, policies] = await Promise.all([
       generalApi("/api/warranty-amc/claims").catch(() => []),
@@ -3360,14 +3437,16 @@ async function loadCompanyWarrantyClaims() {
     setUserCache("servsure_cache_warranty_policies", companyWarrantyPolicies);
     renderCompanyWarrantyClaims();
   } catch (error) {
-    companyWarrantyClaims = [];
-    companyWarrantyRegistrations = [];
-    companyWarrantyPolicies = [];
-    renderCompanyWarrantyClaims();
-    if ($("requestRows")) {
-      $("requestRows").innerHTML = `<tr><td class="empty-row" colspan="7">${safe(error.message)}. Check your company session and try again.</td></tr>`;
+    if (!companyWarrantyClaims || companyWarrantyClaims.length === 0) {
+      companyWarrantyClaims = [];
+      companyWarrantyRegistrations = [];
+      companyWarrantyPolicies = [];
+      renderCompanyWarrantyClaims();
+      if ($("requestRows")) {
+        $("requestRows").innerHTML = `<tr><td class="empty-row" colspan="7">${safe(error.message)}. Check your company session and try again.</td></tr>`;
+      }
+      if ($("requestCount")) $("requestCount").textContent = "Could not load warranty data";
     }
-    if ($("requestCount")) $("requestCount").textContent = "Could not load warranty data";
     showToast(`Warranty data could not load: ${error.message}`, "error");
   }
 }
@@ -4132,6 +4211,17 @@ function initClaimReviewModalEvents() {
 // Central Company Inventory & Spare Parts Requisitions
 // ==========================================
 async function loadCompanyInventoryAndSpares() {
+  if (companySparesCatalog && companySparesCatalog.length > 0) {
+    renderCompanyInventoryAndSpares();
+  } else {
+    try {
+      const c1 = localStorage.getItem("servora_cache_catalog");
+      const c2 = localStorage.getItem("servora_cache_part_requests");
+      if (c1) companySparesCatalog = JSON.parse(c1);
+      if (c2) companyPartRequests = JSON.parse(c2);
+      if (companySparesCatalog.length > 0) renderCompanyInventoryAndSpares();
+    } catch {}
+  }
   try {
     const [partsData, reqsData] = await Promise.all([
       generalApi("/api/inventory/company/parts"),
@@ -4424,6 +4514,7 @@ async function sendPartToFranchise(requestId, partName, quantity, branchName) {
 }
 
 async function loadWorkspacePageData(page) {
+  renderPage(page);
   if (page === "Escalations" || page === "SLA Escalations") { await loadEscalationsData(); return; }
   if (role === "admin") { await loadAdminPageData(page); return; }
   if (role === "company" && page === "Appliances") { await loadCompanyAppliances(); return; }
@@ -4435,12 +4526,14 @@ async function loadWorkspacePageData(page) {
   if (role === "franchise" && page === "Technicians") { await loadFranchiseTechnicians(); return; }
   if (role === "franchise" && page === "Customers") { await loadFranchiseCustomers(); return; }
   if (role === "franchise" && page === "Inventory & Spares") { await loadFranchiseInventory(); return; }
-  renderPage(page);
 }
 async function loadAdminPageData(page) {
   if (role !== "admin") return;
   if (page === "Escalations") { await loadEscalationsData(); return; }
   const roles = { Branches: "branch", Technicians: "technician", Customers: "customer" };
+  if ((roles[page] && directoryRows && directoryRows.length > 0) || (page === "Companies" && companies && companies.length > 0)) {
+    renderPage(page);
+  }
   try {
     if (roles[page]) {
       const data = await adminApi(`/directory/${roles[page]}`);
@@ -6802,21 +6895,34 @@ async function loadDashboard() {
     config = roleConfig[role] || roleConfig.company;
     if (document.body) document.body.dataset.role = role;
     document.title = `${config.title} — ServSure`;
-    if ($("workspaceKicker")) $("workspaceKicker").textContent = config.kicker;
-    if ($("tableTitle")) $("tableTitle").textContent = config.tableTitle;
-    if ($("tableSubtitle")) $("tableSubtitle").textContent = config.tableSubtitle;
-    if ($("sidePanelTitle")) $("sidePanelTitle").textContent = config.sideTitle;
-    if ($("bottomTitle")) $("bottomTitle").textContent = config.bottomTitle;
+    const activePage = $("crumbTitle")?.textContent || getPageFromHash();
+    const isMainDash = !activePage || ["Dashboard", "Overview", "My jobs"].includes(activePage);
+    if (isMainDash) {
+      if ($("workspaceKicker")) $("workspaceKicker").textContent = config.kicker;
+      if ($("tableTitle")) $("tableTitle").textContent = config.tableTitle;
+      if ($("tableSubtitle")) $("tableSubtitle").textContent = config.tableSubtitle;
+      if ($("sidePanelTitle")) $("sidePanelTitle").textContent = config.sideTitle;
+      if ($("bottomTitle")) $("bottomTitle").textContent = config.bottomTitle;
+    }
     try {
       const response = await fetch(`${API_BASE_URL}/api/requests`, { credentials: "include", headers: authHeaders() });
       if (response.ok) {
         requests = await response.json();
         setUserCache(`servsure_cache_requests_${role}`, requests);
+        setMetrics();
+        const curPage = $("crumbTitle")?.textContent || getPageFromHash();
+        if (!curPage || ["Dashboard", "Overview", "My jobs"].includes(curPage)) {
+          renderRequests();
+        }
       } else if (response.status === 401) {
         console.warn("Session unauthorized for /api/requests");
       }
     } catch {
       requests = getUserCache(`servsure_cache_requests_${role}`);
+      const curPage = $("crumbTitle")?.textContent || getPageFromHash();
+      if (!curPage || ["Dashboard", "Overview", "My jobs"].includes(curPage)) {
+        renderRequests();
+      }
     }
 
     if (role === "admin") {
@@ -6829,45 +6935,21 @@ async function loadDashboard() {
     }
 
     if (role === "company") {
-      try {
-        companyCustomers = await companyApi("/customers");
-        setUserCache("servsure_cache_customers", companyCustomers);
-      } catch { companyCustomers = getUserCache("servsure_cache_customers"); }
-
-      try {
-        branches = await companyApi("/branches");
-        setUserCache("servsure_cache_branches", branches);
-      } catch { branches = getUserCache("servsure_cache_branches"); }
-
-      try {
-        companyWarrantyClaims = await generalApi("/api/warranty-amc/claims");
-        setUserCache("servsure_cache_claims", companyWarrantyClaims);
-      } catch { companyWarrantyClaims = getUserCache("servsure_cache_claims"); }
-
-      try {
-        companySparesCatalog = await generalApi("/api/inventory/company/parts");
-        setUserCache("servsure_cache_catalog", companySparesCatalog);
-      } catch { companySparesCatalog = getUserCache("servsure_cache_catalog"); }
+      await Promise.allSettled([
+        companyApi("/customers").then(res => { companyCustomers = res || []; setUserCache("servsure_cache_customers", companyCustomers); }).catch(() => { companyCustomers = getUserCache("servsure_cache_customers"); }),
+        companyApi("/branches").then(res => { branches = res || []; setUserCache("servsure_cache_branches", branches); }).catch(() => { branches = getUserCache("servsure_cache_branches"); }),
+        generalApi("/api/warranty-amc/claims").then(res => { companyWarrantyClaims = res || []; setUserCache("servsure_cache_claims", companyWarrantyClaims); }).catch(() => { companyWarrantyClaims = getUserCache("servsure_cache_claims"); }),
+        generalApi("/api/inventory/company/parts").then(res => { companySparesCatalog = res || []; setUserCache("servsure_cache_catalog", companySparesCatalog); }).catch(() => { companySparesCatalog = getUserCache("servsure_cache_catalog"); })
+      ]);
     }
 
     if (role === "franchise") {
-      try {
-        technicians = await franchiseApi("/technicians");
-        setUserCache("servsure_cache_techs", technicians);
-      } catch { technicians = getUserCache("servsure_cache_techs"); }
-
-      try {
-        const branchId = user?.branch_id || user?.id || "me";
-        franchiseInventory = await generalApi(`/api/inventory/branch/${encodeURIComponent(branchId)}`);
-        setUserCache("servsure_cache_inventory", franchiseInventory);
-      } catch { franchiseInventory = getUserCache("servsure_cache_inventory"); }
-
-      try {
-        franchiseCustomers = await franchiseApi("/customers");
-        setUserCache("servsure_cache_franchise_customers", franchiseCustomers);
-      } catch {
-        compileFranchiseCustomersFromRequests();
-      }
+      const branchId = user?.branch_id || user?.id || "me";
+      await Promise.allSettled([
+        franchiseApi("/technicians").then(res => { technicians = res || []; setUserCache("servsure_cache_techs", technicians); }).catch(() => { technicians = getUserCache("servsure_cache_techs"); }),
+        generalApi(`/api/inventory/branch/${encodeURIComponent(branchId)}`).then(res => { franchiseInventory = res || []; setUserCache("servsure_cache_inventory", franchiseInventory); }).catch(() => { franchiseInventory = getUserCache("servsure_cache_inventory"); }),
+        franchiseApi("/customers").then(res => { franchiseCustomers = res || []; setUserCache("servsure_cache_franchise_customers", franchiseCustomers); }).catch(() => { compileFranchiseCustomersFromRequests(); })
+      ]);
     }
   } catch (error) {
     const detail = error instanceof TypeError ? "Connecting to ServSure API…" : error.message;
@@ -8122,22 +8204,15 @@ function initOpsApp() {
   document.title = `${config.title} — ServSure`;
   if (document.body) document.body.dataset.role = role;
   if ($("crumbTitle")) $("crumbTitle").textContent = config.title;
-  if ($("workspaceKicker")) $("workspaceKicker").textContent = config.kicker;
-  if ($("tableTitle")) $("tableTitle").textContent = config.tableTitle;
-  if ($("tableSubtitle")) $("tableSubtitle").textContent = config.tableSubtitle;
-  if ($("sidePanelTitle")) $("sidePanelTitle").textContent = config.sideTitle;
-  if ($("bottomTitle")) $("bottomTitle").textContent = config.bottomTitle;
-
   initEvents();
   setProfile();
   buildNav();
   setMetrics();
   renderInsights();
   renderResources();
-  const initialHashPage = getPageFromHash();
-  if (!initialHashPage || initialHashPage === "Dashboard" || initialHashPage === "Overview" || initialHashPage === "My jobs") {
-    renderRequests();
-  }
+  const initialPage = getPageFromHash() || (role === "admin" ? "Overview" : config.nav[0] || "Dashboard");
+  renderPage(initialPage);
+  loadWorkspacePageData(initialPage);
   loadDashboard();
 
   // Real-time technician sync across tabs / windows

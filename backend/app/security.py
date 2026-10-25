@@ -147,7 +147,7 @@ def get_authenticated_user(request: Request, db: Session) -> UserModel:
                 session_exp = session.expires_at
                 if session_exp.tzinfo is None:
                     session_exp = session_exp.replace(tzinfo=timezone.utc)
-                if session_exp - now_utc() < timedelta(days=6):
+                if session_exp - now_utc() < timedelta(days=2):
                     session.expires_at = (now_utc() + SESSION_TTL).replace(tzinfo=None)
                     db.commit()
             except Exception:

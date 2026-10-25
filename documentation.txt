@@ -4,8 +4,8 @@ PRODUCTION-GRADE TECHNICAL ARCHITECTURE & DEVELOPER ONBOARDING MANUAL
 ================================================================================
 File: documentation.txt
 Platform: ServSure (formerly Servora)
-Version: 1.7.6 (Production Release - Fiscal Warranty Table Sizing & Flex-Wrap Badges)
-Last Updated: October 25, 2026 (16:15 IST)
+Version: 1.7.8 (Production Release - Persistent Tab Routing & Auto-Hydrating Dashboard on Refresh)
+Last Updated: October 25, 2026 (16:45 IST)
 Repository: https://github.com/SID0428/servora.git
 
 Welcome to ServSure! This manual is the definitive, authoritative reference
@@ -1316,6 +1316,56 @@ were identified between the initial rough draft documentation and the actual cod
         - Styled the "Consumables" indicator with a distinct pill badge (`bg-emerald-50 text-emerald-800` for Covered, `bg-slate-100 text-slate-500` for Excluded)
           with `min-width: 130px; white-space: nowrap;`.
         - Also reinforced explicit minimum widths on headers for Subtab 1 (Registrations) and Subtab 2 (Reimbursement Claims).
+
+21. Discrepancy: Portal Navigation Latency & Multi-Second Delay on Option Clicks
+   - Initial State / Observed Issue:
+     When clicking navigation links, tabs, or sub-options in operations portals (Company, Franchise, Technician, Admin),
+     the page exhibited a 2-3 second delay before rendering the target view.
+   - Root Causes:
+     1. Remote Cloud Latency: When connecting to the production Render backend (`https://servora-3v6b.onrender.com`),
+        network round-trip time from India to US/Europe data centers combined with cloud database query latency adds 1.5s - 2.5s.
+     2. Duplicate Navigation Event Trigger: In `ops-dashboard.js`, `.nav-link` click listeners modified `window.location.hash = slug`
+        (which fired the global `hashchange` handler and called `loadWorkspacePageData`), while simultaneously calling
+        `loadWorkspacePageData` directly in the click callback. This spawned two duplicate sets of parallel network API requests.
+     3. Blocking Network Await (Zero Optimistic Feedback): `loadWorkspacePageData()` deferred `renderPage(page)` until after
+        network promises resolved. The user was left staring at the un-updated previous page for the entire duration of the fetch.
+     4. Synchronous Session TTL Write on Every Read Query: `backend/app/security.py` triggered a database write (`db.commit()`)
+        on every single authenticated GET request if `session_exp - now_utc() < timedelta(days=6)`.
+   - Resolution:
+     1. Updated `ops-dashboard.js` navigation click handlers to delegate to `hashchange` when hash changes, eliminating duplicate parallel fetches.
+     2. Added upfront optimistic layout rendering (`renderPage(page)`) in `loadWorkspacePageData()` to provide instantaneous 0ms visual feedback.
+     3. Implemented Stale-While-Revalidate (SWR) caching across all operations data loaders (`loadCompanyAppliances`, `loadCompanyBranches`, `loadCompanyTechnicians`, `loadCompanyCustomers`, `loadCompanyWarrantyClaims`, `loadCompanyInventoryAndSpares`, `loadFranchiseInventory`, `loadFranchiseCustomers`, `loadAdminPageData`): existing in-memory / localStorage records render immediately upon click in 0ms, followed by background synchronization.
+     4. Parallelized dependent sub-fetches (e.g. `branches` + `technicians`) using `Promise.all` instead of sequential blocking `await` statements.
+     5. Added `max_age=86400` to `CORSMiddleware` in `backend/main.py` so browsers cache preflight `OPTIONS` results for 24 hours rather than dispatching a redundant preflight round-trip on every action.
+     6. Tuned session TTL sliding window in `backend/app/security.py` to `days=2`, eliminating superfluous synchronous database commits on read queries.
+
+22. Discrepancy: Browser Refresh Resetting to Dashboard & Empty Requests Table Requiring Manual Click
+   - Initial State / Observed Issue:
+     When refreshing any page or tab in the portals (e.g. while viewing "Inventory & Spares", "Branches", "Technicians",
+     or "Warranty Claims" in the Company Portal), the application reset back to the default Dashboard view. Furthermore,
+     the Recent Service Requests table remained stuck on "Loading service requests…" on the main dashboard until the user
+     manually clicked the "Dashboard" sidebar item.
+   - Root Causes:
+     1. Unconditional Dashboard Reset on Init: In `frontend/js/ops-dashboard.js`, `initOpsApp()` wiped out the current active tab
+        and unconditionally set table headings and kickers to "Recent service requests", forcing the layout back to the dashboard.
+     2. Premature Render Before Fetch: `renderRequests()` was called in `initOpsApp()` prior to `/api/requests` fetching any data.
+        When `fetch("/api/requests")` in `loadDashboard()` finally resolved, it only updated metric counters (`setMetrics()`) and never
+        triggered `renderRequests()`. Thus, the table stayed frozen on the loading skeleton until a sidebar click explicitly called `renderMainDashboardView()`.
+     3. Sequential Network Bottlenecks: `loadDashboard()` executed 4-5 sequential blocking `await` statements (customers, branches,
+        warranty claims, parts catalog), stalling initial render and UI responsiveness for 5-10 seconds.
+     4. Missing URL Hash & Storage Synchronization: Sub-navigation clicks and page switches did not persist active state to `sessionStorage`
+        or preserve `#hash-slug` in browser history, causing hard refreshes (`F5` or `Cmd+R`) to lose context.
+   - Resolution:
+     1. Added Persistent Tab Memory (`safeSessionGet`/`safeSessionSet`) & URL Hash Sync:
+        - `ops-dashboard.js` and `dashboard.js` store active tabs under `servsure_active_page_${role}` and URL hash slugs.
+        - On hard refresh, `getPageFromHash()` restores the exact active page and calls `renderPage(initialPage)` and `loadWorkspacePageData(initialPage)` immediately (0ms).
+     2. Protected Active Tab During Background Init:
+        - In `loadDashboard()`, table titles and kickers are only updated if the active page is actually the main dashboard (`Dashboard`, `Overview`, `My jobs`).
+        - If the user refreshed on "Inventory & Spares", the inventory view remains intact while dashboard metrics refresh seamlessly in the background.
+     3. Auto-Hydrated Requests Table:
+        - In `loadDashboard()`, right after `requests = await response.json()` or cached data arrives, an immediate check invokes `renderRequests()` if on the main dashboard, eliminating the need to manually click the sidebar link.
+     4. Parallelized Background Startup:
+        - Replaced sequential blocking `await` calls in `loadDashboard()` with concurrent `Promise.allSettled()` calls for branches, customers, warranty policies, and spare parts.
 
 ================================================================================
 End of Documentation

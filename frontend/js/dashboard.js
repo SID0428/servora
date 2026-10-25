@@ -2118,6 +2118,13 @@ function switchTab(tabId) {
     crumb.textContent = titles[tabId] || "Overview";
   }
 
+  try {
+    sessionStorage.setItem("servsure_customer_tab", tabId);
+    if (window.location.hash !== `#${tabId}`) {
+      history.replaceState(null, "", `#${tabId}`);
+    }
+  } catch {}
+
   // Smooth scroll back to top
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
@@ -3299,6 +3306,18 @@ document.addEventListener("DOMContentLoaded", async () => {
     currentUser = cachedUser;
     setProfile(cachedUser);
   }
+
+  // Restore active tab on page refresh
+  const validTabs = ["home", "requests", "appliances", "profile"];
+  const hashTab = (window.location.hash || "").replace(/^#/, "").trim().toLowerCase();
+  const savedTab = sessionStorage.getItem("servsure_customer_tab");
+  const initialTab = validTabs.includes(hashTab) ? hashTab : (validTabs.includes(savedTab) ? savedTab : "home");
+  switchTab(initialTab);
+
+  window.addEventListener("hashchange", () => {
+    const h = (window.location.hash || "").replace(/^#/, "").trim().toLowerCase();
+    if (validTabs.includes(h)) switchTab(h);
+  });
 
   // Confirm customer session with the API & load dashboard data
   if (await loadCurrentCustomer()) {
