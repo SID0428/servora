@@ -3556,7 +3556,10 @@ function renderFranchiseInventory() {
                     <small class="text-slate-400 block">${safe(item.category)}</small>
                   </td>
                   <td><span class="font-mono text-slate-600 bg-slate-100 px-2 py-0.5 rounded text-[11px]">${safe(item.hsn_code || "841890")}</span></td>
-                  <td><strong class="font-display text-slate-900 text-sm">₹${Number(item.unit_price || 0).toFixed(2)}</strong></td>
+                  <td>
+                    <strong class="font-display text-slate-900 text-sm">₹${Number(item.unit_price || 0).toFixed(2)}</strong>
+                    <div class="mt-0.5">${item.is_tax_inclusive ? '<span class="inline-block px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">Incl. Tax</span>' : '<span class="inline-block px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-200">+ Tax Extra</span>'}</div>
+                  </td>
                   <td>
                     <strong class="text-sm ${isLow ? 'text-amber-700' : 'text-slate-800'}">${item.quantity_available} units</strong>
                     <small class="text-slate-400 block">Min threshold: ${item.reorder_level}</small>
@@ -5037,6 +5040,7 @@ function renderCompanyInventoryAndSpares() {
   $("openAddPartBtn")?.addEventListener("click", async () => {
     if ($("addPartFormMessage")) $("addPartFormMessage").textContent = "";
     $("addPartForm")?.reset();
+    if ($("addPartIsTaxInclusive")) $("addPartIsTaxInclusive").value = "false";
     await populateComponentWarrantyDropdowns("", "addPartWarrantyComponentType");
     $("addPartDialog")?.showModal();
   });
@@ -5093,7 +5097,10 @@ function renderCompanyInventoryAndSpares() {
                     <small class="text-slate-500">${safe(item.category)}</small>
                   </td>
                   <td><span class="font-mono text-slate-600 bg-slate-100 px-2 py-0.5 rounded text-[11px]">${safe(item.hsn_code || "841890")}</span></td>
-                  <td><strong class="font-display text-slate-900 text-sm">₹${Number(item.unit_price || 0).toFixed(2)}</strong></td>
+                  <td>
+                    <strong class="font-display text-slate-900 text-sm">₹${Number(item.unit_price || 0).toFixed(2)}</strong>
+                    <div class="mt-0.5">${item.is_tax_inclusive ? '<span class="inline-block px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">Incl. Tax</span>' : '<span class="inline-block px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-200">+ Tax Extra</span>'}</div>
+                  </td>
                   <td>${stockBadge}</td>
                   <td>
                     <div class="flex items-center gap-1.5">
@@ -5146,7 +5153,8 @@ function renderCompanyInventoryAndSpares() {
         if ($("editPartName")) $("editPartName").value = part.name;
         if ($("editPartCategory")) $("editPartCategory").value = part.category;
         if ($("editPartBrand")) $("editPartBrand").value = part.brand || "";
-        if ($("editPartPrice")) $("editPartPrice").value = part.unit_price || 0;
+        if ($editPartPrice = $("editPartPrice")) $editPartPrice.value = part.unit_price || 0;
+        if ($("editPartIsTaxInclusive")) $("editPartIsTaxInclusive").value = part.is_tax_inclusive ? "true" : "false";
         if ($("editPartHsn")) $("editPartHsn").value = part.hsn_code || "841890";
         if ($("editPartDesc")) $("editPartDesc").value = part.description || "";
         if ($("editPartType")) $("editPartType").value = part.part_type || "functional";
@@ -8269,12 +8277,14 @@ function initEvents() {
     if (msg) msg.textContent = "Registering component in inventory…";
     try {
       const rawCompTag = $("addPartCustomComponentType")?.value.trim() || $("addPartWarrantyComponentType")?.value.trim() || "";
+      const isTaxInclusive = $("addPartIsTaxInclusive") ? $("addPartIsTaxInclusive").value === "true" : false;
       const payload = {
         part_code: $("addPartCode").value.trim().toUpperCase(),
         name: $("addPartName").value.trim(),
         category: $("addPartCategory").value.trim(),
         brand: $("addPartBrand")?.value.trim() || undefined,
         unit_price: parseFloat($("addPartPrice").value) || 0,
+        is_tax_inclusive: isTaxInclusive,
         stock_quantity: parseInt($("addPartStock").value, 10) || 0,
         part_type: $("addPartType")?.value || "functional",
         is_warranty_eligible: $("addPartWarrantyEligible") ? $("addPartWarrantyEligible").checked : true,
@@ -8338,11 +8348,13 @@ function initEvents() {
     if (msg) msg.textContent = "Updating component specifications…";
     try {
       const rawEditCompTag = $("editPartCustomComponentType")?.value.trim() || $("editPartWarrantyComponentType")?.value.trim() || "";
+      const isTaxInclusive = $("editPartIsTaxInclusive") ? $("editPartIsTaxInclusive").value === "true" : false;
       const payload = {
         name: $("editPartName").value.trim(),
         category: $("editPartCategory").value.trim(),
         brand: $("editPartBrand")?.value.trim() || undefined,
         unit_price: parseFloat($("editPartPrice").value) || 0,
+        is_tax_inclusive: isTaxInclusive,
         part_type: $("editPartType")?.value || "functional",
         is_warranty_eligible: $("editPartWarrantyEligible") ? $("editPartWarrantyEligible").checked : true,
         warranty_component_type: rawEditCompTag ? rawEditCompTag.toLowerCase() : null,

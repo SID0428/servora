@@ -52,6 +52,7 @@ def get_parts_catalog(
             category=p.category,
             brand=p.brand,
             unit_price=p.unit_price,
+            is_tax_inclusive=getattr(p, "is_tax_inclusive", False) or False,
             hsn_code=p.hsn_code,
             description=p.description,
             stock_quantity=getattr(p, "stock_quantity", 0) or 0,
@@ -80,6 +81,8 @@ def create_or_update_part(
         existing.category = payload.category
         existing.brand = payload.brand
         existing.unit_price = payload.unit_price
+        if payload.is_tax_inclusive is not None:
+            existing.is_tax_inclusive = bool(payload.is_tax_inclusive)
         existing.hsn_code = payload.hsn_code
         if payload.description:
             existing.description = payload.description
@@ -94,6 +97,7 @@ def create_or_update_part(
             category=payload.category.strip(),
             brand=payload.brand.strip(),
             unit_price=payload.unit_price,
+            is_tax_inclusive=bool(payload.is_tax_inclusive) if payload.is_tax_inclusive is not None else False,
             hsn_code=payload.hsn_code.strip(),
             description=payload.description
         )
@@ -108,6 +112,7 @@ def create_or_update_part(
         category=part.category,
         brand=part.brand,
         unit_price=part.unit_price,
+        is_tax_inclusive=getattr(part, "is_tax_inclusive", False) or False,
         hsn_code=part.hsn_code,
         description=part.description,
         stock_quantity=getattr(part, "stock_quantity", 0) or 0,
@@ -148,6 +153,7 @@ def get_company_inventory_parts(
             category=p.category,
             brand=p.brand,
             unit_price=p.unit_price,
+            is_tax_inclusive=getattr(p, "is_tax_inclusive", False) or False,
             hsn_code=p.hsn_code,
             description=p.description,
             stock_quantity=getattr(p, "stock_quantity", 0) or 0,
@@ -178,11 +184,14 @@ def add_company_spare_part(
 
     comp_type = payload.warranty_component_type.strip().lower() if (payload.warranty_component_type and payload.warranty_component_type.strip()) else None
 
+    is_tax_inc = bool(payload.is_tax_inclusive) if payload.is_tax_inclusive is not None else False
+
     if existing:
         existing.name = payload.name.strip()
         existing.category = payload.category.strip()
         existing.brand = brand_name
         existing.unit_price = payload.unit_price
+        existing.is_tax_inclusive = is_tax_inc
         existing.hsn_code = payload.hsn_code.strip() if payload.hsn_code else "841890"
         if payload.description:
             existing.description = payload.description.strip()
@@ -203,6 +212,7 @@ def add_company_spare_part(
             category=payload.category.strip(),
             brand=brand_name,
             unit_price=payload.unit_price,
+            is_tax_inclusive=is_tax_inc,
             hsn_code=payload.hsn_code.strip() if payload.hsn_code else "841890",
             description=payload.description.strip() if payload.description else None,
             stock_quantity=payload.stock_quantity,
@@ -223,6 +233,7 @@ def add_company_spare_part(
         category=part.category,
         brand=part.brand,
         unit_price=part.unit_price,
+        is_tax_inclusive=getattr(part, "is_tax_inclusive", False) or False,
         hsn_code=part.hsn_code,
         description=part.description,
         stock_quantity=part.stock_quantity,
@@ -291,6 +302,8 @@ def update_company_part_details(
     if payload.brand:
         part.brand = payload.brand.strip()
     part.unit_price = payload.unit_price
+    if payload.is_tax_inclusive is not None:
+        part.is_tax_inclusive = bool(payload.is_tax_inclusive)
     if payload.hsn_code:
         part.hsn_code = payload.hsn_code.strip()
     part.description = payload.description.strip() if payload.description else None
@@ -311,6 +324,7 @@ def update_company_part_details(
         category=part.category,
         brand=part.brand,
         unit_price=part.unit_price,
+        is_tax_inclusive=getattr(part, "is_tax_inclusive", False) or False,
         hsn_code=part.hsn_code,
         description=part.description,
         stock_quantity=getattr(part, "stock_quantity", 0) or 0,

@@ -1353,6 +1353,9 @@ def create_job_card(request_id: str, payload: JobCardCreatePayload, request: Req
     parts_used_list = []
     covered_parts_cost = 0.0
     customer_parts_cost = 0.0
+    customer_exclusive_base = 0.0
+    customer_inclusive_base = 0.0
+    customer_inclusive_tax = 0.0
     covered_parts_for_claim = []
 
     for p in payload.parts_used:
@@ -1364,17 +1367,17 @@ def create_job_card(request_id: str, payload: JobCardCreatePayload, request: Req
         cov_type = getattr(p, "coverage_type", None)
         non_cov_reason = getattr(p, "non_coverage_reason", None)
 
-        if is_part_covered is None:
-            part_id = getattr(p, "part_id", None)
-            part_code = getattr(p, "part_code", None)
-            part_obj = None
-            if part_id:
-                part_obj = db.query(SparePartModel).filter(SparePartModel.id == part_id).first()
-            if not part_obj and part_code:
-                part_obj = db.query(SparePartModel).filter(SparePartModel.part_code == part_code).first()
-            if not part_obj and p.part_name:
-                part_obj = db.query(SparePartModel).filter(SparePartModel.name.ilike(f"%{p.part_name}%")).first()
+        part_id = getattr(p, "part_id", None)
+        part_code = getattr(p, "part_code", None)
+        part_obj = None
+        if part_id:
+            part_obj = db.query(SparePartModel).filter(SparePartModel.id == part_id).first()
+        if not part_obj and part_code:
+            part_obj = db.query(SparePartModel).filter(SparePartModel.part_code == part_code).first()
+        if not part_obj and p.part_name:
+            part_obj = db.query(SparePartModel).filter(SparePartModel.name.ilike(f"%{p.part_name}%")).first()
 
+        if is_part_covered is None:
             is_part_covered, cov_type, non_cov_reason = evaluate_part_warranty_status(
                 part_name=p.part_name,
                 part_code=part_code,
@@ -1385,16 +1388,27 @@ def create_job_card(request_id: str, payload: JobCardCreatePayload, request: Req
                 db=db
             )
 
+        part_tax_inc = bool(getattr(part_obj, "is_tax_inclusive", False) if part_obj else getattr(p, "is_tax_inclusive", False))
         p_dict["is_covered"] = bool(is_part_covered)
         p_dict["coverage_type"] = cov_type or ("oem_warranty" if is_part_covered else "customer_billable")
         p_dict["non_coverage_reason"] = non_cov_reason if not is_part_covered else None
         p_dict["warranty_component_type"] = getattr(part_obj, "warranty_component_type", None) if part_obj else getattr(p, "warranty_component_type", None)
+        p_dict["is_tax_inclusive"] = part_tax_inc
 
         if is_part_covered:
             covered_parts_cost += p_total
             covered_parts_for_claim.append(p_dict)
         else:
             customer_parts_cost += p_total
+            if part_tax_inc:
+                # Part price already includes 18% GST (CGST 9% + SGST 9%)
+                # Embedded tax = Total - (Total / 1.18)
+                tax_inc_tax = round(p_total - (p_total / 1.18), 2)
+                tax_inc_base = round(p_total - tax_inc_tax, 2)
+                customer_inclusive_base += tax_inc_base
+                customer_inclusive_tax += tax_inc_tax
+            else:
+                customer_exclusive_base += p_total
 
         # Serial number tracking
         sn = getattr(p, "serial_number", None) or p_dict.get("serial_number")
@@ -1434,10 +1448,18 @@ def create_job_card(request_id: str, payload: JobCardCreatePayload, request: Req
     labor_cost = customer_labor
     parts_cost = customer_parts_cost
     discount_amount = round(payload.discount_amount or 0.0, 2)
-    customer_subtotal = max(0.0, round(inspection_fee + labor_cost + parts_cost - discount_amount, 2))
-    cgst_amount = round(customer_subtotal * 0.09, 2)
-    sgst_amount = round(customer_subtotal * 0.09, 2)
+
+    # Calculate tax: exclusive items have 18% added on top; inclusive items have tax embedded in the price
+    exclusive_subtotal = max(0.0, round(inspection_fee + labor_cost + customer_exclusive_base - discount_amount, 2))
+    exclusive_cgst = round(exclusive_subtotal * 0.09, 2)
+    exclusive_sgst = round(exclusive_subtotal * 0.09, 2)
+    inclusive_cgst = round(customer_inclusive_tax / 2, 2)
+    inclusive_sgst = round(customer_inclusive_tax - inclusive_cgst, 2)
+
+    cgst_amount = round(exclusive_cgst + inclusive_cgst, 2)
+    sgst_amount = round(exclusive_sgst + inclusive_sgst, 2)
     tax_amount = round(cgst_amount + sgst_amount, 2)
+    customer_subtotal = round(exclusive_subtotal + customer_inclusive_base, 2)
     total_amount = round(customer_subtotal + tax_amount, 2)
 
     now_str = datetime.now().strftime("%d %b %Y, %I:%M %p")

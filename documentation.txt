@@ -4,8 +4,8 @@ PRODUCTION-GRADE TECHNICAL ARCHITECTURE & DEVELOPER ONBOARDING MANUAL
 ================================================================================
 File: documentation.txt
 Platform: ServSure (formerly Servora)
-Version: 1.8.1 (Production Release - Dynamic Policy-Driven Component Warranty Tags in Inventory)
-Last Updated: October 25, 2026 (18:45 IST)
+Version: 1.8.2 (Production Release - Tax-Inclusive & Tax-Exclusive Spare Part Pricing and Smart Invoicing Engine)
+Last Updated: October 25, 2026 (19:05 IST)
 Repository: https://github.com/SID0428/servora.git
 
 Welcome to ServSure! This manual is the definitive, authoritative reference
@@ -431,6 +431,7 @@ All database entities are defined in `backend/app/db/models.py`:
     - `is_warranty_eligible`: Boolean, Default: True.
     - `warranty_component_type`: String(64), Nullable: True, Default: None (e.g. "compressor", "motor", "pcb", "magnetron").
     - `unit_price`: Float, Nullable: False, Default: 0.0.
+    - `is_tax_inclusive`: Boolean, Default: False, Nullable: False (True if price is inclusive of GST/taxes; False if exclusive / tax extra).
     - `hsn_code`: String(32), Nullable: False, Default: "841890".
     - `description`: Text, Nullable: True.
     - `stock_quantity`: Integer, Default: 0, Nullable: False (Company warehouse available inventory).
@@ -1487,6 +1488,32 @@ were identified between the initial rough draft documentation and the actual cod
         - Preserves legacy or custom tags when editing existing spare parts.
      3. Input Synchronization: Added bi-directional clearing between dropdown selections and the custom tag text input.
      4. Resilient Backend Lookup: Added case-insensitive key matching in `evaluate_warranty()` (`backend/app/routes/warranty_amc.py`).
+
+26. Discrepancy: Missing Tax Inclusivity Option for Spare Parts in Inventory & Invoicing Double-Taxation
+   - Initial State / Observed Issue:
+     When adding or editing spare parts in the Central Company Inventory portal, there was no option to declare whether the
+     part's unit price was inclusive of taxes or exclusive. Furthermore, during job card completion and billing, all billable
+     parts had an extra 18% GST added unconditionally on top of their listed price, causing double-taxation for parts with
+     MRP or tax-inclusive pricing.
+   - Root Causes:
+     1. Schema & Model Omission: `SparePartModel`, `SparePartSchema`, and related creation/update payloads lacked an
+        `is_tax_inclusive` boolean flag.
+     2. Inventory UI Absence: `company-dashboard.html` lacked tax treatment controls in the Add Part and Edit Part modals.
+     3. Fixed Invoicing Formula: The job card billing engine in `backend/app/routes/requests.py` applied 18% GST uniformly
+        across customer subtotal without accounting for tax-inclusive pricing.
+   - Resolution:
+     1. Database & Migrations:
+        - Added `is_tax_inclusive = Column(Boolean, default=False, nullable=False)` to `SparePartModel`.
+        - Added auto-migration in `seeds.py` (`ALTER TABLE spare_parts ADD COLUMN is_tax_inclusive BOOLEAN NOT NULL DEFAULT 0`).
+     2. Schema & API Reference:
+        - Added `is_tax_inclusive: Optional[bool] = False` across `SparePartSchema`, `SparePartCreatePayload`, `CompanyPartCreatePayload`, `CompanyPartUpdatePayload`, `JobCardPartItem`, and `EstimatePartItem`.
+        - Updated `backend/app/routes/inventory.py` to persist and return `is_tax_inclusive`.
+     3. Inventory Portal UI (`company-dashboard.html` & `ops-dashboard.js`):
+        - Added 'Tax specification' dropdown (`Excluded (+ GST Extra)` / `Inclusive (Taxes Included)`) in Add Part and Edit Part dialogs.
+        - Displayed clear visual badges (`Incl. Tax` or `+ Tax Extra`) alongside prices in company and franchise inventory tables.
+     4. Smart Invoicing Engine (`backend/app/routes/requests.py`):
+        - For tax-exclusive parts, labor, and inspection: 18% GST (9% CGST + 9% SGST) is added on top.
+        - For tax-inclusive parts: 18% GST is embedded in the price (`tax = price - price / 1.18`, `base = price - tax`), ensuring customers are charged exactly the listed price while tax invoices correctly break down CGST & SGST without double-charging.
 
 ================================================================================
 End of Documentation

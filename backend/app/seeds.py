@@ -34,6 +34,9 @@ def seed_database(db: Session):
     if "warranty_component_type" not in sp_columns:
         with engine.begin() as connection:
             connection.execute(text("ALTER TABLE spare_parts ADD COLUMN warranty_component_type VARCHAR(64) NULL"))
+    if "is_tax_inclusive" not in sp_columns:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE spare_parts ADD COLUMN is_tax_inclusive BOOLEAN NOT NULL DEFAULT 0"))
 
     user_columns = {column["name"] for column in inspect(engine).get_columns("users")}
     if "password_hash" not in user_columns:
