@@ -8862,7 +8862,8 @@ function renderEscalationsView() {
       </p>
     </div>
   `;
-  $("activityContent").innerHTML = `<div class="section-empty text-xs">Mandatory resolution notes are required by the ServSure governance engine to resolve any escalation.</div>`;
+  }
+  if ($("activityContent")) $("activityContent").innerHTML = `<div class="section-empty text-xs">Mandatory resolution notes are required by the ServSure governance engine to resolve any escalation.</div>`;
 
   $("requestHead").innerHTML = [
     "Escalation ID",
