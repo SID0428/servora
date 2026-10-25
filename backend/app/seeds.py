@@ -40,12 +40,36 @@ def seed_database(db: Session):
 
     # Ensure spare_parts part_code is scoped per company rather than globally unique
     try:
-        with engine.begin() as connection:
-            connection.execute(text("DROP INDEX IF EXISTS ix_spare_parts_part_code"))
-            connection.execute(text("CREATE INDEX IF NOT EXISTS ix_spare_parts_part_code ON spare_parts (part_code)"))
-            connection.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS uq_company_part_code ON spare_parts (company_id, part_code)"))
-    except Exception:
-        pass
+        is_mysql = "mysql" in engine.dialect.name.lower()
+        if is_mysql:
+            with engine.begin() as connection:
+                res = connection.execute(text("""
+                    SELECT INDEX_NAME, NON_UNIQUE 
+                    FROM INFORMATION_SCHEMA.STATISTICS 
+                    WHERE TABLE_SCHEMA = DATABASE() 
+                      AND TABLE_NAME = 'spare_parts' 
+                      AND INDEX_NAME = 'ix_spare_parts_part_code'
+                """)).fetchall()
+                if res and any(r[1] == 0 for r in res):
+                    connection.execute(text("ALTER TABLE spare_parts DROP INDEX ix_spare_parts_part_code"))
+                    connection.execute(text("CREATE INDEX ix_spare_parts_part_code ON spare_parts (part_code)"))
+
+                res_uq = connection.execute(text("""
+                    SELECT INDEX_NAME 
+                    FROM INFORMATION_SCHEMA.STATISTICS 
+                    WHERE TABLE_SCHEMA = DATABASE() 
+                      AND TABLE_NAME = 'spare_parts' 
+                      AND INDEX_NAME = 'uq_company_part_code'
+                """)).fetchall()
+                if not res_uq:
+                    connection.execute(text("CREATE UNIQUE INDEX uq_company_part_code ON spare_parts (company_id, part_code)"))
+        else:
+            with engine.begin() as connection:
+                connection.execute(text("DROP INDEX IF EXISTS ix_spare_parts_part_code"))
+                connection.execute(text("CREATE INDEX IF NOT EXISTS ix_spare_parts_part_code ON spare_parts (part_code)"))
+                connection.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS uq_company_part_code ON spare_parts (company_id, part_code)"))
+    except Exception as e:
+        print(f"⚠️ Index migration note: {e}")
 
     user_columns = {column["name"] for column in inspect(engine).get_columns("users")}
     if "password_hash" not in user_columns:

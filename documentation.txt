@@ -1566,6 +1566,27 @@ were identified between the initial rough draft documentation and the actual cod
         - In `update_company_part_details` and `update_company_part_stock` (`backend/app/routes/inventory.py`), ensured that if a company
           edits a part originally missing `company_id` (e.g. legacy/seed item), `part.company_id` is adopted as `user.id`.
 
+29. Discrepancy: MySQL Aiven Index Collision (Error 1062) & Dialect-Aware Index Self-Healing
+   - Initial State / Observed Issue:
+     On Aiven MySQL production environments, adding a spare part whose `part_code` matched an existing part from another company
+     triggered `(pymysql.err.IntegrityError) (1062, "Duplicate entry for key 'spare_parts.ix_spare_parts_part_code'")`.
+   - Root Causes:
+     1. MySQL DDL Syntax Incompatibility: In `backend/app/seeds.py`, the index migration used SQLite syntax (`DROP INDEX IF EXISTS ...`
+        and `CREATE INDEX IF NOT EXISTS ...`), which is invalid syntax in MySQL. The statement threw a syntax error which was
+        silently ignored by `except Exception: pass`, leaving the legacy global unique index `ix_spare_parts_part_code` intact on MySQL.
+     2. Lack of Runtime Self-Healing: If the server ran without restarting or prior to migration, `db.commit()` failed on MySQL.
+   - Resolution:
+     1. Dialect-Aware MySQL/SQLite Migration (`backend/app/seeds.py`):
+        - For MySQL: Queries `INFORMATION_SCHEMA.STATISTICS` to detect `ix_spare_parts_part_code` with `NON_UNIQUE = 0`.
+          Executes native MySQL DDL: `ALTER TABLE spare_parts DROP INDEX ix_spare_parts_part_code` and
+          `CREATE INDEX ix_spare_parts_part_code ON spare_parts (part_code)`.
+          Creates `CREATE UNIQUE INDEX uq_company_part_code ON spare_parts (company_id, part_code)`.
+     2. Runtime Self-Healing in Inventory Handlers (`backend/app/routes/inventory.py`):
+        - In `add_company_spare_part` and `create_or_update_part`, wrapped `db.commit()` in an `IntegrityError` handler.
+        - If MySQL or SQLite reports an `ix_spare_parts_part_code` duplicate key error, the backend rolls back, automatically
+          drops the legacy unique index on the live database using dialect-specific syntax, recreates it as non-unique, and
+          immediately retries the insert without failing the user's request.
+
 ==================================================
 End of Documentation
 ==================================================

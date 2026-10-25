@@ -4,7 +4,8 @@ from datetime import datetime
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Request, Query
 from sqlalchemy.orm import Session
-from sqlalchemy import or_
+from sqlalchemy import or_, text
+from sqlalchemy.exc import IntegrityError
 
 from app.db.session import get_db
 from app.db.models import (
@@ -147,8 +148,29 @@ def create_or_update_part(
             is_active=True
         )
         db.add(part)
-        db.commit()
-        db.refresh(part)
+        try:
+            db.commit()
+            db.refresh(part)
+        except IntegrityError as exc:
+            db.rollback()
+            err_str = str(exc).lower()
+            if "ix_spare_parts_part_code" in err_str or "duplicate entry" in err_str:
+                try:
+                    is_mysql = "mysql" in db.bind.dialect.name.lower()
+                    with db.bind.begin() as conn:
+                        if is_mysql:
+                            conn.execute(text("ALTER TABLE spare_parts DROP INDEX ix_spare_parts_part_code"))
+                            conn.execute(text("CREATE INDEX ix_spare_parts_part_code ON spare_parts (part_code)"))
+                        else:
+                            conn.execute(text("DROP INDEX IF EXISTS ix_spare_parts_part_code"))
+                            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_spare_parts_part_code ON spare_parts (part_code)"))
+                except Exception:
+                    pass
+                db.add(part)
+                db.commit()
+                db.refresh(part)
+            else:
+                raise exc
 
     return SparePartSchema(
         id=part.id,
@@ -280,8 +302,29 @@ def add_company_spare_part(
             is_active=True
         )
         db.add(part)
-        db.commit()
-        db.refresh(part)
+        try:
+            db.commit()
+            db.refresh(part)
+        except IntegrityError as exc:
+            db.rollback()
+            err_str = str(exc).lower()
+            if "ix_spare_parts_part_code" in err_str or "duplicate entry" in err_str:
+                try:
+                    is_mysql = "mysql" in db.bind.dialect.name.lower()
+                    with db.bind.begin() as conn:
+                        if is_mysql:
+                            conn.execute(text("ALTER TABLE spare_parts DROP INDEX ix_spare_parts_part_code"))
+                            conn.execute(text("CREATE INDEX ix_spare_parts_part_code ON spare_parts (part_code)"))
+                        else:
+                            conn.execute(text("DROP INDEX IF EXISTS ix_spare_parts_part_code"))
+                            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_spare_parts_part_code ON spare_parts (part_code)"))
+                except Exception:
+                    pass
+                db.add(part)
+                db.commit()
+                db.refresh(part)
+            else:
+                raise exc
 
     return SparePartSchema(
         id=part.id,
