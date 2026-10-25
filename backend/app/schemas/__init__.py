@@ -1,6 +1,6 @@
 from enum import Enum
 from typing import List, Optional, Union
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 class UserRole(str, Enum):
     CUSTOMER = "customer"
@@ -140,6 +140,15 @@ class ApplianceBase(BaseModel):
     serial_no: Optional[str] = None
     icon: str
     invoice_url: Optional[str] = None
+
+    @field_validator("registered_on", "purchase_date", "warranty_start_date", "warranty_end_date", "amc_end_date", mode="before")
+    @classmethod
+    def coerce_date_to_string(cls, v):
+        if v is None:
+            return None
+        if hasattr(v, "strftime"):
+            return v.strftime("%Y-%m-%d")
+        return str(v)
 
 class NewApplianceCreate(BaseModel):
     company_id: str = Field(min_length=1, max_length=64)
@@ -630,6 +639,15 @@ class WarrantyRegistrationItem(BaseModel):
     invoice_url: Optional[str] = None
     verified_at: Optional[str] = None
     verified_by: Optional[str] = None
+
+    @field_validator("registered_on", "purchase_date", "warranty_start_date", "warranty_end_date", mode="before")
+    @classmethod
+    def coerce_date_to_string(cls, v):
+        if v is None:
+            return None
+        if hasattr(v, "strftime"):
+            return v.strftime("%Y-%m-%d")
+        return str(v)
 
 class CompanyWarrantyPolicyCreate(BaseModel):
     policy_code: str = Field(min_length=2, max_length=64)

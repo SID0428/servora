@@ -233,6 +233,13 @@ def reupload_appliance_invoice(
     return appliance_payload(app, company.name if company else None)
 
 
+def serialize_app_date(val) -> str | None:
+    if val is None:
+        return None
+    if hasattr(val, "strftime"):
+        return val.strftime("%Y-%m-%d")
+    return str(val)
+
 def appliance_payload(appliance: ApplianceModel, company_name: str | None = None) -> dict:
     return {
         "id": appliance.id,
@@ -241,19 +248,19 @@ def appliance_payload(appliance: ApplianceModel, company_name: str | None = None
         "brand": appliance.brand,
         "category": appliance.category,
         "model_no": appliance.model_no,
-        "registered_on": appliance.registered_on,
-        "purchase_date": getattr(appliance, "purchase_date", None),
+        "registered_on": serialize_app_date(appliance.registered_on) if hasattr(appliance.registered_on, "strftime") else str(appliance.registered_on or ""),
+        "purchase_date": serialize_app_date(getattr(appliance, "purchase_date", None)),
         "warranty_months": getattr(appliance, "warranty_months", 12),
         "warranty_status": appliance.warranty_status,
-        "warranty_start_date": appliance.warranty_start_date,
-        "warranty_end_date": appliance.warranty_end_date,
+        "warranty_start_date": serialize_app_date(appliance.warranty_start_date) if hasattr(appliance.warranty_start_date, "strftime") else (appliance.warranty_start_date or None),
+        "warranty_end_date": serialize_app_date(appliance.warranty_end_date) if hasattr(appliance.warranty_end_date, "strftime") else (appliance.warranty_end_date or None),
         "warranty_rejection_reason": getattr(appliance, "warranty_rejection_reason", None),
         "matched_policy_id": getattr(appliance, "matched_policy_id", None),
         "matched_policy_name": getattr(appliance, "matched_policy_name", None),
         "policy_snapshot_json": getattr(appliance, "policy_snapshot_json", None),
         "amc_active": appliance.amc_active,
         "amc_plan_name": appliance.amc_plan_name,
-        "amc_end_date": appliance.amc_end_date,
+        "amc_end_date": serialize_app_date(appliance.amc_end_date) if hasattr(appliance.amc_end_date, "strftime") else (appliance.amc_end_date or None),
         "serial_no": appliance.serial_no,
         "icon": appliance.icon,
         "invoice_url": appliance.invoice_url,

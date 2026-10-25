@@ -4,8 +4,8 @@ PRODUCTION-GRADE TECHNICAL ARCHITECTURE & DEVELOPER ONBOARDING MANUAL
 ================================================================================
 File: documentation.txt
 Platform: ServSure (formerly Servora)
-Version: 1.8.6 (Production Release - Invoice Upload Transport Harmonization)
-Last Updated: October 25, 2026 (21:56 IST)
+Version: 1.8.7 (Production Release - Database Date Coercion & Appliance Serialization)
+Last Updated: October 25, 2026 (22:05 IST)
 Repository: https://github.com/SID0428/servora.git
 
 Welcome to ServSure! This manual is the definitive, authoritative reference
@@ -1654,6 +1654,22 @@ were identified between the initial rough draft documentation and the actual cod
         `X-ServSure-User-Id`, and `X-Servora-User-Id`.
      2. Updated `handleInvoiceFileUpload` and `handleReuploadInvoiceFileUpload` to use the unified `apiFetch` transport wrapper:
         `await apiFetch("/api/uploads", { method: "POST", body: formData })`.
+
+33. Discrepancy: Database Date Object Coercion Error in Appliance Registration Response
+   - Initial State / Observed Issue:
+     When a customer clicked "Save appliance & Register Warranty" after invoice upload, the backend returned HTTP 500:
+     `Server error: 1 validation error: {'type': 'string_type', 'loc': ('response', 'purchase_date'), 'msg': 'Input should be a valid string', 'input': datetime.date(2026, 10, 25)} File ".../backend/app/routes/appliances.py", line 83, in add_appliance POST /api/appliances`.
+   - Root Causes:
+     1. MySQL Dialect Date Deserialization: On MySQL databases (e.g. Aiven/Render production), `purchase_date` in `appliances` is
+        hydrated by SQLAlchemy as a Python `datetime.date` object when executing `db.refresh(new_app)`.
+     2. Pydantic v2 String Strictness: In `ApplianceBase` schema (`backend/app/schemas/__init__.py`), `purchase_date: Optional[str] = None`
+        strictly rejected Python `datetime.date` instances because Pydantic v2 enforces string types without auto-coercing `date` objects.
+   - Resolution:
+     1. Added `@field_validator("registered_on", "purchase_date", "warranty_start_date", "warranty_end_date", "amc_end_date", mode="before")`
+        on `ApplianceBase` and `WarrantyRegistrationItem` in `backend/app/schemas/__init__.py` to safely coerce `date` and `datetime`
+        objects to ISO `"YYYY-MM-DD"` strings prior to validation.
+     2. In `appliance_payload` (`backend/app/routes/appliances.py`), introduced `serialize_app_date(val)` to explicitly convert
+        `datetime.date` / `datetime.datetime` instances to string format.
 
 ==================================================
 End of Documentation
