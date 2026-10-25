@@ -141,7 +141,7 @@ def create_or_update_part(
             category=payload.category.strip(),
             brand=payload.brand.strip(),
             unit_price=payload.unit_price,
-            is_tax_inclusive=bool(payload.is_tax_inclusive) if payload.is_tax_inclusive is not None else False,
+            is_tax_inclusive=bool(payload.is_tax_inclusive) if payload.is_tax_inclusive is not None else True,
             hsn_code=payload.hsn_code.strip(),
             description=payload.description,
             company_id=target_company_id,
@@ -250,7 +250,7 @@ def add_company_spare_part(
 
     comp_type = payload.warranty_component_type.strip().lower() if (payload.warranty_component_type and payload.warranty_component_type.strip()) else None
 
-    is_tax_inc = bool(payload.is_tax_inclusive) if payload.is_tax_inclusive is not None else False
+    is_tax_inc = bool(payload.is_tax_inclusive) if payload.is_tax_inclusive is not None else True
 
     target_company_id = user.id if user.role == "company" else getattr(payload, "company_id", None)
 

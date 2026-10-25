@@ -36,7 +36,7 @@ def seed_database(db: Session):
             connection.execute(text("ALTER TABLE spare_parts ADD COLUMN warranty_component_type VARCHAR(64) NULL"))
     if "is_tax_inclusive" not in sp_columns:
         with engine.begin() as connection:
-            connection.execute(text("ALTER TABLE spare_parts ADD COLUMN is_tax_inclusive BOOLEAN NOT NULL DEFAULT 0"))
+            connection.execute(text("ALTER TABLE spare_parts ADD COLUMN is_tax_inclusive BOOLEAN NOT NULL DEFAULT 1"))
 
     # Ensure spare_parts part_code is scoped per company rather than globally unique
     try:

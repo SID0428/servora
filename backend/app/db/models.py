@@ -240,7 +240,7 @@ class SparePartModel(Base):
     category = Column(String(64), nullable=False) # Refrigerator, Washing Machine, AC, Microwave
     brand = Column(String(64), nullable=False) # LG, Samsung, Whirlpool, Universal
     unit_price = Column(Float, nullable=False, default=0.0)
-    is_tax_inclusive = Column(Boolean, default=False, nullable=False)
+    is_tax_inclusive = Column(Boolean, default=True, nullable=False)
     hsn_code = Column(String(32), nullable=False, default="8418")
     description = Column(Text, nullable=True)
     stock_quantity = Column(Integer, default=0, nullable=False)

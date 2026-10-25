@@ -202,7 +202,7 @@ class JobCardPartItem(BaseModel):
     non_coverage_reason: Optional[str] = None
     warranty_component_type: Optional[str] = None
     serial_number: Optional[str] = None
-    is_tax_inclusive: Optional[bool] = False
+    is_tax_inclusive: Optional[bool] = True
 
 class JobCardResponse(BaseModel):
     id: str
@@ -409,7 +409,7 @@ class SparePartSchema(BaseModel):
     category: str
     brand: str
     unit_price: float
-    is_tax_inclusive: Optional[bool] = False
+    is_tax_inclusive: Optional[bool] = True
     hsn_code: str
     description: Optional[str] = None
     stock_quantity: int = 0
@@ -425,7 +425,7 @@ class SparePartCreatePayload(BaseModel):
     category: str = Field(min_length=2, max_length=64)
     brand: str = Field(min_length=2, max_length=64)
     unit_price: float = Field(ge=0.0)
-    is_tax_inclusive: Optional[bool] = False
+    is_tax_inclusive: Optional[bool] = True
     hsn_code: str = Field(default="8418", max_length=32)
     part_type: Optional[str] = "functional"
     is_warranty_eligible: Optional[bool] = True
@@ -438,7 +438,7 @@ class CompanyPartCreatePayload(BaseModel):
     category: str = Field(min_length=2, max_length=64)
     brand: Optional[str] = None
     unit_price: float = Field(ge=0.0)
-    is_tax_inclusive: Optional[bool] = False
+    is_tax_inclusive: Optional[bool] = True
     stock_quantity: int = Field(default=0, ge=0)
     part_type: Optional[str] = "functional"
     is_warranty_eligible: Optional[bool] = True
@@ -717,7 +717,7 @@ class EstimatePartItem(BaseModel):
     non_coverage_reason: Optional[str] = None
     warranty_component_type: Optional[str] = None
     serial_number: Optional[str] = None
-    is_tax_inclusive: Optional[bool] = False
+    is_tax_inclusive: Optional[bool] = True
 
 class EstimateCreatePayload(BaseModel):
     parts: List[EstimatePartItem] = Field(default_factory=list)

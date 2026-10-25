@@ -4,8 +4,8 @@ PRODUCTION-GRADE TECHNICAL ARCHITECTURE & DEVELOPER ONBOARDING MANUAL
 ================================================================================
 File: documentation.txt
 Platform: ServSure (formerly Servora)
-Version: 1.8.3 (Production Release - Multi-Tenant Company Spare Part Scoping & Isolation Engine)
-Last Updated: October 25, 2026 (20:50 IST)
+Version: 1.8.4 (Production Release - Default Tax-Inclusive Inventory Architecture)
+Last Updated: October 25, 2026 (21:45 IST)
 Repository: https://github.com/SID0428/servora.git
 
 Welcome to ServSure! This manual is the definitive, authoritative reference
@@ -431,7 +431,7 @@ All database entities are defined in `backend/app/db/models.py`:
     - `is_warranty_eligible`: Boolean, Default: True.
     - `warranty_component_type`: String(64), Nullable: True, Default: None (e.g. "compressor", "motor", "pcb", "magnetron").
     - `unit_price`: Float, Nullable: False, Default: 0.0.
-    - `is_tax_inclusive`: Boolean, Default: False, Nullable: False (True if price is inclusive of GST/taxes; False if exclusive / tax extra).
+    - `is_tax_inclusive`: Boolean, Default: True, Nullable: False (True if price is inclusive of GST/taxes by default; False if exclusive / tax extra).
     - `hsn_code`: String(32), Nullable: False, Default: "841890".
     - `description`: Text, Nullable: True.
     - `stock_quantity`: Integer, Default: 0, Nullable: False (Company warehouse available inventory).
@@ -1586,6 +1586,36 @@ were identified between the initial rough draft documentation and the actual cod
         - If MySQL or SQLite reports an `ix_spare_parts_part_code` duplicate key error, the backend rolls back, automatically
           drops the legacy unique index on the live database using dialect-specific syntax, recreates it as non-unique, and
           immediately retries the insert without failing the user's request.
+
+30. Discrepancy: Default Inventory Tax Specification Policy (Tax-Inclusive by Default)
+   - Initial State / Observed Issue:
+     When adding a spare part in the inventory management dashboard or via API endpoints without specifying a tax treatment,
+     the part defaulted to tax-exclusive (`is_tax_inclusive = False` / `Excluded (+ GST Extra)`). In consumer appliance repair
+     operations, spare parts are standardly managed with customer-facing MRP or tax-inclusive pricing. Consequently, newly
+     registered parts required manual adjustment to prevent unintended +18% GST markup additions during billing.
+   - Root Causes:
+     1. Database & Schema Defaults: `SparePartModel.is_tax_inclusive` in `backend/app/db/models.py` and Pydantic schemas
+        (`SparePartCreatePayload`, `CompanyPartCreatePayload`, `SparePartSchema`, `JobCardPartItem`, `EstimatePartItem`) defaulted to `False`.
+     2. Inventory Route Defaults: Route handlers in `backend/app/routes/inventory.py` evaluated omitted or `None` values to `False`.
+     3. Portal UI Defaults: The 'Tax specification' `<select>` element in `company-dashboard.html` marked `Excluded (+ GST Extra)` as `selected`,
+        and `ops-dashboard.js` initialized the field to `"false"` when opening the Add Part modal dialog.
+   - Resolution:
+     1. Database Model Default (`backend/app/db/models.py`):
+        - Updated `SparePartModel.is_tax_inclusive = Column(Boolean, default=True, nullable=False)`.
+     2. Table Migration Sync (`backend/app/seeds.py`):
+        - Updated `ALTER TABLE spare_parts ADD COLUMN is_tax_inclusive BOOLEAN NOT NULL DEFAULT 1` so schema synchronization establishes `1` (True).
+     3. Pydantic Schemas (`backend/app/schemas/__init__.py`):
+        - Updated `SparePartSchema`, `SparePartCreatePayload`, `CompanyPartCreatePayload`, `JobCardPartItem`, and `EstimatePartItem`
+          to default `is_tax_inclusive: Optional[bool] = True`. Kept `CompanyPartUpdatePayload.is_tax_inclusive = None` so partial
+          edits do not unintentionally reset a user's chosen tax exclusivity.
+     4. Backend Route Handlers (`backend/app/routes/inventory.py`):
+        - In both `create_or_update_part` and `add_company_spare_part`, omitted or `None` payloads default to `True`:
+          `is_tax_inc = bool(payload.is_tax_inclusive) if payload.is_tax_inclusive is not None else True`.
+     5. Frontend Modal & Event Handlers (`company-dashboard.html` & `ops-dashboard.js`):
+        - Set `<option value="true" selected>Inclusive (Taxes Included)</option>` as the initial selected option in `company-dashboard.html`.
+        - Updated `openAddPartBtn` listener to reset `addPartIsTaxInclusive.value = "true"`.
+        - Updated `addPartForm` submit listener to evaluate `$("addPartIsTaxInclusive").value !== "false"`.
+        - Admins and company managers retain complete flexibility to toggle to `Excluded (+ GST Extra)` whenever cataloguing wholesale/B2B parts.
 
 ==================================================
 End of Documentation

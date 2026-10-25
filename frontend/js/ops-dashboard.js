@@ -5040,7 +5040,7 @@ function renderCompanyInventoryAndSpares() {
   $("openAddPartBtn")?.addEventListener("click", async () => {
     if ($("addPartFormMessage")) $("addPartFormMessage").textContent = "";
     $("addPartForm")?.reset();
-    if ($("addPartIsTaxInclusive")) $("addPartIsTaxInclusive").value = "false";
+    if ($("addPartIsTaxInclusive")) $("addPartIsTaxInclusive").value = "true";
     await populateComponentWarrantyDropdowns("", "addPartWarrantyComponentType");
     $("addPartDialog")?.showModal();
   });
@@ -8277,7 +8277,7 @@ function initEvents() {
     if (msg) msg.textContent = "Registering component in inventory…";
     try {
       const rawCompTag = $("addPartCustomComponentType")?.value.trim() || $("addPartWarrantyComponentType")?.value.trim() || "";
-      const isTaxInclusive = $("addPartIsTaxInclusive") ? $("addPartIsTaxInclusive").value === "true" : false;
+      const isTaxInclusive = $("addPartIsTaxInclusive") ? $("addPartIsTaxInclusive").value !== "false" : true;
       const payload = {
         part_code: $("addPartCode").value.trim().toUpperCase(),
         name: $("addPartName").value.trim(),
