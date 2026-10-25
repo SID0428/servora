@@ -4,8 +4,8 @@ PRODUCTION-GRADE TECHNICAL ARCHITECTURE & DEVELOPER ONBOARDING MANUAL
 ================================================================================
 File: documentation.txt
 Platform: ServSure (formerly Servora)
-Version: 1.9.1 (Production Release - Tab Navigation State Isolation & Async Race Condition Protection)
-Last Updated: October 26, 2026 (00:20 IST)
+Version: 1.9.2 (Production Release - Escalation Table Flashing Fix & Franchise Inventory Brand Isolation)
+Last Updated: October 26, 2026 (00:50 IST)
 Repository: https://github.com/SID0428/servora.git
 
 Welcome to ServSure! This manual is the definitive, authoritative reference
@@ -1807,6 +1807,43 @@ were identified between the initial rough draft documentation and the actual cod
         - Added dedicated side panel widgets and bottom metadata for `renderFranchiseInventory`, `renderCompanyInventoryAndSpares`, and `renderEscalationsView`.
         - Corrected search input listeners in `initEvents()` to handle both `"Inventory & Spares"` and `"Spares Catalog"`, as well as `"Escalations"`.
         - Fixed an unclosed `if ($("healthContent")) {` block in `renderEscalationsView()` that caused an ES-module parse error (`SyntaxError: Unexpected end of input`) freezing initial dashboard bootstrap.
+
+38. DISCREPANCY: Escalation Table Row Flashing & Cross-Company Parts Leakage in Franchise Inventory and Requisitions
+   - Symptoms:
+     1. In `franchise-dashboard.html`, clicking "Escalations" from "Inventory & Spares" caused the table headers to switch to
+        SLA Escalation columns (`ESCALATION ID`, `TICKET ID`, `CUSTOMER / APPLIANCE`, etc.), but the table body temporarily displayed
+        the 7 spare part rows from the previous view along with "7 parts shown" before disappearing after the network fetch completed.
+     2. In Franchise Inventory and Stock, spare parts belonging to other brands or unowned generic seed parts (`company_id == None`)
+        were appearing in the warehouse stock table and in the "Request Stock from OEM" catalog dropdown dialog.
+   - Root Causes:
+     1. Uncaught ReferenceError in ES Module: `escalationsList` was missing a module-level variable declaration (`let escalationsList = []`).
+        In strict ES-module mode, evaluating `escalationsList.filter(...)` inside `renderEscalationsView()` before `loadEscalationsData()` completed
+        threw an uncaught `ReferenceError: escalationsList is not defined` immediately after updating `$("requestHead").innerHTML`.
+        Execution halted before `$("requestRows").innerHTML` or `$("requestCount")` could be evaluated, leaving the previous tab's DOM rows intact.
+     2. Unpurged Table Rows on Navigation: `resetViewDom(page)` reset visibility containers but did not purge `requestRows` or `requestCount`,
+        causing data from the prior view to remain visible whenever an asynchronous view was loaded.
+     3. Catalog Cross-Brand Leakage: `GET /api/inventory/parts` (`get_parts_catalog`) included a fallback `or_(..., SparePartModel.company_id == None)`
+        for franchise and branch roles, allowing generic unowned parts and seed parts from other manufacturers to leak into the dropdown.
+     4. Warehouse Stock Cross-Brand Leakage: `GET /api/inventory/branch/{branch_id}` (`get_branch_inventory`) joined `FranchiseInventoryModel`
+        and `SparePartModel` on part ID without verifying `SparePartModel.company_id == branch.company_id`. Furthermore, `company.py` line 236
+        seeded empty warehouses by selecting `db.query(SparePartModel).all()`, copying every catalog part into the branch inventory.
+   - Resolution:
+     1. Frontend Flash Elimination (`frontend/js/ops-dashboard.js`):
+        - Declared `let escalationsList = [];` at module scope.
+        - Updated `resetViewDom(page)` to immediately flush `requestRows` with `<tr><td colspan="8" class="empty-row">Loading ${safe(page)}…</td></tr>`
+          and reset `requestCount` to `"Loading…"`, preventing visual lingering or ghosting across all tab transitions.
+        - Guarded `escalationsList` in `renderEscalationsView()` with `Array.isArray(escalationsList) ? escalationsList : []`.
+     2. Strict Company Isolation in Parts Catalog & Requisitions (`backend/app/routes/inventory.py`):
+        - In `get_parts_catalog`: for `franchise` and `branch` roles, strictly filter by `SparePartModel.company_id == branch.company_id`
+          (or company matched by `branch.brand`). Removed all `SparePartModel.company_id == None` fallbacks so only parts registered by
+          that brand are returned.
+        - For `company` role, strictly filter by `SparePartModel.company_id == user.id`.
+        - In `create_part_request`: added validation check rejecting part requests where `part.company_id != branch.company_id` with HTTP 400.
+     3. Strict Company Isolation in Branch Warehouse Inventory (`backend/app/routes/inventory.py`, `backend/app/routes/company.py`):
+        - In `get_branch_inventory`: strictly filtered inventory items by `SparePartModel.company_id == branch.company_id`.
+        - In `list_serialized_parts`: strictly filtered serialized items by `SparePartModel.company_id == branch.company_id`.
+        - In `get_branch_details` (`company.py`): filtered warehouse inventory and transaction movements by `SparePartModel.company_id == branch.company_id`.
+        - Updated auto-seed fallback to only seed parts where `SparePartModel.company_id == branch.company_id`.
 
 ==================================================
 End of Documentation

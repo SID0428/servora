@@ -230,11 +230,14 @@ def get_company_branch_details(
     # 2. TOTAL STOCK ITEMS (Warehouse Inventory)
     inv_items = db.query(FranchiseInventoryModel, SparePartModel).join(
         SparePartModel, FranchiseInventoryModel.part_id == SparePartModel.id
-    ).filter(FranchiseInventoryModel.branch_id == branch.id).all()
+    ).filter(
+        FranchiseInventoryModel.branch_id == branch.id,
+        SparePartModel.company_id == branch.company_id
+    ).all()
 
-    # If empty warehouse, seed initial catalog parts
-    if not inv_items:
-        all_parts = db.query(SparePartModel).all()
+    # If empty warehouse, seed initial catalog parts strictly registered for this company
+    if not inv_items and branch.company_id:
+        all_parts = db.query(SparePartModel).filter(SparePartModel.company_id == branch.company_id).all()
         for p in all_parts:
             inv = FranchiseInventoryModel(
                 id=f"inv_{uuid4().hex[:12]}",
@@ -244,10 +247,14 @@ def get_company_branch_details(
                 reorder_level=4
             )
             db.add(inv)
-        db.commit()
-        inv_items = db.query(FranchiseInventoryModel, SparePartModel).join(
-            SparePartModel, FranchiseInventoryModel.part_id == SparePartModel.id
-        ).filter(FranchiseInventoryModel.branch_id == branch.id).all()
+        if all_parts:
+            db.commit()
+            inv_items = db.query(FranchiseInventoryModel, SparePartModel).join(
+                SparePartModel, FranchiseInventoryModel.part_id == SparePartModel.id
+            ).filter(
+                FranchiseInventoryModel.branch_id == branch.id,
+                SparePartModel.company_id == branch.company_id
+            ).all()
 
     stock_list = []
     total_stock_qty = 0
@@ -278,7 +285,10 @@ def get_company_branch_details(
     # 3. STOCK MOVEMENTS (Sent & Received Logistics History)
     txns = db.query(InventoryTransactionModel, SparePartModel).join(
         SparePartModel, InventoryTransactionModel.part_id == SparePartModel.id
-    ).filter(InventoryTransactionModel.branch_id == branch.id).order_by(
+    ).filter(
+        InventoryTransactionModel.branch_id == branch.id,
+        SparePartModel.company_id == branch.company_id
+    ).order_by(
         InventoryTransactionModel.created_at.desc()
     ).all()
 

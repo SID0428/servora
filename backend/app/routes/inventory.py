@@ -44,23 +44,32 @@ def get_parts_catalog(
 
     if user:
         if user.role == "company":
-            query = query.filter(or_(SparePartModel.company_id == user.id, SparePartModel.company_id == None))
+            query = query.filter(SparePartModel.company_id == user.id)
         elif user.role in ("franchise", "branch"):
             branch = db.query(CompanyBranchModel).filter(
                 or_(CompanyBranchModel.id == user.id, CompanyBranchModel.email == user.email)
             ).first()
             if branch and branch.company_id:
-                query = query.filter(or_(SparePartModel.company_id == branch.company_id, SparePartModel.company_id == None))
-            elif branch and branch.brand:
-                query = query.filter(or_(SparePartModel.brand.ilike(f"%{branch.brand}%"), SparePartModel.company_id == None))
+                query = query.filter(SparePartModel.company_id == branch.company_id)
+            elif branch and getattr(branch, "brand", None):
+                query = query.filter(SparePartModel.brand.ilike(f"%{branch.brand}%"))
+            else:
+                query = query.filter(SparePartModel.company_id == "__unassociated__")
         elif user.role == "technician":
             tech = db.query(TechnicianModel).filter(TechnicianModel.id == user.id).first()
-            if tech and getattr(tech, "company_id", None):
-                query = query.filter(or_(SparePartModel.company_id == tech.company_id, SparePartModel.company_id == None))
+            tech_company_id = getattr(tech, "company_id", None)
+            if not tech_company_id and getattr(tech, "branch_id", None):
+                b = db.query(CompanyBranchModel).filter(CompanyBranchModel.id == tech.branch_id).first()
+                if b and b.company_id:
+                    tech_company_id = b.company_id
+            if tech_company_id:
+                query = query.filter(SparePartModel.company_id == tech_company_id)
+            else:
+                query = query.filter(SparePartModel.company_id == "__unassociated__")
         elif user.role == "admin" and company_id:
-            query = query.filter(or_(SparePartModel.company_id == company_id, SparePartModel.company_id == None))
+            query = query.filter(SparePartModel.company_id == company_id)
     elif company_id:
-        query = query.filter(or_(SparePartModel.company_id == company_id, SparePartModel.company_id == None))
+        query = query.filter(SparePartModel.company_id == company_id)
 
     if category and category.lower() != "all":
         query = query.filter(SparePartModel.category.ilike(f"%{category}%"))
@@ -465,6 +474,10 @@ def create_part_request(
     if not part:
         raise HTTPException(status_code=404, detail="Spare part not found")
 
+    # Enforce company brand isolation: part must belong to the franchise's company
+    if branch.company_id and part.company_id and part.company_id != branch.company_id:
+        raise HTTPException(status_code=400, detail="Cannot request spare parts registered by another company")
+
     # Resolve parent company
     company_id = branch.company_id
     if not company_id:
@@ -759,16 +772,27 @@ def get_branch_inventory(
     user = get_authenticated_user(request, db)
     
     # If franchise/branch, resolve their assigned branch if "me" passed
+    branch = None
     if branch_id == "me" or not branch_id:
         branch = db.query(CompanyBranchModel).filter(
             or_(CompanyBranchModel.id == user.id, CompanyBranchModel.email == user.email)
         ).first()
         branch_id = branch.id if branch else user.id
+    else:
+        branch = db.query(CompanyBranchModel).filter(CompanyBranchModel.id == branch_id).first()
 
     # Join inventories with parts
-    items = db.query(FranchiseInventoryModel, SparePartModel).join(
+    query = db.query(FranchiseInventoryModel, SparePartModel).join(
         SparePartModel, FranchiseInventoryModel.part_id == SparePartModel.id
-    ).filter(FranchiseInventoryModel.branch_id == branch_id).all()
+    ).filter(FranchiseInventoryModel.branch_id == branch_id)
+
+    # Strictly isolate warehouse inventory to parts registered by this branch's company
+    if branch and branch.company_id:
+        query = query.filter(SparePartModel.company_id == branch.company_id)
+    elif user.role == "company":
+        query = query.filter(SparePartModel.company_id == user.id)
+
+    items = query.all()
 
     # If warehouse is empty, return empty list without auto-populating
     if not items:
@@ -887,6 +911,10 @@ def list_serialized_parts(
         ).first()
         b_id = branch.id if branch else user.id
         query = query.filter(PartSerialNumberModel.branch_id == b_id)
+        if branch and branch.company_id:
+            query = query.filter(SparePartModel.company_id == branch.company_id)
+    elif user.role == "company":
+        query = query.filter(SparePartModel.company_id == user.id)
     elif user.role == "technician":
         query = query.filter(
             or_(

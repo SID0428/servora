@@ -122,6 +122,7 @@ let companyPartRequests = [];
 let franchisePartRequests = [];
 let franchiseSerializedParts = [];
 let allCatalogParts = [];
+let escalationsList = [];
 let companyTechnicians = [];
 let companyInventorySubTab = "stock"; // "stock" or "requests"
 let franchiseInventorySubTab = "stock"; // "stock", "tech-reqs", "serialized", or "requests"
@@ -431,6 +432,14 @@ function resetViewDom(page) {
   // 4. Default search input placeholder reset
   if ($("requestSearch") && !["Inventory & Spares", "Spares Catalog", "Warranty Claims"].includes(page)) {
     $("requestSearch").placeholder = role === "franchise" ? "Search requests, customers, or appliances" : "Search requests";
+  }
+
+  // 5. Purge previous table rows and reset count to prevent ghosting/flashing during transitions
+  if ($("requestRows")) {
+    $("requestRows").innerHTML = `<tr><td colspan="8" class="empty-row text-slate-500 py-6">Loading ${safe(page)}…</td></tr>`;
+  }
+  if ($("requestCount")) {
+    $("requestCount").textContent = "Loading…";
   }
 }
 
@@ -8877,7 +8886,8 @@ function renderEscalationsView() {
   ].map((l) => `<th>${safe(l)}</th>`).join("");
 
   const query = ($("requestSearch")?.value || "").trim().toLowerCase();
-  const filtered = escalationsList.filter((e) =>
+  const list = Array.isArray(escalationsList) ? escalationsList : [];
+  const filtered = list.filter((e) =>
     [e.id, e.request_id, e.reason, e.status, e.target_role].join(" ").toLowerCase().includes(query)
   );
 
