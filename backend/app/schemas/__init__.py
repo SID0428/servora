@@ -121,6 +121,7 @@ class ApplianceBase(BaseModel):
     id: str
     company_id: Optional[str] = None
     company_name: Optional[str] = None
+    appliance_name: Optional[str] = None
     brand: str
     category: str
     model_no: str
@@ -149,6 +150,11 @@ class ApplianceBase(BaseModel):
         if hasattr(v, "strftime"):
             return v.strftime("%Y-%m-%d")
         return str(v)
+
+class ApplianceUpdatePayload(BaseModel):
+    model_no: Optional[str] = None
+    serial_no: Optional[str] = None
+    appliance_name: Optional[str] = None
 
 class NewApplianceCreate(BaseModel):
     company_id: str = Field(min_length=1, max_length=64)

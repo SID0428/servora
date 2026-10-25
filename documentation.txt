@@ -4,8 +4,8 @@ PRODUCTION-GRADE TECHNICAL ARCHITECTURE & DEVELOPER ONBOARDING MANUAL
 ================================================================================
 File: documentation.txt
 Platform: ServSure (formerly Servora)
-Version: 1.8.7 (Production Release - Database Date Coercion & Appliance Serialization)
-Last Updated: October 25, 2026 (22:05 IST)
+Version: 1.8.8 (Production Release - Appliance Name, Custom Model & Deletion Management)
+Last Updated: October 25, 2026 (22:30 IST)
 Repository: https://github.com/SID0428/servora.git
 
 Welcome to ServSure! This manual is the definitive, authoritative reference
@@ -1671,6 +1671,44 @@ were identified between the initial rough draft documentation and the actual cod
      2. In `appliance_payload` (`backend/app/routes/appliances.py`), introduced `serialize_app_date(val)` to explicitly convert
         `datetime.date` / `datetime.datetime` instances to string format.
 
+34. Discrepancy: Appliance Name Display, Model Number Correction, Invoice Document Viewing, and Appliance Deletion
+   - Initial State / Observed Issue:
+     1. In Customer Dashboard (`customer-dashboard.html`), registered appliances cards displayed `gelistra Other` as the title
+        instead of the actual registered appliance name (`BUILT-IN-MWO / OVEN & OTG`).
+     2. The model number displayed on the card showed generic text (e.g. `Built in microwave`) entered during company catalog creation,
+        with customers having no option to type or correct their specific model number (e.g. `CLOV6BL`).
+     3. Clicking "📄 View Invoice ↗" on the appliance card resulted in a 404 error because the link pointed to the relative path
+        `/uploads/...` on the frontend host instead of the backend media server.
+     4. Due to prior response serialization errors, customers attempting to save clicked the button multiple times, creating duplicate
+        appliance entries with no way to remove unwanted duplicates.
+   - Root Causes:
+     1. Database Model & UI Title Rendering: `ApplianceModel` (`backend/app/db/models.py`) lacked an `appliance_name` column. The UI
+        in `frontend/js/dashboard.js` strictly rendered `${appliance.brand} ${appliance.category}` (e.g. `gelistra Other`).
+     2. Catalog Model Restriction: Company catalog items (`company_appliances`) contained arbitrary model strings, and the customer
+        registration modal strictly forced customers to select from this dropdown with no custom input override or post-creation editing.
+     3. Host URL Discrepancy for Uploaded Media: `/api/uploads` returns a relative URI (`/uploads/...`). In static hosting (e.g. Render/Vercel),
+        clicking `<a href="/uploads/...">` navigated against the frontend origin instead of prepending `API_BASE_URL`.
+     4. Missing Deletion & Update API: `backend/app/routes/appliances.py` lacked `PATCH` and `DELETE` endpoints for customers to
+        correct details or remove accidental duplicate appliances.
+   - Resolution:
+     1. Database Schema & Migration (`backend/app/db/models.py` & `backend/app/seeds.py`):
+        - Added `appliance_name = Column(String(128), nullable=True)` to `ApplianceModel`.
+        - Added automatic column migration check (`ALTER TABLE appliances ADD COLUMN appliance_name VARCHAR(128) NULL`) in `seeds.py`.
+        - Updated `get_user_appliances` in `backend/app/routes/appliances.py` with fallback catalog matching to auto-backfill `appliance_name`
+          for legacy rows.
+     2. Customer Registration Modal Custom Model Number (`customer-dashboard.html` & `frontend/js/dashboard.js`):
+        - Appended `<option value="__custom__">✏️ Other / Enter Custom Model Number</option>` in model dropdown.
+        - Added `#customModelContainer` with `#newAppCustomModel` text input to let customers input the exact model from their unit rating plate.
+        - `submitAppliance` reads `model_no` from either the selected option or custom input.
+     3. Relative Media URL Resolution (`frontend/js/dashboard.js` & `frontend/js/ops-dashboard.js`):
+        - Implemented `resolveMediaUrl(url)` utility to prefix relative upload paths with `API_BASE_URL`.
+        - Applied `resolveMediaUrl` to all invoice links and modal previews across both customer and ops portals.
+     4. Customer Appliance Management (`backend/app/routes/appliances.py` & `customer-dashboard.html`):
+        - Added `PATCH /api/appliances/{appliance_id}` allowing customers to update `appliance_name`, `model_no`, and `serial_no`.
+        - Added `DELETE /api/appliances/{appliance_id}` with safety guard prohibiting removal of appliances with active service requests.
+        - Added `#editApplianceDialog` modal dialog and "✏️ Edit" / "🗑️ Remove" buttons directly on customer appliance cards.
+
 ==================================================
 End of Documentation
 ==================================================
+

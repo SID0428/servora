@@ -83,6 +83,9 @@ def seed_database(db: Session):
             connection.execute(text("ALTER TABLE users ADD COLUMN created_at DATETIME NULL"))
 
     appliance_columns = {column["name"] for column in inspect(engine).get_columns("appliances")}
+    if "appliance_name" not in appliance_columns:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE appliances ADD COLUMN appliance_name VARCHAR(128) NULL"))
     if "company_id" not in appliance_columns:
         with engine.begin() as connection:
             connection.execute(text("ALTER TABLE appliances ADD COLUMN company_id VARCHAR(64) NULL"))

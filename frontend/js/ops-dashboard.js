@@ -171,6 +171,15 @@ try {
 } catch {}
 
 function safe(value) { const node = document.createElement("span"); node.textContent = value ?? ""; return node.innerHTML; }
+function resolveMediaUrl(url) {
+  if (!url) return "";
+  if (url.startsWith("http://") || url.startsWith("https://") || url.startsWith("data:")) {
+    return url;
+  }
+  const base = (typeof API_BASE_URL !== "undefined" && API_BASE_URL ? API_BASE_URL : "").replace(/\/+$/, "");
+  const path = url.startsWith("/") ? url : `/${url}`;
+  return `${base}${path}`;
+}
 function formatDisplayDate(dateVal) {
   if (!dateVal) return "—";
   try {
@@ -4234,7 +4243,7 @@ function renderCompanyWarrantyClaims() {
               }
 
               const invoiceLink = item.invoice_url
-                ? `<a href="${safe(item.invoice_url)}" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-1 text-xs font-semibold text-blue-600 hover:underline"><span>📎</span> View Document</a>`
+                ? `<a href="${safe(resolveMediaUrl(item.invoice_url))}" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-1 text-xs font-semibold text-blue-600 hover:underline"><span>📎</span> View Document</a>`
                 : `<span class="text-xs text-slate-400">None attached</span>`;
 
               const actionBtn = `<button type="button" class="table-action font-semibold text-blue-600 hover:text-blue-800 flex items-center gap-1" data-verify-appliance-id="${safe(item.appliance_id || item.id)}"><span>🔍</span> Audit & Verify →</button>`;
@@ -4521,15 +4530,16 @@ window.openWarrantyVerificationModal = function (applianceId) {
 
   if (reg.invoice_url) {
     if (emptyEl) emptyEl.classList.add("hidden");
+    const resolvedUrl = resolveMediaUrl(reg.invoice_url);
     const isPdf = reg.invoice_url.toLowerCase().endsWith(".pdf") || reg.invoice_url.toLowerCase().includes(".pdf");
     if (isPdf) {
       if (imgEl) imgEl.classList.add("hidden");
       if (pdfWrap) pdfWrap.classList.remove("hidden");
-      if (pdfLink) pdfLink.href = reg.invoice_url;
+      if (pdfLink) pdfLink.href = resolvedUrl;
     } else {
       if (pdfWrap) pdfWrap.classList.add("hidden");
       if (imgEl) {
-        imgEl.src = reg.invoice_url;
+        imgEl.src = resolvedUrl;
         imgEl.classList.remove("hidden");
       }
     }

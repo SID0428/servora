@@ -5,8 +5,8 @@ import uuid
 import json
 from datetime import datetime, timedelta
 from app.db.session import get_db
-from app.db.models import ApplianceModel, UserModel, CompanyApplianceCatalogModel
-from app.schemas import ApplianceBase, NewApplianceCreate, WarrantyInvoiceReuploadPayload
+from app.db.models import ApplianceModel, UserModel, CompanyApplianceCatalogModel, ServiceRequestModel
+from app.schemas import ApplianceBase, NewApplianceCreate, WarrantyInvoiceReuploadPayload, ApplianceUpdatePayload
 from app.security import get_authenticated_user
 from app.routes.warranty_amc import resolve_policy_for_appliance
 
@@ -20,7 +20,26 @@ def get_user_appliances(request: Request, db: Session = Depends(get_db)):
     rows = db.query(ApplianceModel, UserModel.name).outerjoin(
         UserModel, ApplianceModel.company_id == UserModel.id
     ).filter(ApplianceModel.user_id == user.id).all()
-    return [appliance_payload(appliance, company_name) for appliance, company_name in rows]
+
+    # Pre-map company catalog appliance names to backfill legacy rows where appliance_name is NULL
+    catalog_items = db.query(CompanyApplianceCatalogModel).all()
+    cat_name_map = {}
+    for ci in catalog_items:
+        cat_key = (ci.company_id, (ci.category or "").lower())
+        if cat_key not in cat_name_map:
+            cat_name_map[cat_key] = ci.appliance_name
+        try:
+            m_list = json.loads(ci.model_numbers) if ci.model_numbers else []
+        except Exception:
+            m_list = [m.strip() for m in str(ci.model_numbers).split(",") if m.strip()]
+        for m in m_list:
+            cat_name_map[(ci.company_id, m.lower())] = ci.appliance_name
+
+    payloads = []
+    for appliance, company_name in rows:
+        fallback = cat_name_map.get((appliance.company_id, (appliance.model_no or "").lower())) or cat_name_map.get((appliance.company_id, (appliance.category or "").lower()))
+        payloads.append(appliance_payload(appliance, company_name, fallback_appliance_name=fallback))
+    return payloads
 
 
 @router.get("/companies")
@@ -164,10 +183,20 @@ def add_appliance(payload: NewApplianceCreate, request: Request, db: Session = D
         )
     w_status = "Pending Verification"
 
+    raw_app_name = payload.appliance_name.strip() if payload.appliance_name else None
+    if not raw_app_name:
+        for cm in cat_match:
+            if cm.appliance_name:
+                raw_app_name = cm.appliance_name
+                break
+    if not raw_app_name:
+        raw_app_name = f"{payload.brand.strip()} {cat}"
+
     new_app = ApplianceModel(
         id=f"app_{uuid.uuid4().hex[:6]}",
         user_id=user.id,
         company_id=company.id,
+        appliance_name=raw_app_name,
         brand=payload.brand.strip(),
         category=cat,
         model_no=payload.model_no.strip(),
@@ -240,11 +269,13 @@ def serialize_app_date(val) -> str | None:
         return val.strftime("%Y-%m-%d")
     return str(val)
 
-def appliance_payload(appliance: ApplianceModel, company_name: str | None = None) -> dict:
+def appliance_payload(appliance: ApplianceModel, company_name: str | None = None, fallback_appliance_name: str | None = None) -> dict:
+    app_name = getattr(appliance, "appliance_name", None) or fallback_appliance_name or f"{appliance.brand} {appliance.category}"
     return {
         "id": appliance.id,
         "company_id": appliance.company_id,
         "company_name": company_name,
+        "appliance_name": app_name,
         "brand": appliance.brand,
         "category": appliance.category,
         "model_no": appliance.model_no,
@@ -265,4 +296,62 @@ def appliance_payload(appliance: ApplianceModel, company_name: str | None = None
         "icon": appliance.icon,
         "invoice_url": appliance.invoice_url,
     }
+
+
+@router.patch("/{appliance_id}", response_model=ApplianceBase)
+def update_user_appliance(
+    appliance_id: str,
+    payload: ApplianceUpdatePayload,
+    request: Request,
+    db: Session = Depends(get_db)
+):
+    user = get_authenticated_user(request, db)
+    if user.role != "customer":
+        raise HTTPException(status_code=403, detail="Customer access required")
+    app = db.query(ApplianceModel).filter(
+        ApplianceModel.id == appliance_id,
+        ApplianceModel.user_id == user.id
+    ).first()
+    if not app:
+        raise HTTPException(status_code=404, detail="Appliance not found")
+
+    if payload.model_no and payload.model_no.strip():
+        app.model_no = payload.model_no.strip()
+    if payload.serial_no is not None:
+        app.serial_no = payload.serial_no.strip() or None
+    if payload.appliance_name and payload.appliance_name.strip():
+        app.appliance_name = payload.appliance_name.strip()
+
+    db.commit()
+    db.refresh(app)
+    company = db.query(UserModel).filter(UserModel.id == app.company_id).first()
+    return appliance_payload(app, company.name if company else None)
+
+
+@router.delete("/{appliance_id}")
+def delete_user_appliance(appliance_id: str, request: Request, db: Session = Depends(get_db)):
+    user = get_authenticated_user(request, db)
+    if user.role != "customer":
+        raise HTTPException(status_code=403, detail="Customer access required")
+    app = db.query(ApplianceModel).filter(
+        ApplianceModel.id == appliance_id,
+        ApplianceModel.user_id == user.id
+    ).first()
+    if not app:
+        raise HTTPException(status_code=404, detail="Appliance not found")
+
+    # Guard: Cannot delete if active non-completed service request
+    active_reqs = db.query(ServiceRequestModel).filter(
+        ServiceRequestModel.appliance_id == appliance_id,
+        ServiceRequestModel.status.notin_(["Completed", "Cancelled"])
+    ).count()
+    if active_reqs > 0:
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot remove this appliance because it has an active service request in progress."
+        )
+
+    db.delete(app)
+    db.commit()
+    return {"message": "Appliance removed successfully", "id": appliance_id}
 
