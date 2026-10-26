@@ -9081,6 +9081,63 @@ window.openTechEstimateModal = async function(requestId) {
     }
   } catch (e) {}
 
+  if (!catalogParts || catalogParts.length === 0) {
+    const rawCache = (Array.isArray(companySparesCatalog) && companySparesCatalog.length > 0)
+      ? companySparesCatalog
+      : (getUserCache("servsure_cache_catalog") ||
+         getUserCache("servsure_cache_catalog_all") ||
+         (typeof allCatalogParts !== "undefined" ? allCatalogParts : []) ||
+         []);
+    let localCache = (Array.isArray(rawCache) && rawCache.length > 0) ? rawCache : [];
+    if (localCache.length === 0) {
+      try {
+        const c1 = localStorage.getItem("servora_cache_catalog") || localStorage.getItem("servsure_cache_catalog");
+        if (c1) localCache = JSON.parse(c1) || [];
+      } catch {}
+    }
+
+    if (localCache.length > 0) {
+      const bTarget = (req.brand || "").toLowerCase().trim();
+      const compIdTarget = req.company_id || "";
+      const filtered = localCache.filter(p => {
+        if (!p) return false;
+        const pBrand = (p.brand || "").toLowerCase().trim();
+        const pCompId = p.company_id || "";
+        if (compIdTarget && pCompId && pCompId === compIdTarget) return true;
+        if (bTarget && pBrand && (pBrand.includes(bTarget) || bTarget.includes(pBrand))) return true;
+        if (bTarget && p.name && p.name.toLowerCase().includes(bTarget)) return true;
+        return false;
+      });
+      const partsToMap = filtered.length > 0 ? filtered : localCache;
+      const isReqUnderWarranty = Boolean(
+        req.is_under_warranty ||
+        (req.warranty_status && (req.warranty_status.toLowerCase().includes("active") || req.warranty_status.toLowerCase().includes("under") || req.warranty_status.toLowerCase().includes("approved")))
+      );
+      catalogParts = partsToMap.map(p => {
+        const isConsumable = p.part_type === "consumable" || anyConsumable(p.name);
+        const isEligible = p.is_warranty_eligible !== false && !isConsumable;
+        const isCovered = isReqUnderWarranty && isEligible;
+        return {
+          id: p.id || `part_${p.part_code || Math.random().toString(36).substring(2, 7)}`,
+          part_code: p.part_code || "SP-001",
+          name: p.name || "Spare Part",
+          category: p.category || req.appliance_name || "General",
+          brand: p.brand || req.brand,
+          unit_price: parseFloat(p.unit_price || 0),
+          stock_quantity: parseInt(p.stock_quantity || 0, 10),
+          part_type: p.part_type || (isConsumable ? "consumable" : "functional"),
+          is_warranty_eligible: isEligible,
+          warranty_component_type: p.warranty_component_type || null,
+          is_covered: isCovered,
+          coverage_type: isCovered ? "warranty_covered" : "customer_billable",
+          coverage_reason: isCovered
+            ? "Covered under Comprehensive Warranty"
+            : (isReqUnderWarranty ? "Excluded: Consumable / Non-functional item" : "Billable part (Out of Warranty)")
+        };
+      });
+    }
+  }
+
   currentTechEstimatePartsCatalog = catalogParts;
 
   let modal = $("techEstimateModal");

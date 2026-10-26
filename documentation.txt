@@ -4,8 +4,8 @@ PRODUCTION-GRADE TECHNICAL ARCHITECTURE & DEVELOPER ONBOARDING MANUAL
 ================================================================================
 File: documentation.txt
 Platform: ServSure (formerly Servora)
-Version: 1.9.3 (Production Release - Technician Pre-Repair Gate Company Parts Dropdown & Automated Warranty Evaluation)
-Last Updated: October 26, 2026 (21:50 IST)
+Version: 1.9.4 (Production Release - Technician Pre-Repair Gate Brand/Company Resolution Fix & Robust Client Fallback)
+Last Updated: October 26, 2026 (22:20 IST)
 Repository: https://github.com/SID0428/servora.git
 
 Welcome to ServSure! This manual is the definitive, authoritative reference
@@ -1875,6 +1875,22 @@ were identified between the initial rough draft documentation and the actual cod
         - In `addTechEstimatePartRow()`, renders a company parts dropdown (`📦 Choose part registered with company...`) for every part row, with options showing `${p.name} (${p.part_code}) — ₹${p.unit_price} · [${p.is_covered ? '🛡️ Covered' : '💵 Billable'}]`.
         - Added `window.onTechEstimatePartSelect(selectEl)` handler: selecting a part automatically populates `Part name`, `Code`, `Unit Price`, sets the coverage select to `🛡️ OEM Covered (₹0)` or `💵 Billable`, displays the exact warranty explanation badge (`✓ Covered under Comprehensive Warranty` / `ℹ️ Consumable`), and updates billable totals.
         - Provides a `✏️ Custom / Other Part (Enter manually)` option so technicians can still enter non-catalog parts when needed.
+40. BUG FIX: Technician Pre-Repair Gate 0 Parts Available & Gelistra Company Brand Resolution
+   - Symptoms & Root Cause:
+     1. In the Technician Portal Pre-Repair Gate modal ("Submit Customer Estimate" SRS 6.10), opening a service request for Gelistra (e.g., #SR-9929 · Shreyansh (gelistra)) displayed:
+        "📦 Choose part registered with company (0 available)..." even though the company had 3 parts registered.
+     2. Root Cause 1: In `backend/app/routes/estimates.py`, line 66 accessed `UserModel.company_name.ilike(...)`. `UserModel` in `models.py` only has `id`, `name`, `email`, `phone`, `role`, etc., and does not possess a `company_name` column. This caused an unhandled `AttributeError`, causing `GET /api/requests/{request_id}/estimate/parts-catalog` to return HTTP 500.
+     3. Root Cause 2: In the frontend `ops-dashboard.js`, when the fetch failed or returned an empty catalog, there was no fallback to client-cached catalog (`getUserCache("servsure_cache_catalog")` / `companySparesCatalog` / `localStorage`).
+     4. Root Cause 3: Company resolution in `estimates.py` previously attempted exact single `company_id` equality on `SparePartModel`, failing to match parts when registered under multi-token brand names (e.g. `Gelistra Appliances` vs `gelistra`).
+   - Resolution:
+     1. Backend Robust Resolution (`backend/app/routes/estimates.py`):
+        - Removed invalid `UserModel.company_name` attribute reference.
+        - Implemented multi-criteria company resolution matching `company_id`, brand name, and tokenized brand terms across `UserModel` and `SparePartModel`.
+        - Formed an `or_(*part_filters)` query supporting both `SparePartModel.company_id.in_(company_ids)` and `SparePartModel.brand.ilike(f"%{brand_val}%")` (including tokens like `gelistra`).
+     2. Database Seeding & Data Healing (`backend/app/seeds.py`):
+        - Seeded 3 genuine OEM parts for Gelistra in the catalog (`GEL-FAN-01`: DC Evaporator Fan Motor [functional, covered], `GEL-PCB-01`: Smart Inverter Main PCB Board [functional, covered], and `GEL-FLT-01`: Deodorizing Activated Carbon Air Filter [consumable, billable]).
+     3. Frontend Resilient Cache Fallback (`frontend/js/ops-dashboard.js`):
+        - In `openTechEstimateModal`, added client cache fallback to inspect `companySparesCatalog`, `getUserCache("servsure_cache_catalog")`, and local storage if the network catalog is empty, automatically running warranty evaluation on cached parts.
 
 ==================================================
 End of Documentation

@@ -1,8 +1,9 @@
+import re
 import json
 import uuid
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Request
-from sqlalchemy import or_
+from sqlalchemy import or_, and_
 from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.db.models import (
@@ -58,15 +59,36 @@ def get_estimate_parts_catalog(
 
     appliance = db.query(ApplianceModel).filter(ApplianceModel.id == req.appliance_id).first() if req.appliance_id else None
 
-    # Resolve company_id for this ticket
-    company_id = req.company_id or (appliance.company_id if appliance else None)
-    if not company_id and req.brand:
-        comp_user = db.query(UserModel).filter(
+    # Resolve company_ids for this ticket (matching company_id, brand name, and brand tokens)
+    company_ids = set()
+    if req.company_id:
+        company_ids.add(req.company_id)
+    if appliance and appliance.company_id:
+        company_ids.add(appliance.company_id)
+
+    brand_val = (req.brand or (appliance.brand if appliance else "") or "").strip()
+    brand_tokens = [t for t in re.split(r"[\s\-_]+", brand_val) if len(t) >= 3] if brand_val else []
+
+    if brand_val:
+        comp_filters = [
+            UserModel.name.ilike(f"%{brand_val}%"),
+            UserModel.email.ilike(f"%{brand_val}%"),
+            UserModel.id.ilike(f"%{brand_val}%")
+        ]
+        for token in brand_tokens:
+            comp_filters.append(UserModel.name.ilike(f"%{token}%"))
+            comp_filters.append(UserModel.email.ilike(f"%{token}%"))
+
+        comp_users = db.query(UserModel).filter(
             UserModel.role == "company",
-            or_(UserModel.name.ilike(f"%{req.brand}%"), UserModel.company_name.ilike(f"%{req.brand}%"))
-        ).first()
-        if comp_user:
-            company_id = comp_user.id
+            or_(*comp_filters)
+        ).all()
+        for c in comp_users:
+            company_ids.add(c.id)
+
+    resolved_company_id = req.company_id or (appliance.company_id if appliance else None)
+    if not resolved_company_id and company_ids:
+        resolved_company_id = next(iter(company_ids))
 
     is_comprehensive_active = bool(getattr(req, "is_under_warranty", False))
     if not is_comprehensive_active and appliance and appliance.warranty_status:
@@ -87,11 +109,17 @@ def get_estimate_parts_catalog(
             else:
                 is_comprehensive_active = True
 
+    part_filters = []
+    if company_ids:
+        part_filters.append(SparePartModel.company_id.in_(list(company_ids)))
+    if brand_val:
+        part_filters.append(SparePartModel.brand.ilike(f"%{brand_val}%"))
+        for token in brand_tokens:
+            part_filters.append(SparePartModel.brand.ilike(f"%{token}%"))
+
     query = db.query(SparePartModel).filter(SparePartModel.is_active == True)
-    if company_id:
-        query = query.filter(SparePartModel.company_id == company_id)
-    elif req.brand:
-        query = query.filter(SparePartModel.brand.ilike(f"%{req.brand}%"))
+    if part_filters:
+        query = query.filter(or_(*part_filters))
     else:
         query = query.filter(SparePartModel.company_id == "__none__")
 
@@ -125,14 +153,14 @@ def get_estimate_parts_catalog(
         })
 
     company_name = req.brand
-    if company_id:
-        c_user = db.query(UserModel).filter(UserModel.id == company_id).first()
+    if resolved_company_id:
+        c_user = db.query(UserModel).filter(UserModel.id == resolved_company_id).first()
         if c_user:
             company_name = c_user.name
 
     return {
         "request_id": req.id,
-        "company_id": company_id,
+        "company_id": resolved_company_id,
         "company_name": company_name,
         "appliance_name": req.appliance_name,
         "brand": req.brand,

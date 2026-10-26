@@ -1,6 +1,6 @@
 import json
 from datetime import date
-from sqlalchemy import inspect, text
+from sqlalchemy import inspect, text, or_, and_
 from sqlalchemy.orm import Session
 from app.db.session import engine, Base, SessionLocal
 from app.db.models import (
@@ -504,6 +504,77 @@ def seed_database(db: Session):
         crm_part.stock_quantity = 50
         crm_part.is_active = True
         db.commit()
+
+    # Ensure 3 genuine OEM parts are registered for Gelistra company catalog
+    gelistra_user = db.query(UserModel).filter(
+        UserModel.role == "company",
+        or_(UserModel.name.ilike("%gelistra%"), UserModel.id.ilike("%gelistra%"))
+    ).first()
+    gel_co_id = gelistra_user.id if gelistra_user else "comp_gelistra"
+
+    gelistra_parts_data = [
+        {
+            "id": "part_gel_fan01",
+            "part_code": "GEL-FAN-01",
+            "name": "DC Evaporator Cooling Fan Motor",
+            "category": "Refrigerator",
+            "brand": "Gelistra",
+            "unit_price": 850.0,
+            "hsn_code": "841890",
+            "description": "OEM DC brushless evaporator fan motor with wiring harness",
+            "stock_quantity": 40,
+            "part_type": "functional",
+            "is_warranty_eligible": True,
+            "warranty_component_type": "motor",
+            "company_id": gel_co_id,
+            "is_active": True
+        },
+        {
+            "id": "part_gel_pcb01",
+            "part_code": "GEL-PCB-01",
+            "name": "Smart Inverter Main PCB Board",
+            "category": "Refrigerator",
+            "brand": "Gelistra",
+            "unit_price": 3200.0,
+            "hsn_code": "853400",
+            "description": "OEM logic control PCB board with moisture-resistant conformal coating",
+            "stock_quantity": 25,
+            "part_type": "functional",
+            "is_warranty_eligible": True,
+            "warranty_component_type": "pcb",
+            "company_id": gel_co_id,
+            "is_active": True
+        },
+        {
+            "id": "part_gel_flt01",
+            "part_code": "GEL-FLT-01",
+            "name": "Deodorizing Activated Carbon Air Filter",
+            "category": "Refrigerator",
+            "brand": "Gelistra",
+            "unit_price": 350.0,
+            "hsn_code": "842139",
+            "description": "Multi-layer odor absorbing activated carbon filter insert",
+            "stock_quantity": 100,
+            "part_type": "consumable",
+            "is_warranty_eligible": False,
+            "warranty_component_type": None,
+            "company_id": gel_co_id,
+            "is_active": True
+        }
+    ]
+
+    for gpd in gelistra_parts_data:
+        existing_gp = db.query(SparePartModel).filter(
+            or_(SparePartModel.id == gpd["id"], SparePartModel.part_code == gpd["part_code"])
+        ).first()
+        if not existing_gp:
+            db.add(SparePartModel(**gpd))
+        else:
+            if not existing_gp.company_id and gel_co_id:
+                existing_gp.company_id = gel_co_id
+            if not existing_gp.brand:
+                existing_gp.brand = "Gelistra"
+    db.commit()
 
     # 6. Seed Franchise Warehouse Stock (Phase 2 FR-INV-002, FR-INV-004)
     if not db.query(FranchiseInventoryModel).first():
