@@ -38,27 +38,64 @@ def list_warranty_claims(
     query = db.query(WarrantyClaimModel)
 
     if user.role == "company":
-        company_matches = [user.id]
+        company_brand = (getattr(user, "company_name", None) or user.name or "").strip()
+        brand_clean = re.sub(r'(?i)\b(company|pvt|ltd|inc|llc|corp|brand|appliances|electronics)\b', '', company_brand).strip()
+
+        matching_company_users = db.query(UserModel).filter(
+            UserModel.role == "company",
+            or_(
+                UserModel.id == user.id,
+                UserModel.email == user.email,
+                UserModel.name.ilike(f"%{brand_clean}%") if brand_clean else False,
+                UserModel.name.ilike(f"%{company_brand}%") if company_brand else False,
+                getattr(UserModel, "company_name", UserModel.name).ilike(f"%{brand_clean}%") if brand_clean else False
+            )
+        ).all()
+        company_matches = list(set([u.id for u in matching_company_users] + [user.id]))
         if user.email:
             company_matches.append(user.email)
         if user.name:
             company_matches.append(user.name)
-        if getattr(user, "company_name", None):
-            company_matches.append(user.company_name)
 
-        req_ids_subq = db.query(ServiceRequestModel.id).filter(
+        # Related appliances
+        app_subq = db.query(ApplianceModel.id).filter(
+            or_(
+                ApplianceModel.company_id.in_(company_matches),
+                ApplianceModel.brand.ilike(f"%{company_brand}%") if company_brand else False,
+                ApplianceModel.brand.ilike(f"%{brand_clean}%") if brand_clean else False
+            )
+        )
+
+        # Related service requests
+        req_subq = db.query(ServiceRequestModel).filter(
             or_(
                 ServiceRequestModel.company_id.in_(company_matches),
-                ServiceRequestModel.brand.ilike(user.name if user.name else ""),
-                ServiceRequestModel.brand.ilike(getattr(user, "company_name", "") or "")
+                ServiceRequestModel.brand.ilike(f"%{company_brand}%") if company_brand else False,
+                ServiceRequestModel.brand.ilike(f"%{brand_clean}%") if brand_clean else False,
+                ServiceRequestModel.appliance_id.in_(app_subq)
             )
-        )
-        query = query.filter(
-            or_(
-                WarrantyClaimModel.company_id.in_(company_matches),
-                WarrantyClaimModel.request_id.in_(req_ids_subq)
-            )
-        )
+        ).all()
+
+        candidate_req_ids = set()
+        for r in req_subq:
+            candidate_req_ids.add(r.id)
+            candidate_req_ids.add(r.id.replace("-", "–"))  # en-dash
+            candidate_req_ids.add(r.id.replace("–", "-"))  # hyphen
+
+        claim_filters = [
+            WarrantyClaimModel.company_id.in_(company_matches),
+            WarrantyClaimModel.appliance_id.in_(app_subq)
+        ]
+        if company_brand:
+            claim_filters.append(WarrantyClaimModel.company_id.ilike(f"%{company_brand}%"))
+            claim_filters.append(WarrantyClaimModel.claim_notes.ilike(f"%{company_brand}%"))
+        if brand_clean:
+            claim_filters.append(WarrantyClaimModel.company_id.ilike(f"%{brand_clean}%"))
+            claim_filters.append(WarrantyClaimModel.claim_notes.ilike(f"%{brand_clean}%"))
+        if candidate_req_ids:
+            claim_filters.append(WarrantyClaimModel.request_id.in_(list(candidate_req_ids)))
+
+        query = query.filter(or_(*claim_filters))
     elif user.role in ("branch", "franchise"):
         branch_ids = [user.id]
         user_branches = db.query(CompanyBranchModel).filter(
@@ -224,7 +261,20 @@ def list_warranty_claims(
             or (getattr(req, "serial_no", None) if req else None)
             or (getattr(req, "serial_number", None) if req else None)
         )
-        purchase_date = appliance.purchase_date if appliance else (getattr(req, "purchase_date", None) if req else None)
+        p_raw = (
+            (appliance.purchase_date if appliance and appliance.purchase_date else None)
+            or (appliance.warranty_start_date if appliance and appliance.warranty_start_date else None)
+            or (appliance.registered_on if appliance and appliance.registered_on else None)
+            or (getattr(req, "purchase_date", None) if req else None)
+            or (getattr(req, "appointment_date", None) if req else None)
+            or (getattr(req, "created_at", None) if req else None)
+        )
+        if isinstance(p_raw, (datetime, date)):
+            purchase_date = p_raw.strftime("%Y-%m-%d")
+        elif p_raw:
+            purchase_date = str(p_raw).split("T")[0].split(" ")[0]
+        else:
+            purchase_date = None
         issue_text = (
             (getattr(req, "issue", None) if req and req.issue else None)
             or (getattr(req, "description", None) if req and req.description else None)
@@ -644,10 +694,23 @@ def list_warranty_registrations(
 
     query = db.query(ApplianceModel)
     if user.role == "company":
+        company_brand = (getattr(user, "company_name", None) or user.name or "").strip()
+        brand_clean = re.sub(r'(?i)\b(company|pvt|ltd|inc|llc|corp|brand|appliances|electronics)\b', '', company_brand).strip()
+        matching_companies = db.query(UserModel).filter(
+            UserModel.role == "company",
+            or_(
+                UserModel.id == user.id,
+                UserModel.name.ilike(f"%{brand_clean}%") if brand_clean else False,
+                UserModel.name.ilike(f"%{company_brand}%") if company_brand else False
+            )
+        ).all()
+        comp_ids = list(set([c.id for c in matching_companies] + [user.id]))
+
         query = query.filter(
             or_(
-                ApplianceModel.company_id == user.id,
-                ApplianceModel.brand.ilike(user.name.strip())
+                ApplianceModel.company_id.in_(comp_ids),
+                ApplianceModel.brand.ilike(f"%{brand_clean}%") if brand_clean else False,
+                ApplianceModel.brand.ilike(f"%{company_brand}%") if company_brand else False
             )
         )
 
@@ -687,15 +750,16 @@ def list_warranty_registrations(
             f"{(app.brand or '').strip().lower()} other",
             (app.brand or "").strip().lower(),
             "other", "appliance", "unknown"
-        ):
+        ) or app_name.strip().lower().endswith(" other"):
             cat_item = None
-            if app.category:
+            if app.category and app.category.lower() != "other":
                 cat_item = db.query(CompanyApplianceCatalogModel).filter(
                     CompanyApplianceCatalogModel.category.ilike(app.category.strip())
                 ).first()
             if not cat_item and app.brand:
                 cat_item = db.query(CompanyApplianceCatalogModel).filter(
-                    CompanyApplianceCatalogModel.brand.ilike(app.brand.strip())
+                    CompanyApplianceCatalogModel.brand.ilike(app.brand.strip()),
+                    CompanyApplianceCatalogModel.category.notilike("other")
                 ).first()
             if cat_item and cat_item.appliance_name:
                 app_name = cat_item.appliance_name
@@ -706,7 +770,7 @@ def list_warranty_registrations(
                 except Exception:
                     db.rollback()
             else:
-                app_name = f"{app.brand} {app.category}".strip()
+                app_name = f"{app.brand} Appliance".strip() if (not app.category or app.category.lower() == "other") else f"{app.brand} {app.category}".strip()
 
         results.append(
             WarrantyRegistrationItem(

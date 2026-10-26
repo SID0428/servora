@@ -261,7 +261,7 @@ def add_appliance(payload: NewApplianceCreate, request: Request, db: Session = D
                 raw_app_name = cc.appliance_name
                 break
     if not raw_app_name:
-        raw_app_name = f"{payload.brand.strip()} {cat}"
+        raw_app_name = f"{payload.brand.strip()} Appliance" if cat.lower() == "other" else f"{payload.brand.strip()} {cat}"
 
     new_app = ApplianceModel(
         id=f"app_{uuid.uuid4().hex[:6]}",
@@ -343,7 +343,12 @@ def serialize_app_date(val) -> str | None:
 def appliance_payload(appliance: ApplianceModel, company_name: str | None = None, fallback_appliance_name: str | None = None) -> dict:
     curr_name = getattr(appliance, "appliance_name", None)
     if is_generic_name(curr_name, appliance.brand, appliance.category):
-        app_name = fallback_appliance_name or curr_name or f"{appliance.brand} {appliance.category}"
+        if fallback_appliance_name and not is_generic_name(fallback_appliance_name, appliance.brand, appliance.category):
+            app_name = fallback_appliance_name
+        elif appliance.category and appliance.category.lower() != "other":
+            app_name = f"{appliance.brand} {appliance.category}".strip()
+        else:
+            app_name = f"{appliance.brand} Appliance".strip() if appliance.brand else "Appliance"
     else:
         app_name = curr_name
 

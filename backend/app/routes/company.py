@@ -3,6 +3,7 @@ import hmac
 import html
 import logging
 import os
+import re
 import secrets
 from datetime import datetime, timedelta
 from uuid import uuid4
@@ -377,17 +378,42 @@ def get_company_branch_details(
     }
 
 
+def resolve_clean_appliance_name(app_obj):
+    name = (getattr(app_obj, "appliance_name", None) or "").strip()
+    brand = (getattr(app_obj, "brand", None) or "").strip()
+    category = (getattr(app_obj, "category", None) or "").strip()
+    if name and not name.lower().endswith(" other") and name.lower() != "other" and name.lower() != f"{brand.lower()} other":
+        return name
+    if category and category.lower() != "other":
+        return f"{brand} {category}".strip()
+    return f"{brand} Appliance".strip() if brand else "Appliance"
+
+
 @router.get("/customers")
 def list_company_customers(request: Request, db: Session = Depends(get_db)):
     company = require_company(request, db)
+    company_brand = (getattr(company, "company_name", None) or company.name or "").strip()
+    brand_clean = re.sub(r'(?i)\b(company|pvt|ltd|inc|llc|corp|brand|appliances|electronics)\b', '', company_brand).strip()
+
+    matching_companies = db.query(UserModel).filter(
+        UserModel.role == "company",
+        or_(
+            UserModel.id == company.id,
+            UserModel.name.ilike(f"%{brand_clean}%") if brand_clean else False,
+            UserModel.name.ilike(f"%{company_brand}%") if company_brand else False
+        )
+    ).all()
+    comp_ids = list(set([c.id for c in matching_companies] + [company.id]))
+
     # Query all appliances registered for this company, joined with customer UserModel
     rows = (
         db.query(ApplianceModel, UserModel)
         .join(UserModel, ApplianceModel.user_id == UserModel.id)
         .filter(
             or_(
-                ApplianceModel.company_id == company.id,
-                ApplianceModel.brand.ilike(company.name.strip()),
+                ApplianceModel.company_id.in_(comp_ids),
+                ApplianceModel.brand.ilike(f"%{brand_clean}%") if brand_clean else False,
+                ApplianceModel.brand.ilike(f"%{company_brand}%") if company_brand else False,
             )
         )
         .order_by(ApplianceModel.registered_on.desc())
@@ -420,8 +446,11 @@ def list_company_customers(request: Request, db: Session = Depends(get_db)):
         if is_w_active:
             customers_map[customer.id]["active_warranties_count"] += 1
 
+        app_name = resolve_clean_appliance_name(appliance)
         customers_map[customer.id]["products"].append({
             "appliance_id": appliance.id,
+            "id": appliance.id,
+            "appliance_name": app_name,
             "category": appliance.category,
             "brand": appliance.brand,
             "model_no": appliance.model_no,
@@ -434,6 +463,8 @@ def list_company_customers(request: Request, db: Session = Depends(get_db)):
             "amc_plan_name": appliance.amc_plan_name or "",
             "amc_end_date": appliance.amc_end_date or "",
             "registered_on": appliance.registered_on,
+            "purchase_date": appliance.purchase_date or appliance.warranty_start_date or appliance.registered_on,
+            "invoice_url": appliance.invoice_url,
         })
 
     customers_list = []
@@ -441,8 +472,9 @@ def list_company_customers(request: Request, db: Session = Depends(get_db)):
         reqs = db.query(ServiceRequestModel).filter(
             ServiceRequestModel.customer_id == cust_id,
             or_(
-                ServiceRequestModel.company_id == company.id,
-                ServiceRequestModel.brand.ilike(company.name.strip())
+                ServiceRequestModel.company_id.in_(comp_ids),
+                ServiceRequestModel.brand.ilike(f"%{brand_clean}%") if brand_clean else False,
+                ServiceRequestModel.brand.ilike(f"%{company_brand}%") if company_brand else False
             )
         ).all()
         ongoing_cnt = sum(1 for r in reqs if r.status != "Completed" and r.status_badge != "Completed")
@@ -452,7 +484,11 @@ def list_company_customers(request: Request, db: Session = Depends(get_db)):
         cust_data["total_services_count"] = len(reqs)
         cust_data["total_products_count"] = len(cust_data["products"])
 
-        p_names = [f"{p['brand']} {p['category']}" for p in cust_data["products"]]
+        p_names = [
+            p.get("appliance_name")
+            or (f"{p['brand']} {p['category']}" if (p.get("category") or "").lower() != "other" else f"{p.get('brand', '')} Appliance".strip())
+            for p in cust_data["products"]
+        ]
         cust_data["products_summary"] = ", ".join(p_names[:2]) + ("..." if len(p_names) > 2 else "")
         cust_data["warranty_summary"] = f"Active ({cust_data['active_warranties_count']})" if cust_data["active_warranties_count"] > 0 else "Expired"
         cust_data["registered_on"] = cust_data["products"][0]["registered_on"] if cust_data["products"] else "—"
@@ -475,11 +511,25 @@ def get_company_customer_details(customer_id: str, request: Request, db: Session
     if not customer:
         raise HTTPException(status_code=404, detail="Customer record not found")
 
+    company_brand = (getattr(company, "company_name", None) or company.name or "").strip()
+    brand_clean = re.sub(r'(?i)\b(company|pvt|ltd|inc|llc|corp|brand|appliances|electronics)\b', '', company_brand).strip()
+
+    matching_companies = db.query(UserModel).filter(
+        UserModel.role == "company",
+        or_(
+            UserModel.id == company.id,
+            UserModel.name.ilike(f"%{brand_clean}%") if brand_clean else False,
+            UserModel.name.ilike(f"%{company_brand}%") if company_brand else False
+        )
+    ).all()
+    comp_ids = list(set([c.id for c in matching_companies] + [company.id]))
+
     appliances = db.query(ApplianceModel).filter(
         ApplianceModel.user_id == customer.id,
         or_(
-            ApplianceModel.company_id == company.id,
-            ApplianceModel.brand.ilike(company.name.strip())
+            ApplianceModel.company_id.in_(comp_ids),
+            ApplianceModel.brand.ilike(f"%{brand_clean}%") if brand_clean else False,
+            ApplianceModel.brand.ilike(f"%{company_brand}%") if company_brand else False
         )
     ).order_by(ApplianceModel.registered_on.desc()).all()
 
@@ -489,13 +539,18 @@ def get_company_customer_details(customer_id: str, request: Request, db: Session
         is_w_active = (a.warranty_status or "").lower() == "active"
         if is_w_active:
             active_warranties += 1
+        app_name = resolve_clean_appliance_name(a)
         products_list.append({
             "id": a.id,
+            "appliance_id": a.id,
+            "appliance_name": app_name,
             "category": a.category,
             "brand": a.brand,
             "model_no": a.model_no,
             "serial_no": a.serial_no or "Not provided",
             "registered_on": a.registered_on,
+            "purchase_date": a.purchase_date or a.warranty_start_date or a.registered_on,
+            "invoice_url": a.invoice_url,
             "warranty_status": a.warranty_status or "Active",
             "warranty_start_date": a.warranty_start_date or a.registered_on,
             "warranty_end_date": a.warranty_end_date or "Standard 1-Year",
@@ -508,8 +563,9 @@ def get_company_customer_details(customer_id: str, request: Request, db: Session
     reqs = db.query(ServiceRequestModel).filter(
         ServiceRequestModel.customer_id == customer.id,
         or_(
-            ServiceRequestModel.company_id == company.id,
-            ServiceRequestModel.brand.ilike(company.name.strip())
+            ServiceRequestModel.company_id.in_(comp_ids),
+            ServiceRequestModel.brand.ilike(f"%{brand_clean}%") if brand_clean else False,
+            ServiceRequestModel.brand.ilike(f"%{company_brand}%") if company_brand else False
         )
     ).order_by(ServiceRequestModel.created_at.desc()).all()
 

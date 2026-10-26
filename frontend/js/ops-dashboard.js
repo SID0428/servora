@@ -183,6 +183,60 @@ function resolveMediaUrl(url) {
   const path = url.startsWith("/") ? url : `/${url}`;
   return `${base}${path}`;
 }
+
+function isGenericTitle(title, brand = "", category = "") {
+  if (!title) return true;
+  const t = title.toLowerCase().trim();
+  const b = (brand || "").toLowerCase().trim();
+  const c = (category || "").toLowerCase().trim();
+  if (t === "other" || t === "appliance" || t === "home appliance" || t === "service request" || t === "unknown") return true;
+  if (b && (t === b || t === `${b} other` || t.endsWith(" other"))) return true;
+  if (b && c && t === `${b} ${c}` && c === "other") return true;
+  return false;
+}
+
+function getApplianceDisplayName(item) {
+  if (!item) return "Appliance";
+  let appTitle = (item.appliance_name || "").trim();
+  const brand = (item.brand || "").trim();
+  const category = (item.category || "").trim();
+  const model = (item.model_no || item.model || "").trim();
+
+  if (appTitle && !isGenericTitle(appTitle, brand, category)) {
+    return appTitle;
+  }
+
+  if (typeof companyAppliances !== "undefined" && Array.isArray(companyAppliances) && companyAppliances.length > 0) {
+    const matched = companyAppliances.find((a) => {
+      if (!a) return false;
+      if (model && (a.model_no === model || a.model === model)) return true;
+      if (brand && a.brand && a.brand.toLowerCase() === brand.toLowerCase() && a.category && a.category.toLowerCase() !== "other") return true;
+      return false;
+    });
+    if (matched) {
+      const candidate = (matched.appliance_name || "").trim();
+      if (candidate && !isGenericTitle(candidate, brand, category)) {
+        return candidate;
+      }
+      if (matched.category && matched.category.toLowerCase() !== "other") {
+        return brand ? `${brand} ${matched.category}` : matched.category;
+      }
+    }
+  }
+
+  if (brand && category && category.toLowerCase() !== "other") {
+    return `${brand} ${category}`;
+  }
+  if (category && category.toLowerCase() !== "other") {
+    return category;
+  }
+  if (brand) {
+    return `${brand} Appliance`;
+  }
+  return "Home Appliance";
+}
+window.isGenericTitle = isGenericTitle;
+window.getApplianceDisplayName = getApplianceDisplayName;
 function formatDisplayDate(dateVal) {
   if (!dateVal) return "—";
   try {
@@ -3353,10 +3407,13 @@ async function openCompanyCustomerDetail(customerId) {
       const completed = custReqs.filter((r) => r.status === "Completed" || r.status_badge === "Completed");
       const prods = existing.products && existing.products.length ? existing.products : custReqs.map((r) => ({
         id: r.appliance_id || `app_${r.id}`,
-        category: r.appliance_name || "Appliance",
+        appliance_name: r.appliance_name || (r.brand ? `${r.brand} Appliance` : "Appliance"),
+        category: (r.category && r.category.toLowerCase() !== "other") ? r.category : (r.appliance_name || "Appliance"),
         brand: r.brand || "Brand",
         model_no: r.model_no || "—",
-        serial_no: "Registered for service",
+        serial_no: r.serial_no || r.serial_number || "Registered for service",
+        purchase_date: r.purchase_date || r.appointment_date || r.created_at || "Recent",
+        invoice_url: r.invoice_url || null,
         warranty_status: r.is_under_warranty ? "Active" : "Standard",
         is_under_warranty: Boolean(r.is_under_warranty),
         registered_on: r.appointment_date || r.created_at || "Recent"
@@ -3419,6 +3476,13 @@ function renderCustomerProducts(products) {
       ? `<span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-purple-100 text-purple-800 border border-purple-200">🛡️ AMC Active: ${safe(p.amc_plan_name)} (Exp: ${safe(p.amc_end_date)})</span>`
       : `<span class="text-xs text-slate-400 font-medium">Standard OEM Coverage</span>`;
 
+    const displayName = getApplianceDisplayName(p);
+    const invoiceBtn = p.invoice_url
+      ? `<a href="${safe(resolveMediaUrl(p.invoice_url))}" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-bold bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 transition shadow-2xs">📄 Purchase Invoice</a>`
+      : `<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-xs font-medium text-slate-400 bg-slate-100">No invoice uploaded</span>`;
+
+    const purchaseDate = p.purchase_date || p.warranty_start_date || p.registered_on || "—";
+
     return `
       <div class="p-4 rounded-2xl bg-white border border-slate-200 hover:border-blue-200 transition shadow-xs space-y-3">
         <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-2.5">
@@ -3427,27 +3491,32 @@ function renderCustomerProducts(products) {
               ⚡
             </div>
             <div>
-              <h5 class="text-sm font-bold text-slate-900">${safe(p.brand)} ${safe(p.category)}</h5>
-              <p class="text-xs text-slate-500">Registered on <span class="font-medium text-slate-700">${safe(p.registered_on)}</span></p>
+              <h5 class="text-sm font-bold text-slate-900">${safe(displayName)}</h5>
+              <p class="text-xs text-slate-500">Registered on <span class="font-medium text-slate-700">${safe(p.registered_on || '—')}</span></p>
             </div>
           </div>
-          <div class="flex items-center gap-2">
+          <div class="flex items-center gap-2 flex-wrap">
+            ${invoiceBtn}
             ${warrantyBadge}
           </div>
         </div>
 
-        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+        <div class="grid grid-cols-2 sm:grid-cols-5 gap-3 text-xs">
           <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-100">
             <span class="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Model Number</span>
-            <strong class="font-mono text-slate-800 font-semibold block mt-0.5 truncate" title="${safe(p.model_no)}">${safe(p.model_no)}</strong>
+            <strong class="font-mono text-slate-800 font-semibold block mt-0.5 truncate" title="${safe(p.model_no)}">${safe(p.model_no || '—')}</strong>
           </div>
           <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-100">
             <span class="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Serial Number</span>
-            <strong class="font-mono text-slate-800 font-semibold block mt-0.5 truncate" title="${safe(p.serial_no)}">${safe(p.serial_no)}</strong>
+            <strong class="font-mono text-slate-800 font-semibold block mt-0.5 truncate" title="${safe(p.serial_no)}">${safe(p.serial_no || '—')}</strong>
+          </div>
+          <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-100">
+            <span class="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Purchase Date</span>
+            <span class="text-slate-700 font-semibold block mt-0.5 text-[11px]">${safe(purchaseDate)}</span>
           </div>
           <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-100">
             <span class="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Warranty Period</span>
-            <span class="text-slate-700 font-medium block mt-0.5 text-[11px]">${safe(p.warranty_start_date)} → ${safe(p.warranty_end_date || "Ongoing")}</span>
+            <span class="text-slate-700 font-medium block mt-0.5 text-[11px]">${safe(p.warranty_start_date || '—')} → ${safe(p.warranty_end_date || "Ongoing")}</span>
           </div>
           <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-100">
             <span class="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">AMC Subscription</span>
@@ -4320,7 +4389,23 @@ async function loadCompanyWarrantyClaims() {
       generalApi("/api/warranty-amc/policies").catch(() => []),
     ]);
     if (!isCurrentPage("Warranty Claims")) return;
-    companyWarrantyClaims = claims || [];
+    let loadedClaims = Array.isArray(claims) ? claims : [];
+    if (loadedClaims.length === 0) {
+      const cachedFranchise = getUserCache("servsure_cache_franchise_claims") || getUserCache("servsure_cache_claims") || [];
+      if (Array.isArray(cachedFranchise) && cachedFranchise.length > 0) {
+        loadedClaims = cachedFranchise;
+      }
+    } else {
+      const localClaims = getUserCache("servsure_cache_claims") || [];
+      if (Array.isArray(localClaims)) {
+        for (const lc of localClaims) {
+          if (lc?.id && !loadedClaims.some((c) => c.id === lc.id)) {
+            loadedClaims.push(lc);
+          }
+        }
+      }
+    }
+    companyWarrantyClaims = loadedClaims;
     companyWarrantyRegistrations = registrations || [];
     companyWarrantyPolicies = policies || [];
     setUserCache("servsure_cache_claims", companyWarrantyClaims);
@@ -4515,8 +4600,8 @@ function renderCompanyWarrantyClaims() {
                     <small class="text-slate-400">${safe(item.customer_phone || item.customer_email || '—')}</small>
                   </td>
                   <td>
-                    <span class="font-bold text-slate-800 block">${safe(item.appliance_name || `${item.brand} ${item.category}`)}</span>
-                    <small class="text-slate-400 font-medium">${safe(item.category || item.brand || '')}</small>
+                    <span class="font-bold text-slate-800 block">${safe(getApplianceDisplayName(item))}</span>
+                    <small class="text-slate-400 font-medium">${safe(item.category && item.category.toLowerCase() !== "other" ? item.category : (item.brand || ''))}</small>
                   </td>
                   <td>
                     <span class="font-mono text-slate-800 block">${safe(item.model_no || '—')}</span>
@@ -4741,7 +4826,7 @@ window.openWarrantyVerificationModal = function (applianceId) {
       reg.customer_email ? `✉️ ${reg.customer_email}` : ""
     ].filter(Boolean).join(" · ") || "No direct contact provided";
   }
-  if ($("verifyApplianceName")) $("verifyApplianceName").textContent = reg.appliance_name || `${reg.brand} ${reg.category}`;
+  if ($("verifyApplianceName")) $("verifyApplianceName").textContent = getApplianceDisplayName(reg);
   if ($("verifyModelNo")) $("verifyModelNo").textContent = reg.model_no || "—";
   if ($("verifySerialNo")) $("verifySerialNo").textContent = reg.serial_no || "Not registered";
   
@@ -5122,13 +5207,13 @@ function enrichClaimWithRequestData(claim) {
   }
 
   // Appliance info
-  const currApp = (claim.appliance_name || "").trim();
-  if (!currApp || currApp.toLowerCase().endsWith(" other") || currApp.toLowerCase() === "other" || currApp === "Appliance") {
-    const cleaner = req?.appliance_name || (claim.brand ? `${claim.brand} Appliance` : "Appliance");
-    if (cleaner && !cleaner.toLowerCase().endsWith(" other")) {
-      claim.appliance_name = cleaner;
-    }
-  }
+  claim.appliance_name = getApplianceDisplayName({
+    appliance_name: claim.appliance_name || req?.appliance_name,
+    brand: claim.brand || req?.brand,
+    category: claim.category || req?.category || req?.appliance_category,
+    model_no: claim.model_no || req?.model_no
+  });
+
   if (!claim.model_no || claim.model_no === "—") {
     if (req?.model_no || req?.appliance?.model_no) claim.model_no = req.model_no || req.appliance.model_no;
   }
@@ -5136,7 +5221,14 @@ function enrichClaimWithRequestData(claim) {
     if (req?.serial_no || req?.serial_number || req?.appliance?.serial_no) claim.serial_no = req.serial_no || req.serial_number || req.appliance.serial_no;
   }
   if (!claim.purchase_date || claim.purchase_date === "—") {
-    if (req?.purchase_date || req?.appliance?.purchase_date) claim.purchase_date = req.purchase_date || req.appliance.purchase_date;
+    claim.purchase_date = req?.purchase_date
+      || req?.appliance?.purchase_date
+      || req?.appliance?.warranty_start_date
+      || req?.appliance?.registered_on
+      || req?.registered_on
+      || req?.appointment_date
+      || (req?.created_at ? String(req.created_at).split("T")[0] : null)
+      || "—";
   }
   if (!claim.issue || claim.issue.startsWith("Reported defect") || claim.issue === "—") {
     if (req?.issue || req?.description) claim.issue = req.issue || req.description;
@@ -5240,10 +5332,12 @@ function openClaimReviewModal(claim) {
   if ($("reviewClaimTechName")) $("reviewClaimTechName").textContent = claim.technician_name || "—";
 
   // Appliance Details
-  if ($("reviewClaimAppliance")) $("reviewClaimAppliance").textContent = claim.appliance_name || `${claim.brand || ''} Appliance`.trim();
+  const cleanApplianceTitle = getApplianceDisplayName(claim);
+  if ($("reviewClaimAppliance")) $("reviewClaimAppliance").textContent = cleanApplianceTitle;
   if ($("reviewClaimModel")) $("reviewClaimModel").textContent = claim.model_no || "—";
   if ($("reviewClaimSerial")) $("reviewClaimSerial").textContent = claim.serial_no || "—";
-  if ($("reviewClaimPurchaseDate")) $("reviewClaimPurchaseDate").textContent = claim.purchase_date || "—";
+  const claimPurchaseDate = claim.purchase_date || claim.registered_on || claim.warranty_start_date || "—";
+  if ($("reviewClaimPurchaseDate")) $("reviewClaimPurchaseDate").textContent = claimPurchaseDate;
   if ($("reviewClaimIssue")) $("reviewClaimIssue").textContent = claim.issue || "Reported defect during service";
 
   // Defect Photo Preview
@@ -5252,8 +5346,8 @@ function openClaimReviewModal(claim) {
   const defectLink = $("reviewClaimDefectPhotoLink");
   if (defectWrapper && defectImg) {
     if (claim.defect_photo) {
-      defectImg.src = claim.defect_photo;
-      if (defectLink) defectLink.href = claim.defect_photo;
+      defectImg.src = resolveMediaUrl(claim.defect_photo);
+      if (defectLink) defectLink.href = resolveMediaUrl(claim.defect_photo);
       defectWrapper.classList.remove("hidden");
     } else {
       defectWrapper.classList.add("hidden");
@@ -5264,7 +5358,7 @@ function openClaimReviewModal(claim) {
   const purchaseInvBtn = $("viewClaimPurchaseInvoiceBtn");
   if (purchaseInvBtn) {
     if (claim.invoice_url) {
-      purchaseInvBtn.href = claim.invoice_url;
+      purchaseInvBtn.href = resolveMediaUrl(claim.invoice_url);
       purchaseInvBtn.classList.remove("opacity-40", "pointer-events-none");
       purchaseInvBtn.removeAttribute("title");
     } else {
@@ -5444,7 +5538,18 @@ async function loadFranchiseWarrantyClaims() {
   try {
     const claims = await generalApi("/api/warranty-amc/claims").catch(() => []);
     if (!isCurrentPage("Warranty Claims")) return;
-    franchiseWarrantyClaims = claims || [];
+    let loaded = Array.isArray(claims) ? claims : [];
+    const cachedClaims = getUserCache("servsure_cache_franchise_claims") || [];
+    if (loaded.length === 0 && Array.isArray(cachedClaims) && cachedClaims.length > 0) {
+      loaded = cachedClaims;
+    } else if (Array.isArray(cachedClaims)) {
+      for (const cc of cachedClaims) {
+        if (cc?.id && !loaded.some((c) => c.id === cc.id)) {
+          loaded.push(cc);
+        }
+      }
+    }
+    franchiseWarrantyClaims = loaded;
     setUserCache("servsure_cache_franchise_claims", franchiseWarrantyClaims);
     renderFranchiseWarrantyClaims();
   } catch (error) {

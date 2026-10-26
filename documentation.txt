@@ -4,8 +4,8 @@ PRODUCTION-GRADE TECHNICAL ARCHITECTURE & DEVELOPER ONBOARDING MANUAL
 ================================================================================
 File: documentation.txt
 Platform: ServSure (formerly Servora)
-Version: 2.0.0 (Production Release - Warranty Claim Enrichment, Dash Normalization & Franchise Modal Fix)
-Last Updated: October 27, 2026 (02:42 IST)
+Version: 2.0.1 (Production Release - Company Claims Scope, Purchase Date & Invoice, Appliance Name Resolution)
+Last Updated: October 27, 2026 (03:22 IST)
 Repository: https://github.com/SID0428/servora.git
 
 Welcome to ServSure! This manual is the definitive, authoritative reference
@@ -2228,6 +2228,41 @@ were identified between the initial rough draft documentation and the actual cod
           regex extraction from `claim.claim_notes` (`Consumer billed ₹...`) -> sum of non-covered parts/consumables (e.g. Gas Refill `₹750.00`).
         - Table View Enrichment: Updated `renderFranchiseWarrantyClaims` and `renderWarrantyClaimsTable` to enrich claims before rendering,
           ensuring table rows and search filters immediately display real customer names and product models.
+
+50. BUG FIX & WORKSPACE ENHANCEMENT: Company Claim Visibility Scope, Appliance Purchase Date & Invoice Display, and Global Appliance Name Resolution (Eliminating "brand Other")
+   - Initial State / Observed Issue:
+     1. Company Claims Zeroed Out ("Claims (0)"): When logged into the Company Portal with accounts such as `comp-user-ef043f` ("Gelistra Appliances"),
+        the Claims subtab displayed `Claims (0)` and "No warranty reimbursement claims submitted yet", despite valid claims existing in the system
+        (e.g., `CLM-9929` for ticket `SR–9929` submitted from Delhi Franchise). Root cause: `list_warranty_claims` in `backend/app/routes/warranty_amc.py`
+        filtered claims strictly by `WarrantyClaimModel.company_id.in_([user.id])`. In multi-account/brand environments where claims were submitted under
+        related company entity IDs or assigned by brand, claims were omitted in SQL queries.
+     2. Missing Purchase Date in Claim Details: In the warranty claim review modal (`claimReviewModal`), "Purchase Date" rendered as `—` because
+        `appliance.purchase_date` in the database was null (customer registration captured `warranty_start_date` and `registered_on`), and the backend
+        did not fall back to registration or appointment dates.
+     3. Ubiquitous "brand Other" Text ("gelistra Other"): When viewing customer details in Company Portal (`renderCustomerProducts`),
+        registered appliances rendered as "gelistra Other" or "Other". Furthermore, `company.py` omitted `appliance_name`, `purchase_date`, and
+        `invoice_url` from the customer detail response.
+     4. Missing Purchase Invoice in Company Portal: Company portal lacked a direct view of customer purchase invoices in the customer inspection dialog.
+   - Resolution:
+     1. Broadened Company Claim Visibility Scope (`backend/app/routes/warranty_amc.py` & `frontend/js/ops-dashboard.js`):
+        - Backend: In `list_warranty_claims`, resolved all company user accounts matching the company's brand name (`brand_clean` and `company_brand`).
+          Expanded SQL filtering to find claims matching any associated company ID, appliance registered under the brand, candidate service request ID,
+          or brand mentioned in `claim_notes`.
+        - Frontend: In `loadCompanyWarrantyClaims()`, added automatic fallback and cache merging with `servsure_cache_claims` and
+          `servsure_cache_franchise_claims` so claims are never lost or zeroed out during session switches or network lags.
+     2. Appliance Purchase Date Serialization & Multi-Layer Fallback (`backend/app/routes/warranty_amc.py` & `frontend/js/ops-dashboard.js`):
+        - Backend: Added fallback sequence for `purchase_date` in `WarrantyClaimSchema`: `appliance.purchase_date or appliance.warranty_start_date or appliance.registered_on or req.purchase_date or req.appointment_date or req.created_at`.
+          Formatted safely to ISO date string (`YYYY-MM-DD`).
+        - Frontend: Enhanced `enrichClaimWithRequestData` and `openClaimReviewModal` to populate `#reviewClaimPurchaseDate` from the claim or linked request.
+     3. Global Clean Appliance Name Resolution (`backend/app/routes/company.py`, `backend/app/routes/appliances.py`, `frontend/js/ops-dashboard.js`):
+        - Backend: Added `resolve_clean_appliance_name(app_obj)` in `company.py` and updated `appliances.py` so that categories of `"Other"` default
+          cleanly to `f"{brand} Appliance"` or the specific catalog appliance name rather than `"brand Other"`.
+        - Frontend: Implemented `isGenericTitle(title, brand, category)` and `getApplianceDisplayName(item)` in `frontend/js/ops-dashboard.js`.
+          Replaced all string concatenations (`${safe(p.brand)} ${safe(p.category)}`) with `safe(getApplianceDisplayName(p))`.
+     4. Purchase Invoice Action & Specs Grid in Customer Modal (`backend/app/routes/company.py` & `frontend/js/ops-dashboard.js`):
+        - Backend: In `/api/company/customers` and `/api/company/customers/{customer_id}`, added `appliance_name`, `purchase_date`, and `invoice_url` to each product object.
+        - Frontend: In `renderCustomerProducts(products)`, added an actionable `📄 Purchase Invoice` link button (opening in a new tab via `resolveMediaUrl(p.invoice_url)`)
+          and added `Purchase Date` to the 5-column product specifications grid (`Model Number`, `Serial Number`, `Purchase Date`, `Warranty Period`, `AMC Subscription`).
 
 ==================================================
 End of Documentation
