@@ -223,6 +223,39 @@ function isJobScheduledForToday(dateStr) {
   }
   return false;
 }
+function isJobScheduledForPast(dateStr) {
+  if (!dateStr || typeof dateStr !== "string") return false;
+  const now = new Date();
+  const todayY = now.getFullYear();
+  const todayM = now.getMonth();
+  const todayD = now.getDate();
+  const startOfToday = new Date(todayY, todayM, todayD).getTime();
+
+  const isoMatch = dateStr.trim().match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (isoMatch) {
+    const y = parseInt(isoMatch[1], 10);
+    const m = parseInt(isoMatch[2], 10) - 1;
+    const d = parseInt(isoMatch[3], 10);
+    return new Date(y, m, d).getTime() < startOfToday;
+  }
+
+  const months = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+  const dmyMatch = dateStr.trim().match(/^(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})/);
+  if (dmyMatch) {
+    const d = parseInt(dmyMatch[1], 10);
+    const m = months.indexOf(dmyMatch[2].substring(0, 3).toLowerCase());
+    const y = parseInt(dmyMatch[3], 10);
+    if (m !== -1) {
+      return new Date(y, m, d).getTime() < startOfToday;
+    }
+  }
+
+  const parsed = new Date(dateStr);
+  if (!isNaN(parsed.getTime())) {
+    return parsed.getTime() < startOfToday;
+  }
+  return false;
+}
 window.switchOpsPage = function(pageName) {
   const link = document.querySelector(`.nav-link[data-page="${pageName}"]`);
   if (link) {
@@ -6057,9 +6090,14 @@ function setMetrics() {
   if (!grid) return;
   const visible = requests.filter(requestForRole);
   const total = visible.length;
-  const active = visible.filter((item) => ["In Progress", "Technician on the Way", "Service In Progress"].includes(item.status) || item.status_badge === "In Progress").length;
-  const completed = visible.filter((item) => item.status_badge === "Completed").length;
-  const pending = visible.filter((item) => ["Request Created", "Scheduled", "Assigned"].includes(item.status_badge) || item.status === "Request Created" || item.status === "Technician Assigned").length;
+  const ongoingStatuses = [
+    "In Progress", "Service In Progress", "Technician on the Way", "Repair in Progress",
+    "Estimate Pending Approval", "Estimate Pending", "Part Requested", "Part Requested but Out of Stock",
+    "Part Assigned to Technician", "Part Assigned", "Reopened", "Reopened / Under Review"
+  ];
+  const active = visible.filter((item) => ongoingStatuses.includes(item.status) || ongoingStatuses.includes(item.status_badge)).length;
+  const completed = visible.filter((item) => item.status_badge === "Completed" || item.status === "Completed").length;
+  const pending = visible.filter((item) => !completed && !ongoingStatuses.includes(item.status) && !ongoingStatuses.includes(item.status_badge) && item.status !== "Cancelled" && item.status_badge !== "Cancelled").length;
 
   if (role === "technician") {
     const values = [
@@ -6234,18 +6272,73 @@ function renderRequests() {
       document.body.appendChild(bNav);
     }
 
-    // Only non-completed jobs scheduled for today
-    const todaysJobs = filtered.filter((item) => {
+    // Active ongoing and scheduled jobs assigned to technician (exclude completed/cancelled)
+    const activeJobs = filtered.filter((item) => {
       const isCompleted = item.status === "Completed" || item.status_badge === "Completed" || item.status === "Cancelled" || item.status_badge === "Cancelled";
-      if (isCompleted) return false;
-      return isJobScheduledForToday(item.appointment_date);
+      return !isCompleted;
     });
 
-    techContainer.innerHTML = todaysJobs.length ? todaysJobs.map((item) => `
+    const ongoingStages = [
+      "In Progress", "Service In Progress", "Technician on the Way", "Repair in Progress",
+      "Part Assigned to Technician", "Part Assigned", "Estimate Pending Approval", "Part Requested",
+      "Part Requested but Out of Stock", "Reopened", "Reopened / Under Review"
+    ];
+
+    activeJobs.sort((a, b) => {
+      const aOngoing = ongoingStages.includes(a.status) || ongoingStages.includes(a.status_badge);
+      const bOngoing = ongoingStages.includes(b.status) || ongoingStages.includes(b.status_badge);
+      if (aOngoing && !bOngoing) return -1;
+      if (!aOngoing && bOngoing) return 1;
+
+      const aToday = isJobScheduledForToday(a.appointment_date);
+      const bToday = isJobScheduledForToday(b.appointment_date);
+      if (aToday && !bToday) return -1;
+      if (!aToday && bToday) return 1;
+
+      return (a.appointment_date || "").localeCompare(b.appointment_date || "");
+    });
+
+    const hasToday = activeJobs.some(j => isJobScheduledForToday(j.appointment_date));
+    const hasOngoing = activeJobs.some(j => ongoingStages.includes(j.status) || ongoingStages.includes(j.status_badge) || isJobScheduledForPast(j.appointment_date));
+
+    if ($("tableTitle")) {
+      if (hasToday && hasOngoing) {
+        $("tableTitle").textContent = "Today's & Ongoing Jobs";
+      } else if (hasOngoing) {
+        $("tableTitle").textContent = "Current Ongoing Jobs";
+      } else if (hasToday) {
+        $("tableTitle").textContent = "Today's Jobs";
+      } else {
+        $("tableTitle").textContent = "Assigned Field Jobs";
+      }
+    }
+
+    if ($("tableSubtitle")) {
+      if (hasOngoing) {
+        $("tableSubtitle").textContent = "Active service visits, ongoing repairs, and assigned calls on your route.";
+      } else {
+        $("tableSubtitle").textContent = "Service visits scheduled for your field route today.";
+      }
+    }
+
+    techContainer.innerHTML = activeJobs.length ? activeJobs.map((item) => {
+      let scheduleBadge = "";
+      if (isJobScheduledForToday(item.appointment_date)) {
+        scheduleBadge = `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200">📅 Today</span>`;
+      } else if (isJobScheduledForPast(item.appointment_date)) {
+        scheduleBadge = `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200">⏳ Ongoing · Carried Over</span>`;
+      } else if (item.appointment_date) {
+        scheduleBadge = `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-50 text-purple-700 border border-purple-200">📅 Upcoming (${safe(item.appointment_date)})</span>`;
+      }
+
+      return `
       <article class="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 shadow-sm hover:shadow-md transition space-y-3.5">
         <div class="flex items-start justify-between gap-3">
           <div>
-            <span class="text-[11px] font-bold uppercase tracking-wider text-blue-600 font-mono">${safe(item.id)}</span>
+            <div class="flex items-center gap-2 flex-wrap">
+              <span class="text-[11px] font-bold uppercase tracking-wider text-blue-600 font-mono">${safe(item.id)}</span>
+              ${scheduleBadge}
+            </div>
             <h3 class="text-base font-bold text-slate-800 mt-0.5">${safe(item.appliance_name || item.brand)}</h3>
             <p class="text-xs text-slate-500 mt-0.5">Issue: <span class="font-medium text-slate-700">${safe(item.issue)}</span></p>
             <div class="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-blue-50 border border-blue-200 text-blue-700 text-xs font-semibold">
@@ -6297,7 +6390,7 @@ function renderRequests() {
           </div>
           <div class="flex items-center gap-2 text-slate-500 pt-0.5">
             <span>🕒 Scheduled:</span>
-            <span class="font-semibold text-slate-700">${safe(item.appointment_date)} · ${safe(item.appointment_slot || 'Regular Slot')}</span>
+            <span class="font-semibold text-slate-700">${safe(item.appointment_date || 'Flexible')} · ${safe(item.appointment_slot || 'Regular Slot')}${isJobScheduledForPast(item.appointment_date) ? ' <span class="text-[10px] text-amber-700 font-bold">(Ongoing Visit)</span>' : ''}</span>
           </div>
         </div>
 
@@ -6361,20 +6454,20 @@ function renderRequests() {
           </button>
         </div>
       </article>
-    `).join("") : `
+    `; }).join("") : `
       <div class="bg-white rounded-2xl border border-slate-200 p-8 sm:p-12 text-center space-y-3 shadow-xs">
         <span class="text-4xl block mb-2">📅</span>
-        <h3 class="text-base font-bold text-slate-800">No jobs scheduled for today</h3>
-        <p class="text-xs text-slate-500 max-w-sm mx-auto">You have no active service visits on your route today. Completed jobs can be viewed in your Job history.</p>
+        <h3 class="text-base font-bold text-slate-800">No active jobs assigned</h3>
+        <p class="text-xs text-slate-500 max-w-sm mx-auto">You have no active or ongoing service visits on your route right now. Completed jobs can be viewed in your Job history.</p>
         <button type="button" class="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-blue-50 text-blue-700 hover:bg-blue-100 font-semibold text-xs transition mt-2" onclick="window.switchOpsPage('Job history')">
           <span>🕒 View Job history →</span>
         </button>
       </div>
     `;
 
-    if ($("requestCount")) $("requestCount").textContent = todaysJobs.length
-      ? `${todaysJobs.length} job${todaysJobs.length === 1 ? '' : 's'} scheduled for today`
-      : "0 jobs scheduled for today";
+    if ($("requestCount")) $("requestCount").textContent = activeJobs.length
+      ? `${activeJobs.length} active job${activeJobs.length === 1 ? '' : 's'} assigned`
+      : "0 active jobs assigned";
     return;
   }
 

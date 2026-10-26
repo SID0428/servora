@@ -1988,6 +1988,28 @@ were identified between the initial rough draft documentation and the actual cod
           - Pre-populates and submits visiting charge in appliance dialogs.
           - In `openTechEstimateModal`, displays the ticket's visiting charge and tax specification.
 
+44. ARCHITECTURE FIX: Technician Workspace Visibility for Ongoing & Multi-Day Active Jobs
+   - Problem Statement & Root Cause:
+     1. Ongoing active jobs (e.g. #SR-9929 in "Part Assigned to Technician") vanished from technician workspace ("My jobs"):
+        - In `frontend/js/ops-dashboard.js`, `renderRequests` filtered technician cards strictly using `isJobScheduledForToday(item.appointment_date)`.
+        - When a service visit had an appointment date prior to today (e.g. yesterday, carried over, multi-day repair waiting for brand spare parts, or flexible outstation visit), `isJobScheduledForToday` returned `false`. Consequently, active ongoing jobs completely disappeared from "My jobs", rendering the empty state "No jobs scheduled for today", even though the sidebar badge showed `1` and the right-side live snapshot showed the active ticket.
+     2. Inaccurate Metric Cards ("In Progress: 0" despite active ongoing assignment):
+        - `setMetrics` only matched `["In Progress", "Technician on the Way", "Service In Progress"]` and omitted ongoing intermediate repair stages (`"Part Assigned to Technician"`, `"Part Requested"`, `"Part Requested but Out of Stock"`, `"Repair in Progress"`, `"Estimate Pending Approval"`, `"Reopened"`).
+   - Resolution:
+     1. Comprehensive Active Job Visibility in Technician Workspace (`frontend/js/ops-dashboard.js`):
+        - In `renderRequests()`, updated technician filtering from `isJobScheduledForToday` to include all non-completed and non-cancelled service visits assigned to the technician (`activeJobs`).
+        - Added `isJobScheduledForPast(dateStr)` helper to differentiate carried-over/ongoing jobs from today's scheduled calls and future appointments.
+        - Dynamically titles the workspace section:
+          - `"Today's & Ongoing Jobs"` when both today's appointments and ongoing/carried-over jobs are present.
+          - `"Current Ongoing Jobs"` when ongoing work is pending resolution.
+          - `"Today's Jobs"` when visits are scheduled specifically for today.
+        - Enriched each job card with schedule badges:
+          - `📅 Scheduled Today`
+          - `⏳ Ongoing · Carried Over`
+          - `📅 Upcoming (${date})`
+     2. Accurate Metric Counters in `setMetrics()`:
+        - Expanded `ongoingStatuses` to include all active repair workflow states (`Part Assigned to Technician`, `Part Requested`, `Estimate Pending Approval`, etc.) so the "In Progress" card accurately reflects active field workload.
+
 ==================================================
 End of Documentation
 ==================================================
