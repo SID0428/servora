@@ -11,7 +11,7 @@ from app.db.session import get_db
 from app.db.models import (
     UserModel, WarrantyClaimModel, AMCPlanModel, AMCSubscriptionModel,
     ApplianceModel, ServiceRequestModel, CompanyBranchModel, CompanyWarrantyPolicyModel,
-    SparePartModel, CompanyApplianceCatalogModel
+    SparePartModel, CompanyApplianceCatalogModel, JobCardModel
 )
 from app.schemas import (
     WarrantyClaimSchema, WarrantyClaimVerifyPayload,
@@ -38,15 +38,50 @@ def list_warranty_claims(
     query = db.query(WarrantyClaimModel)
 
     if user.role == "company":
+        company_matches = [user.id]
+        if user.email:
+            company_matches.append(user.email)
+        if user.name:
+            company_matches.append(user.name)
+        if getattr(user, "company_name", None):
+            company_matches.append(user.company_name)
+
+        req_ids_subq = db.query(ServiceRequestModel.id).filter(
+            or_(
+                ServiceRequestModel.company_id.in_(company_matches),
+                ServiceRequestModel.brand.ilike(user.name if user.name else ""),
+                ServiceRequestModel.brand.ilike(getattr(user, "company_name", "") or "")
+            )
+        )
         query = query.filter(
             or_(
-                WarrantyClaimModel.company_id == user.id,
-                WarrantyClaimModel.company_id == user.email,
-                WarrantyClaimModel.company_id == user.name
+                WarrantyClaimModel.company_id.in_(company_matches),
+                WarrantyClaimModel.request_id.in_(req_ids_subq)
             )
         )
     elif user.role in ("branch", "franchise"):
-        query = query.filter(WarrantyClaimModel.branch_id == user.id)
+        branch_ids = [user.id]
+        user_branches = db.query(CompanyBranchModel).filter(
+            or_(
+                CompanyBranchModel.id == user.id,
+                CompanyBranchModel.email == user.email,
+                CompanyBranchModel.manager_name.ilike(user.name if user.name else ""),
+                CompanyBranchModel.branch_name.ilike(user.name if user.name else "")
+            )
+        ).all()
+        for b in user_branches:
+            if b.id not in branch_ids:
+                branch_ids.append(b.id)
+
+        branch_req_ids = db.query(ServiceRequestModel.id).filter(
+            ServiceRequestModel.branch_id.in_(branch_ids)
+        )
+        query = query.filter(
+            or_(
+                WarrantyClaimModel.branch_id.in_(branch_ids),
+                WarrantyClaimModel.request_id.in_(branch_req_ids)
+            )
+        )
     elif user.role != "admin":
         raise HTTPException(status_code=403, detail="Unauthorized to access warranty claims")
 
@@ -56,10 +91,26 @@ def list_warranty_claims(
     claims = query.order_by(WarrantyClaimModel.submitted_at.desc()).all()
     results = []
     for c in claims:
-        # Load related branch and company names
+        # Load related branch, company, appliance, request, and job card
         comp = db.query(UserModel).filter(UserModel.id == c.company_id).first()
         branch = db.query(CompanyBranchModel).filter(CompanyBranchModel.id == c.branch_id).first()
-        appliance = db.query(ApplianceModel).filter(ApplianceModel.id == c.appliance_id).first()
+        appliance = db.query(ApplianceModel).filter(ApplianceModel.id == c.appliance_id).first() if c.appliance_id else None
+        req = db.query(ServiceRequestModel).filter(ServiceRequestModel.id == c.request_id).first()
+        jc = db.query(JobCardModel).filter(JobCardModel.request_id == c.request_id).first() if c.request_id else None
+
+        if not appliance and req and req.appliance_id:
+            appliance = db.query(ApplianceModel).filter(ApplianceModel.id == req.appliance_id).first()
+
+        if not comp and req and req.company_id:
+            comp = db.query(UserModel).filter(UserModel.id == req.company_id).first()
+        if not comp and req and req.brand:
+            comp = db.query(UserModel).filter(
+                UserModel.role == "company",
+                or_(UserModel.name.ilike(req.brand), getattr(UserModel, "company_name", UserModel.name).ilike(req.brand))
+            ).first()
+
+        if not branch and req and req.branch_id:
+            branch = db.query(CompanyBranchModel).filter(CompanyBranchModel.id == req.branch_id).first()
 
         parts = []
         if c.parts_claimed_json:
@@ -69,23 +120,75 @@ def list_warranty_claims(
             except Exception:
                 pass
 
+        def get_item_total(p):
+            t = getattr(p, "total", None) or getattr(p, "total_price", None)
+            if t:
+                return float(t)
+            qty = getattr(p, "quantity", 1) or 1
+            rate = getattr(p, "unit_price", 0.0) or 0.0
+            return float(qty * rate)
+
+        covered_parts_cost = sum(get_item_total(p) for p in parts if getattr(p, "is_covered", False)) if parts else 0.0
+        if covered_parts_cost == 0.0 and parts:
+            covered_parts_cost = sum(get_item_total(p) for p in parts)
+
+        customer_parts_cost = 0.0
+        labor_cost = jc.labor_cost if jc else 0.0
+        service_total = jc.total_amount if jc else 0.0
+        if jc and jc.parts_used_json:
+            try:
+                all_jc_parts = json.loads(jc.parts_used_json)
+                customer_parts_cost = sum(float(p.get("total") or p.get("total_price") or ((p.get("quantity", 1) or 1) * (p.get("unit_price", 0.0) or 0.0))) for p in all_jc_parts if not p.get("is_covered", False))
+            except Exception:
+                pass
+
+        purchase_invoice = appliance.invoice_url if appliance and appliance.invoice_url else (req.invoice_url if req else None)
+        service_inv_no = f"INV-{jc.id.replace('JC-', '')}" if jc else (f"INV-{req.id.replace('SR-', '')}" if req else None)
+
+        tech_user = None
+        if jc and jc.technician_id:
+            tech_user = db.query(UserModel).filter(UserModel.id == jc.technician_id).first()
+        elif req and req.technician_id:
+            tech_user = db.query(UserModel).filter(UserModel.id == req.technician_id).first()
+        tech_name = getattr(req, "technician_name", None) or (tech_user.name if tech_user else None)
+
+        app_name = f"{appliance.brand} {appliance.category}" if appliance else (
+            f"{req.brand or ''} {getattr(req, 'appliance_category', None) or req.appliance_name or 'Appliance'}".strip() if req else "Appliance"
+        )
+        brand_name = appliance.brand if appliance else (req.brand if req else (comp.name if comp else None))
+
         results.append(
             WarrantyClaimSchema(
                 id=c.id,
                 request_id=c.request_id,
-                company_id=c.company_id,
-                company_name=comp.name if comp else "OEM Partner",
-                branch_id=c.branch_id,
+                company_id=c.company_id or (comp.id if comp else ""),
+                company_name=comp.name if comp else (brand_name or "OEM Partner"),
+                branch_id=c.branch_id or (branch.id if branch else ""),
                 branch_name=branch.branch_name if branch else "Franchise Branch",
-                appliance_id=c.appliance_id,
-                appliance_name=f"{appliance.brand} {appliance.category}" if appliance else "Appliance",
-                brand=appliance.brand if appliance else None,
+                appliance_id=c.appliance_id or (req.appliance_id if req else ""),
+                appliance_name=app_name,
+                brand=brand_name,
                 claim_amount=c.claim_amount,
                 parts_claimed=parts,
                 status=c.status,
                 claim_notes=c.claim_notes,
                 submitted_at=c.submitted_at,
-                settled_at=c.settled_at
+                settled_at=c.settled_at,
+                customer_name=req.customer_name if req else None,
+                customer_phone=req.customer_phone if req else None,
+                customer_address=req.customer_address if req else None,
+                model_no=appliance.model_no if appliance else (getattr(req, "model_no", None) if req else None),
+                serial_no=appliance.serial_no if appliance else (getattr(req, "serial_no", None) or getattr(req, "serial_number", None) if req else None),
+                purchase_date=appliance.purchase_date if appliance else None,
+                invoice_url=purchase_invoice,
+                service_invoice_no=service_inv_no,
+                service_total_amount=service_total,
+                labor_cost=labor_cost,
+                covered_parts_cost=covered_parts_cost,
+                customer_parts_cost=customer_parts_cost,
+                issue=req.issue if req else None,
+                defect_photo=getattr(req, "defect_photo", None) if req else None,
+                technician_name=tech_name
             )
         )
     return results

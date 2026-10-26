@@ -97,7 +97,7 @@ const icons = {
 let role = dashboardRouteRole || initialUser?.role || (typeof document !== "undefined" ? document.body?.dataset?.role : null) || "company";
 const roleConfig = {
   technician: { title: "Technician workspace", kicker: "FIELD SERVICE", nav: ["My jobs", "Job history", "Route & schedule", "Help center"], columns: ["Ticket", "Customer", "Appliance", "Appointment", "Status", "Action"], tableTitle: "My assigned jobs", tableSubtitle: "Your service calls and the next step for each job.", bottomTitle: "Today's schedule", sideTitle: "My performance", resources: [["Assigned today", "Jobs on your schedule", "▤"], ["Completed", "Jobs closed this week", "✓"], ["Customer rating", "From recent service visits", "☆"], ["Service area", "Your assigned territory", "⌖"]] },
-  franchise: { title: "Franchise workspace", kicker: "BRANCH OPERATIONS", nav: ["Dashboard", "Service requests", "Technicians", "Operating hours & calendar", "Inventory & Spares", "Escalations", "Active jobs", "Customers", "Reports"], columns: ["Request ID", "Customer", "Appliance", "Issue", "Technician", "Status", "Action"], tableTitle: "Incoming service requests", tableSubtitle: "Review requests and coordinate local service work.", bottomTitle: "Branch resources", sideTitle: "Branch performance", resources: [["Technicians", "Available in this branch", "♙"], ["Active jobs", "Assigned and in progress", "⚒"], ["Inventory items", "Parts in local warehouse", "📦"], ["Service area", "Local coverage", "⌖"]] },
+  franchise: { title: "Franchise workspace", kicker: "BRANCH OPERATIONS", nav: ["Dashboard", "Service requests", "Technicians", "Operating hours & calendar", "Inventory & Spares", "Warranty Claims", "Escalations", "Active jobs", "Customers", "Reports"], columns: ["Request ID", "Customer", "Appliance", "Issue", "Technician", "Status", "Action"], tableTitle: "Incoming service requests", tableSubtitle: "Review requests and coordinate local service work.", bottomTitle: "Branch resources", sideTitle: "Branch performance", resources: [["Technicians", "Available in this branch", "♙"], ["Active jobs", "Assigned and in progress", "⚒"], ["Inventory items", "Parts in local warehouse", "📦"], ["Service area", "Local coverage", "⌖"]] },
   company: { title: "Company workspace", kicker: "COMPANY OPERATIONS", nav: ["Dashboard", "Appliances", "Branches", "Technicians", "Warranty Claims", "Inventory & Spares", "Escalations", "Customers", "Service requests", "Reports"], columns: ["Request ID", "Customer", "Company", "Appliance", "Status", "Date", "Action"], tableTitle: "Recent service requests", tableSubtitle: "Monitor service activity across the company network.", bottomTitle: "Network resources", sideTitle: "Network health", resources: [["Branches", "Locations in your network", "▥"], ["Warranty claims", "OEM reimbursement requests", "🛡️"], ["Technicians", "Field service professionals", "♙"], ["Customers", "Customers served", "♧"]] },
   admin: { title: "Platform overview", kicker: "SERVSURE PLATFORM", nav: ["Overview", "Companies", "Branches", "Technicians", "Escalations", "Customers", "Service requests", "Reports"], columns: ["Request ID", "Customer", "Company", "Appliance", "Status", "Date", "Action"], tableTitle: "Platform service activity", tableSubtitle: "A view of requests moving across ServSure.", bottomTitle: "Platform directory", sideTitle: "Platform health", resources: [["Companies", "Service partners", "▥"], ["Branches", "Operational locations", "⌖"], ["Technicians", "Verified professionals", "♙"], ["Customers", "Registered accounts", "♧"]] },
 };
@@ -117,6 +117,8 @@ let companyWarrantyClaims = [];
 let companyWarrantyRegistrations = [];
 let companyWarrantyPolicies = [];
 let companyWarrantySubTab = "registrations"; // "registrations", "claims", or "policies"
+let franchiseWarrantyClaims = [];
+let franchiseWarrantyStatusTab = "all"; // "all", "pending", "approved", or "rejected"
 let companySparesCatalog = [];
 let companyPartRequests = [];
 let franchisePartRequests = [];
@@ -517,6 +519,7 @@ function renderPage(page) {
   if (role === "franchise" && (page === "Operating hours & calendar" || page === "Operating hours")) { renderFranchiseSchedulePage(); return; }
   if (role === "franchise" && page === "Customers") { renderFranchiseCustomers(); return; }
   if (role === "franchise" && page === "Inventory & Spares") { renderFranchiseInventory(); return; }
+  if (role === "franchise" && page === "Warranty Claims") { renderFranchiseWarrantyClaims(); return; }
 
   // Common or role-specific views
   if (["Dashboard", "Overview", "My jobs"].includes(page)) {
@@ -4690,7 +4693,7 @@ function renderCompanyWarrantyClaims() {
             const canReview = item.status === "Pending Review";
             const actionBtn = canReview
               ? `<button type="button" class="table-action font-semibold text-blue-600 hover:text-blue-800 flex items-center gap-1" data-review-claim-id="${safe(item.id)}"><span>🛡️</span> Review Claim →</button>`
-              : `<span class="text-xs text-slate-400 font-medium">${safe(item.settled_at || 'Settled')}</span>`;
+              : `<button type="button" class="table-action font-semibold text-slate-600 hover:text-blue-700 flex items-center gap-1" data-review-claim-id="${safe(item.id)}"><span>📄</span> View Details</button>`;
 
             return `
               <tr>
@@ -5091,8 +5094,164 @@ function openClaimReviewModal(claim) {
   if ($("reviewClaimId")) $("reviewClaimId").textContent = claim.id;
   if ($("reviewClaimReqId")) $("reviewClaimReqId").textContent = claim.request_id;
   if ($("reviewClaimBranch")) $("reviewClaimBranch").textContent = claim.branch_name || "Franchise Branch";
+  if ($("reviewClaimSubmittedAt")) $("reviewClaimSubmittedAt").textContent = claim.submitted_at || "—";
   if ($("reviewClaimAmount")) $("reviewClaimAmount").textContent = `₹${Number(claim.claim_amount || 0).toFixed(2)}`;
-  if ($("reviewClaimNotes")) $("reviewClaimNotes").value = "Valid manufacturing warranty claim verified against replacement parts.";
+  if ($("reviewClaimCoveredPartsCost")) $("reviewClaimCoveredPartsCost").textContent = `₹${Number(claim.covered_parts_cost || 0).toFixed(2)}`;
+  if ($("reviewClaimConsumerBilled")) $("reviewClaimConsumerBilled").textContent = `₹${Number(claim.service_total_amount || 0).toFixed(2)}`;
+
+  // Title and subtitle depending on role
+  if ($("reviewClaimTitle")) {
+    $("reviewClaimTitle").textContent = role === "company" ? "Review Warranty Claim" : "Warranty Claim Details";
+  }
+  if ($("reviewClaimSubtitle")) {
+    $("reviewClaimSubtitle").textContent = role === "company"
+      ? "Validate parts consumption and approve reimbursement to franchise"
+      : "Claim submitted to brand OEM for parts & labor reimbursement";
+  }
+
+  // Status Badge
+  const statusBadge = $("reviewClaimStatusBadge");
+  if (statusBadge) {
+    if (claim.status === "Approved") {
+      statusBadge.textContent = "✓ Accepted & Settled";
+      statusBadge.className = "text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800";
+    } else if (claim.status === "Rejected") {
+      statusBadge.textContent = "✕ Rejected by OEM";
+      statusBadge.className = "text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-100 text-rose-800";
+    } else {
+      statusBadge.textContent = "⏳ Pending OEM Review";
+      statusBadge.className = "text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800";
+    }
+  }
+
+  // Customer Details
+  if ($("reviewClaimCustName")) $("reviewClaimCustName").textContent = claim.customer_name || "—";
+  if ($("reviewClaimCustPhone")) $("reviewClaimCustPhone").textContent = claim.customer_phone || "—";
+  if ($("reviewClaimCustAddress")) $("reviewClaimCustAddress").textContent = claim.customer_address || "—";
+  if ($("reviewClaimTechName")) $("reviewClaimTechName").textContent = claim.technician_name || "—";
+
+  // Appliance Details
+  if ($("reviewClaimAppliance")) $("reviewClaimAppliance").textContent = claim.appliance_name || `${claim.brand || ''} Appliance`.trim();
+  if ($("reviewClaimModel")) $("reviewClaimModel").textContent = claim.model_no || "—";
+  if ($("reviewClaimSerial")) $("reviewClaimSerial").textContent = claim.serial_no || "—";
+  if ($("reviewClaimPurchaseDate")) $("reviewClaimPurchaseDate").textContent = claim.purchase_date || "—";
+  if ($("reviewClaimIssue")) $("reviewClaimIssue").textContent = claim.issue || "Reported defect during service";
+
+  // Defect Photo Preview
+  const defectWrapper = $("reviewClaimDefectPhotoWrapper");
+  const defectImg = $("reviewClaimDefectPhotoImg");
+  const defectLink = $("reviewClaimDefectPhotoLink");
+  if (defectWrapper && defectImg) {
+    if (claim.defect_photo) {
+      defectImg.src = claim.defect_photo;
+      if (defectLink) defectLink.href = claim.defect_photo;
+      defectWrapper.classList.remove("hidden");
+    } else {
+      defectWrapper.classList.add("hidden");
+    }
+  }
+
+  // Invoices
+  const purchaseInvBtn = $("viewClaimPurchaseInvoiceBtn");
+  if (purchaseInvBtn) {
+    if (claim.invoice_url) {
+      purchaseInvBtn.href = claim.invoice_url;
+      purchaseInvBtn.classList.remove("opacity-40", "pointer-events-none");
+      purchaseInvBtn.removeAttribute("title");
+    } else {
+      purchaseInvBtn.href = "#";
+      purchaseInvBtn.classList.add("opacity-40", "pointer-events-none");
+      purchaseInvBtn.setAttribute("title", "No purchase invoice uploaded by customer");
+    }
+  }
+
+  const jobInvoiceBtn = $("viewClaimJobCardInvoiceBtn");
+  if (jobInvoiceBtn) {
+    jobInvoiceBtn.onclick = () => {
+      if (typeof window.openOpsReceiptModal === "function") {
+        window.openOpsReceiptModal(claim.request_id);
+      } else {
+        showToast("Service receipt viewer unavailable", "error");
+      }
+    };
+  }
+
+  // Itemized Covered Parts Table
+  const partsTableBody = $("reviewClaimPartsTableBody");
+  const partsCountEl = $("reviewClaimPartsCount");
+  const parts = claim.parts_claimed || [];
+  if (partsCountEl) partsCountEl.textContent = `${parts.length} item${parts.length === 1 ? '' : 's'}`;
+  if (partsTableBody) {
+    partsTableBody.innerHTML = parts.length
+      ? parts.map((p) => `
+          <tr class="hover:bg-slate-50/80">
+            <td class="p-2.5">
+              <strong class="text-slate-800 block">${safe(p.name || p.part_name || 'Covered Component')}</strong>
+              <small class="text-slate-400 font-mono">${safe(p.part_code || p.code || '—')}</small>
+            </td>
+            <td class="p-2.5 font-mono text-[11px] text-slate-600">${safe(p.serial_number || '—')}</td>
+            <td class="p-2.5 text-center font-bold text-slate-800">${safe(p.quantity || 1)}</td>
+            <td class="p-2.5 text-right font-medium text-slate-700">₹${Number(p.unit_price || 0).toFixed(2)}</td>
+            <td class="p-2.5 text-right font-bold text-slate-900">₹${Number(p.total || ((p.unit_price || 0) * (p.quantity || 1))).toFixed(2)}</td>
+          </tr>
+        `).join("")
+      : `<tr><td colspan="5" class="p-3 text-center text-slate-400">No itemized covered parts claimed for this ticket.</td></tr>`;
+  }
+
+  // OEM Decision / Settled Banner
+  const settledBanner = $("reviewClaimSettledBanner");
+  const settledTitle = $("reviewClaimSettledTitle");
+  const settledIcon = $("reviewClaimSettledIcon");
+  const settledNotes = $("reviewClaimSettledNotes");
+  const settledAt = $("reviewClaimSettledAt");
+
+  if (settledBanner) {
+    if (claim.status === "Approved") {
+      settledBanner.className = "p-3.5 rounded-2xl border text-xs bg-emerald-50/80 border-emerald-200 text-emerald-950";
+      if (settledIcon) settledIcon.textContent = "✓";
+      if (settledTitle) settledTitle.textContent = "Approved & Reimbursed by OEM";
+      if (settledNotes) settledNotes.textContent = claim.claim_notes || "OEM warranty claim verified and approved for reimbursement.";
+      if (settledAt) settledAt.textContent = claim.settled_at ? `Settled on: ${claim.settled_at}` : "";
+      settledBanner.classList.remove("hidden");
+    } else if (claim.status === "Rejected") {
+      settledBanner.className = "p-3.5 rounded-2xl border text-xs bg-rose-50/80 border-rose-200 text-rose-950";
+      if (settledIcon) settledIcon.textContent = "✕";
+      if (settledTitle) settledTitle.textContent = "Claim Rejected by OEM";
+      if (settledNotes) settledNotes.textContent = claim.claim_notes || "Claim rejected by OEM policy auditor.";
+      if (settledAt) settledAt.textContent = claim.settled_at ? `Audited on: ${claim.settled_at}` : "";
+      settledBanner.classList.remove("hidden");
+    } else {
+      if (role === "franchise") {
+        settledBanner.className = "p-3.5 rounded-2xl border text-xs bg-amber-50/80 border-amber-200 text-amber-950";
+        if (settledIcon) settledIcon.textContent = "⏳";
+        if (settledTitle) settledTitle.textContent = "Sent to Company — Awaiting OEM Review";
+        if (settledNotes) settledNotes.textContent = claim.claim_notes || "Warranty claim submitted to brand company. Under audit by OEM warranty team.";
+        if (settledAt) settledAt.textContent = claim.submitted_at ? `Submitted on: ${claim.submitted_at}` : "";
+        settledBanner.classList.remove("hidden");
+      } else {
+        settledBanner.classList.add("hidden");
+      }
+    }
+  }
+
+  // Action Buttons & Form Group Visibility
+  const decisionGroup = $("companyReviewDecisionGroup");
+  const rejectBtn = $("rejectClaimBtn");
+  const approveBtn = $("approveClaimBtn");
+  const closeFooterBtn = $("closeClaimReviewModalFooterBtn");
+
+  if (role === "company" && claim.status === "Pending Review") {
+    if (decisionGroup) decisionGroup.style.display = "";
+    if (rejectBtn) rejectBtn.style.display = "";
+    if (approveBtn) approveBtn.style.display = "";
+    if ($("reviewClaimNotes")) $("reviewClaimNotes").value = "Valid manufacturing warranty claim verified against replacement parts.";
+  } else {
+    if (decisionGroup) decisionGroup.style.display = "none";
+    if (rejectBtn) rejectBtn.style.display = "none";
+    if (approveBtn) approveBtn.style.display = "none";
+  }
+  if (closeFooterBtn) closeFooterBtn.style.display = "";
+
   if ($("claimReviewMsg")) $("claimReviewMsg").textContent = "";
 
   if (typeof modal.showModal === "function") modal.showModal();
@@ -5105,6 +5264,11 @@ function initClaimReviewModalEvents() {
   if (!modal) return;
 
   $("closeClaimReviewModalBtn")?.addEventListener("click", () => {
+    if (typeof modal.close === "function") modal.close();
+    else modal.hidden = true;
+  });
+
+  $("closeClaimReviewModalFooterBtn")?.addEventListener("click", () => {
     if (typeof modal.close === "function") modal.close();
     else modal.hidden = true;
   });
@@ -5136,7 +5300,11 @@ function initClaimReviewModalEvents() {
       showToast(`Claim ${claimId} marked as ${action === "approve" ? "Approved" : "Rejected"}.`);
       if (typeof modal.close === "function") modal.close();
       else modal.hidden = true;
-      await loadCompanyWarrantyClaims();
+      if (role === "company") {
+        await loadCompanyWarrantyClaims();
+      } else if (role === "franchise") {
+        await loadFranchiseWarrantyClaims();
+      }
     } catch (err) {
       if ($("claimReviewMsg")) $("claimReviewMsg").textContent = err.message || "Failed to verify claim.";
       showToast(err.message || "Failed to verify claim", "error");
@@ -5148,6 +5316,222 @@ function initClaimReviewModalEvents() {
 
   $("approveClaimBtn")?.addEventListener("click", () => handleVerify("approve"));
   $("rejectClaimBtn")?.addEventListener("click", () => handleVerify("reject"));
+}
+
+// ==========================================
+// Franchise: OEM Warranty Claims Tracking
+// ==========================================
+async function loadFranchiseWarrantyClaims() {
+  if (!isCurrentPage("Warranty Claims")) return;
+  if (franchiseWarrantyClaims && franchiseWarrantyClaims.length > 0) {
+    renderFranchiseWarrantyClaims();
+  } else {
+    const cachedClaims = getUserCache("servsure_cache_franchise_claims");
+    if (cachedClaims && Array.isArray(cachedClaims) && cachedClaims.length > 0) {
+      franchiseWarrantyClaims = cachedClaims;
+      if (isCurrentPage("Warranty Claims")) renderFranchiseWarrantyClaims();
+    }
+  }
+  try {
+    const claims = await generalApi("/api/warranty-amc/claims").catch(() => []);
+    if (!isCurrentPage("Warranty Claims")) return;
+    franchiseWarrantyClaims = claims || [];
+    setUserCache("servsure_cache_franchise_claims", franchiseWarrantyClaims);
+    renderFranchiseWarrantyClaims();
+  } catch (error) {
+    if (!isCurrentPage("Warranty Claims")) return;
+    if (!franchiseWarrantyClaims || franchiseWarrantyClaims.length === 0) {
+      franchiseWarrantyClaims = [];
+      renderFranchiseWarrantyClaims();
+      if ($("requestRows")) {
+        $("requestRows").innerHTML = `<tr><td class="empty-row" colspan="8">${safe(error.message)}. Check your branch session and try again.</td></tr>`;
+      }
+      if ($("requestCount")) $("requestCount").textContent = "Could not load warranty claims";
+    }
+    showToast(`Warranty claims could not load: ${error.message}`, "error");
+  }
+}
+
+function renderFranchiseWarrantyClaims() {
+  if ($("crumbTitle")) $("crumbTitle").textContent = "Warranty Claims";
+  setHidden("addCompanyButton", true);
+  setHidden("addBranchButton", true);
+  setHidden("addTechnicianButton", true);
+  setHidden("companyInlineAdd", true);
+  setHidden("exportButton", false);
+  setHidden("pageContent", false);
+  setHidden("metricGrid", true);
+
+  const tableEl = $("requestRows")?.closest("table");
+  const schedContainer = $("franchiseScheduleContainer");
+  const techContainer = $("techJobCardsContainer");
+  const toolsEl = document.querySelector(".table-tools");
+  const footEl = document.querySelector(".panel-foot");
+
+  if (schedContainer) schedContainer.style.display = "none";
+  if (techContainer) techContainer.style.display = "none";
+  if (tableEl) tableEl.style.display = "";
+  if (toolsEl) toolsEl.style.display = "";
+  if (footEl) footEl.style.display = "";
+
+  const pendingClaims = franchiseWarrantyClaims.filter((c) => c.status === "Pending Review");
+  const approvedClaims = franchiseWarrantyClaims.filter((c) => c.status === "Approved");
+  const rejectedClaims = franchiseWarrantyClaims.filter((c) => c.status === "Rejected");
+  const totalApprovedAmount = approvedClaims.reduce((acc, c) => acc + (c.claim_amount || 0), 0);
+
+  if ($("tableTitle")) {
+    $("tableTitle").innerHTML = `
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 w-full">
+        <div>
+          <span>OEM Warranty Claims & Reimbursement</span>
+          <p class="text-xs text-slate-500 font-normal mt-0.5">Track warranty claims submitted to brand OEMs for covered parts and labor settlement.</p>
+        </div>
+        <div class="inline-flex rounded-xl bg-slate-100 p-1 border border-slate-200">
+          <button type="button" id="tabFranchiseClaimsAll" class="px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${franchiseWarrantyStatusTab === 'all' ? 'bg-white text-blue-600 shadow-xs' : 'text-slate-600 hover:text-slate-900'}">
+            All (${franchiseWarrantyClaims.length})
+          </button>
+          <button type="button" id="tabFranchiseClaimsPending" class="px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${franchiseWarrantyStatusTab === 'pending' ? 'bg-white text-blue-600 shadow-xs' : 'text-slate-600 hover:text-slate-900'}">
+            ⏳ Awaiting Review (${pendingClaims.length})
+          </button>
+          <button type="button" id="tabFranchiseClaimsApproved" class="px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${franchiseWarrantyStatusTab === 'approved' ? 'bg-white text-emerald-600 shadow-xs' : 'text-slate-600 hover:text-slate-900'}">
+            ✓ Accepted (${approvedClaims.length})
+          </button>
+          <button type="button" id="tabFranchiseClaimsRejected" class="px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${franchiseWarrantyStatusTab === 'rejected' ? 'bg-white text-rose-600 shadow-xs' : 'text-slate-600 hover:text-slate-900'}">
+            ✕ Rejected (${rejectedClaims.length})
+          </button>
+        </div>
+      </div>
+    `;
+  }
+  if ($("tableSubtitle")) $("tableSubtitle").textContent = "";
+
+  $("tabFranchiseClaimsAll")?.addEventListener("click", () => {
+    franchiseWarrantyStatusTab = "all";
+    renderFranchiseWarrantyClaims();
+  });
+  $("tabFranchiseClaimsPending")?.addEventListener("click", () => {
+    franchiseWarrantyStatusTab = "pending";
+    renderFranchiseWarrantyClaims();
+  });
+  $("tabFranchiseClaimsApproved")?.addEventListener("click", () => {
+    franchiseWarrantyStatusTab = "approved";
+    renderFranchiseWarrantyClaims();
+  });
+  $("tabFranchiseClaimsRejected")?.addEventListener("click", () => {
+    franchiseWarrantyStatusTab = "rejected";
+    renderFranchiseWarrantyClaims();
+  });
+
+  if ($("sidePanelTitle")) $("sidePanelTitle").textContent = "Reimbursement Summary";
+  if ($("healthContent")) {
+    $("healthContent").innerHTML = `
+      <div class="space-y-2.5">
+        <div class="p-3 bg-white rounded-xl border border-slate-100 flex items-center justify-between">
+          <span class="text-xs text-slate-500 font-medium">Claims Submitted:</span>
+          <strong class="text-sm font-bold text-slate-800">${franchiseWarrantyClaims.length}</strong>
+        </div>
+        <div class="p-3 ${pendingClaims.length > 0 ? 'bg-amber-50 border-amber-200' : 'bg-slate-50 border-slate-100'} rounded-xl border flex items-center justify-between">
+          <span class="text-xs ${pendingClaims.length > 0 ? 'text-amber-800 font-semibold' : 'text-slate-500 font-medium'}">Awaiting OEM Review:</span>
+          <strong class="text-sm font-bold ${pendingClaims.length > 0 ? 'text-amber-700' : 'text-slate-700'}">${pendingClaims.length}</strong>
+        </div>
+        <div class="p-3 bg-emerald-50 border border-emerald-100 rounded-xl flex items-center justify-between">
+          <span class="text-xs text-emerald-800 font-semibold">Accepted / Settled:</span>
+          <strong class="text-sm font-bold text-emerald-700 font-display">₹${totalApprovedAmount.toFixed(2)} (${approvedClaims.length})</strong>
+        </div>
+        ${rejectedClaims.length > 0 ? `
+        <div class="p-3 bg-rose-50 border border-rose-100 rounded-xl flex items-center justify-between">
+          <span class="text-xs text-rose-800 font-semibold">Claims Rejected:</span>
+          <strong class="text-sm font-bold text-rose-700">${rejectedClaims.length}</strong>
+        </div>
+        ` : ''}
+      </div>
+    `;
+  }
+  if ($("activityContent")) {
+    $("activityContent").innerHTML = `<div class="section-empty text-xs leading-relaxed">Claims for covered replacement parts are automatically dispatched to the brand company upon job card completion. Check status here for approval or review reasons.</div>`;
+  }
+  if ($("bottomTitle")) $("bottomTitle").textContent = "Warranty Audit & OEM Settlement";
+  if ($("bottomSubtitle")) $("bottomSubtitle").textContent = "Track brand verification and parts reimbursement";
+
+  const query = $("requestSearch") ? $("requestSearch").value.trim().toLowerCase() : "";
+  if ($("requestSearch")) $("requestSearch").placeholder = "Search claims by ID, request, brand, or customer";
+
+  if ($("requestHead")) {
+    $("requestHead").innerHTML = [
+      '<th style="min-width: 100px;">Claim ID</th>',
+      '<th style="min-width: 120px;">Request ID</th>',
+      '<th style="min-width: 140px;">Brand / OEM</th>',
+      '<th style="min-width: 140px;">Appliance</th>',
+      '<th style="min-width: 130px;">Customer</th>',
+      '<th style="min-width: 110px;">Amount</th>',
+      '<th style="min-width: 140px;">Status</th>',
+      '<th style="min-width: 120px;">Action</th>'
+    ].join("");
+  }
+
+  let filtered = franchiseWarrantyClaims;
+  if (franchiseWarrantyStatusTab === "pending") {
+    filtered = filtered.filter((c) => c.status === "Pending Review");
+  } else if (franchiseWarrantyStatusTab === "approved") {
+    filtered = filtered.filter((c) => c.status === "Approved");
+  } else if (franchiseWarrantyStatusTab === "rejected") {
+    filtered = filtered.filter((c) => c.status === "Rejected");
+  }
+
+  if (query) {
+    filtered = filtered.filter((item) =>
+      [item.id, item.request_id, item.brand, item.company_name, item.appliance_name, item.customer_name, item.status]
+        .join(" ")
+        .toLowerCase()
+        .includes(query)
+    );
+  }
+
+  if ($("requestRows")) {
+    $("requestRows").innerHTML = filtered.length
+      ? filtered
+          .map((item) => {
+            let statusBadge = "";
+            if (item.status === "Approved") {
+              statusBadge = `<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">✓ Accepted by OEM</span>`;
+            } else if (item.status === "Rejected") {
+              statusBadge = `<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-rose-50 text-rose-800 border border-rose-200">✕ Rejected by OEM</span>`;
+            } else {
+              statusBadge = `<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-50 text-amber-800 border border-amber-200">⏳ Sent — Awaiting Review</span>`;
+            }
+
+            return `
+              <tr>
+                <td><strong class="font-mono text-blue-600 block">${safe(item.id)}</strong><small class="text-slate-400">${safe(item.submitted_at || '—')}</small></td>
+                <td><span class="font-mono font-semibold text-slate-800">${safe(item.request_id)}</span></td>
+                <td><span class="font-semibold text-slate-800 block">${safe(item.company_name || item.brand || 'OEM')}</span></td>
+                <td><span class="font-medium text-slate-800 block">${safe(item.appliance_name || 'Appliance')}</span><small class="text-slate-400 font-mono">${safe(item.model_no || '')}</small></td>
+                <td><span class="font-medium text-slate-800 block">${safe(item.customer_name || 'Customer')}</span><small class="text-slate-400">${safe(item.customer_phone || '')}</small></td>
+                <td><strong class="font-display text-blue-700 text-sm">₹${Number(item.claim_amount || 0).toFixed(2)}</strong></td>
+                <td>${statusBadge}</td>
+                <td>
+                  <button type="button" class="table-action font-semibold text-blue-600 hover:text-blue-800 flex items-center gap-1" data-franchise-claim-id="${safe(item.id)}">
+                    <span>📄</span> View Details
+                  </button>
+                </td>
+              </tr>
+            `;
+          })
+          .join("")
+      : `<tr><td class="empty-row" colspan="8">${query ? "No warranty claims match your search." : "No warranty claims submitted to OEM companies yet."}</td></tr>`;
+  }
+
+  if ($("requestCount")) {
+    $("requestCount").textContent = `${filtered.length} claim${filtered.length === 1 ? "" : "s"} shown`;
+  }
+  if ($("resourceGrid")) $("resourceGrid").innerHTML = "";
+
+  document.querySelectorAll("[data-franchise-claim-id]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const claim = franchiseWarrantyClaims.find((c) => c.id === btn.dataset.franchiseClaimId);
+      if (claim) openClaimReviewModal(claim);
+    });
+  });
 }
 
 // ==========================================
@@ -5624,6 +6008,7 @@ async function loadWorkspacePageData(page) {
   if (role === "franchise" && (page === "Operating hours & calendar" || page === "Operating hours")) { await loadFranchiseSchedule(); return; }
   if (role === "franchise" && page === "Customers") { await loadFranchiseCustomers(); return; }
   if (role === "franchise" && page === "Inventory & Spares") { await loadFranchiseInventory(); return; }
+  if (role === "franchise" && page === "Warranty Claims") { await loadFranchiseWarrantyClaims(); return; }
 }
 async function loadAdminPageData(page) {
   if (role !== "admin") return;
@@ -8281,6 +8666,7 @@ function initEvents() {
     else if (role === "franchise" && page === "Technicians") renderFranchiseTechnicians();
     else if (role === "franchise" && page === "Customers") renderFranchiseCustomers();
     else if (role === "franchise" && (page === "Inventory & Spares" || page === "Spares Catalog")) renderFranchiseInventory();
+    else if (role === "franchise" && page === "Warranty Claims") renderFranchiseWarrantyClaims();
     else if (page === "Escalations" || page === "SLA Escalations") renderEscalationsView();
     else if (role === "admin" && ["Branches", "Technicians", "Customers"].includes(page)) renderDirectory(page);
     else if (role === "admin" && page === "Service requests") renderRequestDirectory();
@@ -8349,6 +8735,18 @@ function initEvents() {
         ])
       ];
       downloadCsv("servsure-franchise-inventory.csv", rows);
+      return;
+    }
+    if (role === "franchise" && page === "Warranty Claims") {
+      const rows = [
+        ["Claim ID", "Request ID", "Brand / OEM", "Appliance", "Customer Name", "Customer Phone", "Claim Amount", "Status", "Submitted At", "Settled At", "Notes"],
+        ...franchiseWarrantyClaims.map((item) => [
+          item.id, item.request_id, item.company_name || item.brand || "", item.appliance_name || "",
+          item.customer_name || "", item.customer_phone || "",
+          item.claim_amount, item.status, item.submitted_at || "", item.settled_at || "", item.claim_notes || ""
+        ])
+      ];
+      downloadCsv("servsure-franchise-warranty-claims.csv", rows);
       return;
     }
     if (role === "company" && page === "Warranty Claims") {

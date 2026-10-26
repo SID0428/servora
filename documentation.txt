@@ -4,8 +4,8 @@ PRODUCTION-GRADE TECHNICAL ARCHITECTURE & DEVELOPER ONBOARDING MANUAL
 ================================================================================
 File: documentation.txt
 Platform: ServSure (formerly Servora)
-Version: 1.9.9 (Production Release - Approved Estimate Banner Dismissal & Zero-Invoice Total Bug Fix)
-Last Updated: October 27, 2026 (01:48 IST)
+Version: 2.0.0 (Production Release - Warranty Claim Details & Franchise Tracking Workspace)
+Last Updated: October 27, 2026 (02:16 IST)
 Repository: https://github.com/SID0428/servora.git
 
 Welcome to ServSure! This manual is the definitive, authoritative reference
@@ -2151,9 +2151,51 @@ were identified between the initial rough draft documentation and the actual cod
         - Fully reconciles the invoice from user's job card `#SR-9929`:
           Doorstep Inspection ₹0.00 + Labor ₹450.00 + Replaced Parts ₹15,300.00 - OEM Covered Waiver ₹14,500.00 + CGST ₹101.52 + SGST ₹101.51 = **₹1,453.03**.
 
+48. PLATFORM FEATURE: Comprehensive Warranty Claim Details in Company Portal & Franchise Warranty Claims Tracking Workspace
+   - Initial State / Observed Issue:
+     1. Incomplete Company Portal Claim View: In `company-dashboard.html`, the claim review dialog (`claimReviewModal`) only showed
+        minimal summary fields (Claim ID, Request ID, Branch Name, Total Amount) and lacked customer contact details, appliance purchase
+        invoices, service job card invoices, appliance serial numbers, defect descriptions/photos, and itemized covered parts breakdowns.
+     2. Missing Franchise Warranty Claim Tracking: When a franchise branch completed a warranty ticket that consumed OEM-covered parts,
+        the claim was dispatched to the brand company in the background, but the franchise portal had no interface to view dispatched
+        claims, track review progress, or see whether claims were accepted, settled, or rejected with the company's decision notes.
+     3. Brittle Claim Generation: If `req.company_id` was `None` on a ticket (e.g., booked directly by brand name rather than explicit company ID),
+        `requests.py` skipped claim creation, losing reimbursement records.
+   - Resolution:
+     1. Backend Schemas & Routes (`backend/app/schemas/__init__.py`, `backend/app/routes/warranty_amc.py`, `backend/app/routes/requests.py`):
+        - Enriched `WarrantyClaimSchema` with: `customer_name`, `customer_phone`, `customer_address`, `model_no`, `serial_no`,
+          `purchase_date`, `invoice_url` (Appliance Purchase Bill), `service_invoice_no`, `service_total_amount`, `labor_cost`,
+          `covered_parts_cost`, `customer_parts_cost`, `issue`, `defect_photo`, `technician_name`.
+        - Enriched `list_warranty_claims` (`GET /api/warranty-amc/claims`):
+          - Joins `ServiceRequestModel`, `JobCardModel`, `ApplianceModel`, and `UserModel` to populate full customer, appliance, and job card fields.
+          - Franchise scoping: Filters claims where `branch_id` matches the user's branch ID, user ID, or associated service requests.
+          - Company scoping: Matches claims by `company_id` (ID, email, name) or associated brand service requests.
+        - Robust Auto-Claim Generation in `create_job_card` (`backend/app/routes/requests.py`):
+          - Dynamically resolves `company_id` from `req.company_id` -> `appliance.company_id` -> `UserModel(role="company", name.ilike(brand))` -> default active company.
+          - Dynamically resolves `branch_id` from `req.branch_id` -> `technician.branch_id` -> default branch.
+          - Creates or updates `WarrantyClaimModel` whenever covered parts are consumed on warranty repairs.
+     2. Company Portal Comprehensive Claim Review Modal (`frontend/company-dashboard.html` & `frontend/js/ops-dashboard.js`):
+        - Upgraded `claimReviewModal`:
+          - Financial Summary Cards: OEM Claim Amount, OEM Covered Parts Cost, Consumer Billed Total.
+          - Invoices Row: Direct buttons to view Appliance Purchase Bill (`invoice_url`) and Service Job Card Invoice (`openOpsReceiptModal(claim.request_id)`).
+          - Customer & Appliance Grid: Customer name, phone, full address, technician name, product category, brand, model no, serial no, purchase date, and reported issue.
+          - Defect Photo: Interactive preview with link to full inspection photo.
+          - Itemized Covered Parts Table: Part name, code, serial number, quantity, unit rate, and total.
+          - Audit Actions: Settle/Approve and Reject buttons with audit notes textarea for pending claims; settled status and audit trail for closed claims.
+     3. Dedicated Franchise Warranty Claims Workspace (`frontend/franchise-dashboard.html` & `frontend/js/ops-dashboard.js`):
+        - Sidebar Navigation: Added "Warranty Claims" (`roleConfig.franchise.nav`).
+        - Dedicated Page View (`renderFranchiseWarrantyClaims`):
+          - Status Tabs: All, Awaiting Review (`Pending Review`), Accepted (`Approved`), Rejected (`Rejected`).
+          - Financial & Health Metrics: Claims Submitted, Awaiting Review, Accepted / Settled, Total Reimbursed Amount (₹).
+          - Claims Table: Claim ID, Request ID, Brand / OEM Company, Appliance, Customer, Amount, Status Badge, and Action ("View Details 📄").
+          - Status Indicators: ⏳ Sent — Awaiting Review, ✓ Accepted by OEM, ✕ Rejected by OEM.
+          - Franchise Claim Detail Dialog: Full inspection view highlighting OEM audit decision notes and rejection reasons.
+          - CSV Export: Dedicated export for franchise warranty claims (`servsure-franchise-warranty-claims.csv`).
+
 ==================================================
 End of Documentation
 ==================================================
+
 
 
 

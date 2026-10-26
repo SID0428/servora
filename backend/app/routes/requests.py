@@ -1738,24 +1738,62 @@ def create_job_card(request_id: str, payload: JobCardCreatePayload, request: Req
                     db.add(txn)
 
     # Phase 2 FR-WAR-002: Automatic OEM Warranty Claim creation strictly for COVERED parts
-    if is_warranty_covered and (covered_parts_cost > 0 or raw_labor_cost > 0) and req.company_id and covered_parts_for_claim:
+    if is_warranty_covered and (covered_parts_cost > 0 or raw_labor_cost > 0) and (covered_parts_for_claim or is_warranty_covered):
+        # Resolve company_id gracefully
+        resolved_company_id = req.company_id
+        if not resolved_company_id and req.appliance_id:
+            app_obj = db.query(ApplianceModel).filter(ApplianceModel.id == req.appliance_id).first()
+            if app_obj and app_obj.company_id:
+                resolved_company_id = app_obj.company_id
+        if not resolved_company_id and req.brand:
+            comp_user = db.query(UserModel).filter(
+                UserModel.role == "company",
+                or_(UserModel.name.ilike(req.brand), getattr(UserModel, "company_name", UserModel.name).ilike(req.brand))
+            ).first()
+            if comp_user:
+                resolved_company_id = comp_user.id
+        if not resolved_company_id:
+            any_comp = db.query(UserModel).filter(UserModel.role == "company").first()
+            resolved_company_id = any_comp.id if any_comp else "company_1"
+        req.company_id = resolved_company_id
+
+        # Resolve branch_id gracefully
+        resolved_branch_id = req.branch_id
+        if not resolved_branch_id and req.technician_id:
+            tech_user = db.query(UserModel).filter(UserModel.id == req.technician_id).first()
+            if tech_user and getattr(tech_user, "branch_id", None):
+                resolved_branch_id = tech_user.branch_id
+        if not resolved_branch_id:
+            resolved_branch_id = "branch_1"
+        req.branch_id = resolved_branch_id
+
         claim_id = f"CLM-{req.id.replace('SR-', '')}"
         existing_claim = db.query(WarrantyClaimModel).filter(WarrantyClaimModel.id == claim_id).first()
+        oem_labor_share = raw_labor_cost if customer_labor == 0 else 0.0
+        calculated_claim_amount = round(covered_parts_cost + oem_labor_share, 2)
+        claim_notes_text = f"OEM Warranty reimbursement for {len(covered_parts_for_claim)} covered part(s) (₹{covered_parts_cost:.2f}). Consumer billed ₹{total_amount:.2f} for consumables/non-covered parts."
+
         if not existing_claim:
-            oem_labor_share = raw_labor_cost if customer_labor == 0 else 0.0
             w_claim = WarrantyClaimModel(
                 id=claim_id,
                 request_id=req.id,
-                company_id=req.company_id,
-                branch_id=req.branch_id or "branch_1",
+                company_id=resolved_company_id,
+                branch_id=resolved_branch_id,
                 appliance_id=req.appliance_id,
-                claim_amount=round(covered_parts_cost + oem_labor_share, 2),
+                claim_amount=calculated_claim_amount,
                 parts_claimed_json=json.dumps(covered_parts_for_claim),
                 status="Pending Review",
-                claim_notes=f"OEM Warranty reimbursement for {len(covered_parts_for_claim)} covered part(s) (₹{covered_parts_cost:.2f}). Consumer billed ₹{total_amount:.2f} for consumables/non-covered parts.",
+                claim_notes=claim_notes_text,
                 submitted_at=now_str
             )
             db.add(w_claim)
+        else:
+            existing_claim.claim_amount = calculated_claim_amount
+            existing_claim.parts_claimed_json = json.dumps(covered_parts_for_claim)
+            existing_claim.company_id = resolved_company_id
+            existing_claim.branch_id = resolved_branch_id
+            if existing_claim.status == "Pending Review":
+                existing_claim.claim_notes = claim_notes_text
 
     # Update timeline and completion if completion_otp is provided
     timeline = json.loads(req.timeline_json) if req.timeline_json else []

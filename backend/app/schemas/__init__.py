@@ -216,6 +216,7 @@ class JobCardPartItem(BaseModel):
     quantity: int = 1
     unit_price: float = 0.0
     total_price: float = 0.0
+    total: Optional[float] = 0.0
     hsn_code: Optional[str] = "8418"
     is_covered: Optional[bool] = False
     coverage_type: Optional[str] = "oem_warranty" # oem_warranty or customer_billable
@@ -614,6 +615,21 @@ class WarrantyClaimSchema(BaseModel):
     claim_notes: Optional[str] = None
     submitted_at: str
     settled_at: Optional[str] = None
+    customer_name: Optional[str] = None
+    customer_phone: Optional[str] = None
+    customer_address: Optional[str] = None
+    model_no: Optional[str] = None
+    serial_no: Optional[str] = None
+    purchase_date: Optional[str] = None
+    invoice_url: Optional[str] = None
+    service_invoice_no: Optional[str] = None
+    service_total_amount: Optional[float] = None
+    labor_cost: Optional[float] = None
+    covered_parts_cost: Optional[float] = None
+    customer_parts_cost: Optional[float] = None
+    issue: Optional[str] = None
+    defect_photo: Optional[str] = None
+    technician_name: Optional[str] = None
 
 class WarrantyClaimVerifyPayload(BaseModel):
     action: str = Field(pattern=r"^(approve|reject)$")

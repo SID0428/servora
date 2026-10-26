@@ -1112,8 +1112,207 @@
           <button type="button" id="cancelCalendarException" class="secondary-button text-xs py-2 px-3">Cancel</button>
           <button type="submit" id="saveCalendarExceptionBtn" class="primary-action text-xs py-2 px-4">Save</button>
         </div>
+  <!-- OEM Brand Warranty Claim Verification / Review Modal for Franchise -->
+  <dialog id="claimReviewModal" class="w-[min(96vw,740px)] rounded-3xl border-0 p-0 shadow-2xl overflow-hidden bg-white">
+    <div class="flex flex-col max-h-[92vh]">
+      <!-- Header -->
+      <div class="p-6 border-b border-slate-100 flex items-start justify-between bg-slate-50/50">
+        <div>
+          <div class="flex items-center gap-2">
+            <span class="text-[10px] font-bold tracking-[.16em] text-blue-600 uppercase">WARRANTY REIMBURSEMENT</span>
+            <span id="reviewClaimStatusBadge" class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">Pending Review</span>
+          </div>
+          <h3 class="font-display text-lg font-bold text-slate-900 mt-1" id="reviewClaimTitle">Warranty Claim Details</h3>
+          <p class="text-xs text-slate-400" id="reviewClaimSubtitle">Validate parts consumption and OEM reimbursement</p>
+        </div>
+        <button type="button" id="closeClaimReviewModalBtn" class="rounded-xl p-1.5 text-slate-400 hover:bg-slate-100 text-lg leading-none" aria-label="Close">✕</button>
       </div>
-    </form>
+
+      <!-- Scrollable Body -->
+      <div class="p-6 space-y-4 overflow-y-auto text-xs">
+        <!-- Claim Summary Banner -->
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+          <div class="p-3 bg-slate-50 rounded-2xl border border-slate-100">
+            <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Claim ID</span>
+            <strong id="reviewClaimId" class="text-xs font-mono font-bold text-blue-700 block mt-0.5">—</strong>
+          </div>
+          <div class="p-3 bg-slate-50 rounded-2xl border border-slate-100">
+            <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Service Request</span>
+            <strong id="reviewClaimReqId" class="text-xs font-mono font-bold text-slate-800 block mt-0.5">—</strong>
+          </div>
+          <div class="p-3 bg-slate-50 rounded-2xl border border-slate-100">
+            <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Franchise Branch</span>
+            <strong id="reviewClaimBranch" class="text-xs font-bold text-slate-800 truncate block mt-0.5">—</strong>
+          </div>
+          <div class="p-3 bg-slate-50 rounded-2xl border border-slate-100">
+            <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Submitted On</span>
+            <strong id="reviewClaimSubmittedAt" class="text-xs font-bold text-slate-700 block mt-0.5">—</strong>
+          </div>
+        </div>
+
+        <!-- Financial Breakdown Cards -->
+        <div class="grid grid-cols-3 gap-2.5">
+          <div class="p-3.5 bg-blue-50/70 border border-blue-100 rounded-2xl">
+            <span class="text-[10px] font-bold text-blue-700 uppercase tracking-wider block">OEM Claim Amount</span>
+            <strong id="reviewClaimAmount" class="text-lg font-black text-blue-800 font-display block mt-0.5">₹0.00</strong>
+            <span class="text-[10px] text-blue-600">Reimbursement to branch</span>
+          </div>
+          <div class="p-3.5 bg-emerald-50/70 border border-emerald-100 rounded-2xl">
+            <span class="text-[10px] font-bold text-emerald-700 uppercase tracking-wider block">Covered Parts Cost</span>
+            <strong id="reviewClaimCoveredPartsCost" class="text-lg font-black text-emerald-800 font-display block mt-0.5">₹0.00</strong>
+            <span class="text-[10px] text-emerald-600">Free to customer</span>
+          </div>
+          <div class="p-3.5 bg-amber-50/70 border border-amber-100 rounded-2xl">
+            <span class="text-[10px] font-bold text-amber-700 uppercase tracking-wider block">Consumer Billed</span>
+            <strong id="reviewClaimConsumerBilled" class="text-lg font-black text-amber-800 font-display block mt-0.5">₹0.00</strong>
+            <span class="text-[10px] text-amber-600">Consumables / non-warranty</span>
+          </div>
+        </div>
+
+        <!-- Invoices & Documents Action Bar -->
+        <div class="p-3.5 bg-indigo-50/50 border border-indigo-100 rounded-2xl flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <strong class="text-xs font-bold text-indigo-950 block">Claim Invoices & Proofs</strong>
+            <span class="text-[11px] text-indigo-700">Appliance purchase bill and final doorstep service invoice</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <a id="viewClaimPurchaseInvoiceBtn" href="#" target="_blank" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white border border-indigo-200 text-indigo-700 hover:bg-indigo-50 font-bold text-xs shadow-xs transition">
+              <span>📄</span> View Purchase Invoice
+            </a>
+            <button type="button" id="viewClaimJobCardInvoiceBtn" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 text-white hover:bg-indigo-700 font-bold text-xs shadow-xs transition">
+              <span>🧾</span> View Service Job Invoice
+            </button>
+          </div>
+        </div>
+
+        <!-- Two Columns: Customer Info & Appliance/Defect Info -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <!-- Customer Info -->
+          <div class="p-3.5 bg-slate-50 border border-slate-100 rounded-2xl space-y-2">
+            <div class="flex items-center gap-1.5 border-b border-slate-200/60 pb-2">
+              <span class="text-sm">👤</span>
+              <strong class="text-xs font-bold text-slate-800">Customer Details</strong>
+            </div>
+            <div class="space-y-1">
+              <div class="flex justify-between">
+                <span class="text-slate-400">Name:</span>
+                <strong id="reviewClaimCustName" class="text-slate-800 text-right">—</strong>
+              </div>
+              <div class="flex justify-between">
+                <span class="text-slate-400">Phone:</span>
+                <strong id="reviewClaimCustPhone" class="text-slate-800 text-right">—</strong>
+              </div>
+              <div class="flex justify-between">
+                <span class="text-slate-400">Address:</span>
+                <span id="reviewClaimCustAddress" class="text-slate-700 text-right max-w-[170px] truncate block">—</span>
+              </div>
+              <div class="flex justify-between">
+                <span class="text-slate-400">Technician:</span>
+                <strong id="reviewClaimTechName" class="text-slate-800 text-right">—</strong>
+              </div>
+            </div>
+          </div>
+
+          <!-- Appliance & Defect Info -->
+          <div class="p-3.5 bg-slate-50 border border-slate-100 rounded-2xl space-y-2">
+            <div class="flex items-center gap-1.5 border-b border-slate-200/60 pb-2">
+              <span class="text-sm">🧊</span>
+              <strong class="text-xs font-bold text-slate-800">Appliance & Issue</strong>
+            </div>
+            <div class="space-y-1">
+              <div class="flex justify-between">
+                <span class="text-slate-400">Product:</span>
+                <strong id="reviewClaimAppliance" class="text-slate-800 text-right">—</strong>
+              </div>
+              <div class="flex justify-between">
+                <span class="text-slate-400">Model No:</span>
+                <strong id="reviewClaimModel" class="font-mono text-slate-800 text-right">—</strong>
+              </div>
+              <div class="flex justify-between">
+                <span class="text-slate-400">Serial No:</span>
+                <strong id="reviewClaimSerial" class="font-mono text-slate-800 text-right">—</strong>
+              </div>
+              <div class="flex justify-between">
+                <span class="text-slate-400">Purchase Date:</span>
+                <span id="reviewClaimPurchaseDate" class="text-slate-700 text-right">—</span>
+              </div>
+              <div class="flex justify-between">
+                <span class="text-slate-400">Reported Issue:</span>
+                <span id="reviewClaimIssue" class="text-slate-700 text-right max-w-[170px] truncate block">—</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Defect Photo Preview if any -->
+        <div id="reviewClaimDefectPhotoWrapper" class="hidden p-3 bg-slate-50 border border-slate-100 rounded-2xl">
+          <div class="flex items-center justify-between mb-2">
+            <strong class="text-xs font-bold text-slate-800 flex items-center gap-1"><span>📷</span> Defect Inspection Photo</strong>
+            <a id="reviewClaimDefectPhotoLink" href="#" target="_blank" class="text-blue-600 hover:underline text-[11px] font-bold">Open Full Image ↗</a>
+          </div>
+          <img id="reviewClaimDefectPhotoImg" src="" alt="Defect Photo" class="max-h-40 rounded-xl object-contain border border-slate-200 bg-white">
+        </div>
+
+        <!-- Itemized Claimed Parts Table -->
+        <div class="border border-slate-100 rounded-2xl overflow-hidden">
+          <div class="bg-slate-100/70 px-3.5 py-2 border-b border-slate-200/60 flex items-center justify-between">
+            <strong class="text-xs font-bold text-slate-800">Itemized Covered Parts for OEM Reimbursement</strong>
+            <span id="reviewClaimPartsCount" class="text-[11px] text-slate-500 font-medium">0 items</span>
+          </div>
+          <div class="overflow-x-auto max-h-48 overflow-y-auto">
+            <table class="w-full text-left text-xs">
+              <thead class="bg-slate-50 text-slate-500 text-[10px] uppercase font-bold border-b border-slate-100">
+                <tr>
+                  <th class="p-2.5">Part Name & Code</th>
+                  <th class="p-2.5">Serial / Barcode</th>
+                  <th class="p-2.5 text-center">Qty</th>
+                  <th class="p-2.5 text-right">Unit Rate</th>
+                  <th class="p-2.5 text-right">Total</th>
+                </tr>
+              </thead>
+              <tbody id="reviewClaimPartsTableBody" class="divide-y divide-slate-100">
+                <!-- Dynamically rendered -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- OEM Decision / Status Banner (visible when settled or viewed by franchise) -->
+        <div id="reviewClaimSettledBanner" class="hidden p-3.5 rounded-2xl border text-xs">
+          <div class="flex items-center gap-2 mb-1">
+            <span id="reviewClaimSettledIcon" class="text-base">✓</span>
+            <strong id="reviewClaimSettledTitle" class="font-bold text-sm">Approved by OEM</strong>
+          </div>
+          <p id="reviewClaimSettledNotes" class="text-slate-700 leading-relaxed"></p>
+          <span id="reviewClaimSettledAt" class="text-[10px] text-slate-400 block mt-1"></span>
+        </div>
+
+        <!-- Audit Decision Form (for Company) -->
+        <form id="claimReviewForm" class="space-y-3 pt-1">
+          <input type="hidden" id="reviewClaimHiddenId">
+          <div id="companyReviewDecisionGroup">
+            <label class="block font-semibold text-slate-700 mb-1">Company Audit Decision & Notes</label>
+            <textarea id="reviewClaimNotes" rows="2" placeholder="e.g. Valid manufacturing defect verified under standard 1-year product warranty." class="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20"></textarea>
+          </div>
+          <p id="claimReviewMsg" class="min-h-4 text-xs text-rose-600" role="status"></p>
+        </form>
+      </div>
+
+      <!-- Footer Actions -->
+      <div class="p-4 border-t border-slate-100 bg-slate-50/50 flex items-center justify-between">
+        <button type="button" id="rejectClaimBtn" class="rounded-xl px-4 py-2 text-xs font-bold text-rose-600 hover:bg-rose-50 border border-rose-200 transition">
+          ✕ Reject Claim
+        </button>
+        <div class="flex gap-2">
+          <button type="button" id="closeClaimReviewModalFooterBtn" class="rounded-xl px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 border border-slate-200 transition">
+            Close
+          </button>
+          <button type="button" id="approveClaimBtn" class="rounded-xl bg-emerald-600 hover:bg-emerald-700 px-5 py-2 text-xs font-bold text-white shadow-sm transition">
+            ✓ Approve & Settle
+          </button>
+        </div>
+      </div>
+    </div>
   </dialog>
 </body>
 </html>
