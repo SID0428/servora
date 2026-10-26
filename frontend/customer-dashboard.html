@@ -2184,11 +2184,15 @@
         <textarea id="estCustomerRemarks" rows="2" class="w-full rounded-xl border border-slate-200 p-2.5 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500" placeholder="e.g. Please proceed with replacement / Parts cost seems too high..."></textarea>
       </div>
 
-      <div class="flex items-center justify-end gap-2.5 pt-2 border-t border-slate-100">
-        <button type="button" onclick="window.respondToCustomerEstimate('reject')" class="px-4 py-2 rounded-xl border border-rose-200 bg-white hover:bg-rose-50 text-rose-700 font-bold text-xs transition">
+      <div id="estModalStatusApproved" class="hidden p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold flex items-center justify-center gap-2">
+        <span>✓</span> You have already authorized this estimate. Technician is proceeding with repair.
+      </div>
+
+      <div id="estModalActions" class="flex items-center justify-end gap-2.5 pt-2 border-t border-slate-100">
+        <button id="declineEstimateBtn" type="button" onclick="window.respondToCustomerEstimate('reject')" class="px-4 py-2 rounded-xl border border-rose-200 bg-white hover:bg-rose-50 text-rose-700 font-bold text-xs transition">
           ✕ Decline Estimate
         </button>
-        <button type="button" onclick="window.respondToCustomerEstimate('approve')" class="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs transition shadow-sm flex items-center gap-1.5">
+        <button id="approveEstimateBtn" type="button" onclick="window.respondToCustomerEstimate('approve')" class="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs transition shadow-sm flex items-center gap-1.5">
           ✓ Approve Estimate & Authorize Repair
         </button>
       </div>

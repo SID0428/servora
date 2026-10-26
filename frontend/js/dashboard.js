@@ -1618,17 +1618,19 @@ function populateTracking(request) {
 
   // Pre-Repair Estimate Banner (SRS 6.10)
   if ($("trackingEstimateBanner")) {
-    const hasEst = Boolean(request.has_estimate || request.status === "Estimate Pending Approval" || request.status === "Repair in Progress" || request.status === "Estimate Rejected");
-    if (hasEst) {
-      $("trackingEstimateBanner").classList.remove("hidden");
+    const isPendingApproval = request.status === "Estimate Pending Approval" || request.status === "Estimate Rejected";
+    if (isPendingApproval || request.has_estimate) {
       readApiJson(`/api/requests/${encodeURIComponent(request.id)}/estimate`)
         .then(est => {
+          // Once the pre-repair cost estimate is approved by the customer, do not show this banner
+          if (est.status === "approved" || (est.status !== "pending" && !isPendingApproval)) {
+            $("trackingEstimateBanner").classList.add("hidden");
+            return;
+          }
+          $("trackingEstimateBanner").classList.remove("hidden");
           if ($("estimateTotalPreview")) $("estimateTotalPreview").textContent = `Total: ₹${Number(est.total_estimate).toFixed(2)}`;
           if ($("estimatePendingPill")) {
-            if (est.status === "approved") {
-              $("estimatePendingPill").textContent = "✓ Approved by You";
-              $("estimatePendingPill").className = "text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200";
-            } else if (est.status === "rejected") {
+            if (est.status === "rejected") {
               $("estimatePendingPill").textContent = "✕ Declined by You";
               $("estimatePendingPill").className = "text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-100 text-rose-800 border border-rose-200";
             } else {
@@ -1637,7 +1639,9 @@ function populateTracking(request) {
             }
           }
         })
-        .catch(() => {});
+        .catch(() => {
+          $("trackingEstimateBanner").classList.add("hidden");
+        });
     } else {
       $("trackingEstimateBanner").classList.add("hidden");
     }
@@ -3053,10 +3057,20 @@ window.openReceiptModal = async function(requestId, showPrevious = false) {
   if ($("receiptDate")) $("receiptDate").textContent = showPrevious ? date1 : date2;
 
   const isWarranty = Boolean(targetReq.is_under_warranty || (jc && jc.is_warranty_covered));
-  const isPaid = targetReq.payment_status === "Paid" || targetReq.payment_status === "Paid (Warranty Covered)" || (jc && isWarranty);
+  // Itemized breakdown adhering to Phase 2 automated price engine
+  const parts = (jc && Array.isArray(jc.parts_used)) ? jc.parts_used : [];
+  const inspectFee = jc ? Number(jc.inspection_fee ?? (targetReq?.visiting_charge || 299)) : Number(targetReq?.visiting_charge || 299);
+  const laborCost = jc ? Number(jc.labor_cost || 0) : 350;
+  const partsCost = jc ? Number(jc.parts_cost || 0) : 0;
+  const discountAmount = jc ? Number(jc.discount_amount || 0) : 0;
+  const cgst = jc ? Number(jc.cgst_amount || 0) : Number(((inspectFee + laborCost + partsCost - discountAmount) * 0.09).toFixed(2));
+  const sgst = jc ? Number(jc.sgst_amount || 0) : Number(((inspectFee + laborCost + partsCost - discountAmount) * 0.09).toFixed(2));
+  const totalAmount = jc ? Number(jc.total_amount ?? 0) : (isWarranty ? 0.0 : Number((inspectFee + laborCost + partsCost - discountAmount + cgst + sgst).toFixed(2)));
+  const isFullyCovered = totalAmount === 0;
+  const isPaid = targetReq.payment_status === "Paid" || targetReq.payment_status === "Paid (Warranty Covered)" || (jc && isFullyCovered);
 
   if ($("receiptPaidBadge")) {
-    $("receiptPaidBadge").textContent = isWarranty ? "[ OEM WARRANTY COVERED ]" : (isPaid ? "[ PAID IN FULL ]" : "[ PAYMENT PENDING ]");
+    $("receiptPaidBadge").textContent = isFullyCovered ? "[ OEM WARRANTY COVERED ]" : (isPaid ? "[ PAID IN FULL ]" : "[ PAYMENT PENDING ]");
     $("receiptPaidBadge").className = "inline-block border border-black px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider text-black bg-white";
   }
 
@@ -3064,7 +3078,7 @@ window.openReceiptModal = async function(requestId, showPrevious = false) {
     const pMethod = targetReq.payment_method ? targetReq.payment_method.toUpperCase() : "UPI / ONLINE";
     const pTxn = targetReq.payment_transaction_id || `PAY-${reqId}`;
     const visitSuffix = showPrevious ? " (Visit 1)" : (hasMultipleReceipts ? " (Visit 2)" : "");
-    $("receiptPaymentMeta").textContent = isWarranty ? `OEM Brand Reimbursed · Liability ₹0.00${visitSuffix}` : `${pMethod} · Ref: ${pTxn}${visitSuffix}`;
+    $("receiptPaymentMeta").textContent = isFullyCovered ? `OEM Brand Reimbursed · Liability ₹0.00${visitSuffix}` : `${pMethod} · Ref: ${pTxn}${visitSuffix}`;
   }
 
   // Customer info
@@ -3080,16 +3094,6 @@ window.openReceiptModal = async function(requestId, showPrevious = false) {
   if ($("receiptTechName")) $("receiptTechName").textContent = `${techName}${showPrevious ? " (Initial Visit)" : (hasMultipleReceipts ? " (Revisit Resolution)" : "")}`;
   if ($("receiptApplianceDetails")) $("receiptApplianceDetails").textContent = `${targetReq.brand || ''} ${targetReq.appliance_name || 'Home Appliance'} (${targetReq.model_no || 'Standard'})`;
   if ($("receiptIssueDescription")) $("receiptIssueDescription").textContent = `${targetReq.issue || 'Routine Diagnostics & Service'}${showPrevious ? " [Initial Service]" : (hasMultipleReceipts ? " [Reopened Service]" : "")}`;
-
-  // Itemized breakdown adhering to Phase 2 automated price engine
-  const parts = (jc && Array.isArray(jc.parts_used)) ? jc.parts_used : [];
-  const inspectFee = jc ? Number(jc.inspection_fee ?? (targetReq?.visiting_charge || 299)) : Number(targetReq?.visiting_charge || 299);
-  const laborCost = jc ? Number(jc.labor_cost || 0) : 350;
-  const partsCost = jc ? Number(jc.parts_cost || 0) : 0;
-  const discountAmount = jc ? Number(jc.discount_amount || 0) : 0;
-  const cgst = jc ? Number(jc.cgst_amount || 0) : Number(((inspectFee + laborCost + partsCost - discountAmount) * 0.09).toFixed(2));
-  const sgst = jc ? Number(jc.sgst_amount || 0) : Number(((inspectFee + laborCost + partsCost - discountAmount) * 0.09).toFixed(2));
-  const totalAmount = isWarranty ? 0.0 : (jc ? Number(jc.total_amount || 0) : Number((inspectFee + laborCost + partsCost - discountAmount + cgst + sgst).toFixed(2)));
 
   if ($("receiptItemsBody")) {
     let rowsHtml = "";
@@ -3138,7 +3142,9 @@ window.openReceiptModal = async function(requestId, showPrevious = false) {
             <td class="py-2 px-2.5 border-r border-black/40 font-medium text-black">
               ${escapeHtml(p.part_name)} ${p.part_code ? `<span class="font-mono text-[10px] text-neutral-600">[${escapeHtml(p.part_code)}]</span>` : ''}
               ${p.serial_number ? `<span class="text-[10px] text-neutral-900 block font-mono font-bold tracking-tight">S/N: ${escapeHtml(p.serial_number)}</span>` : ''}
-              <span class="text-[10px] text-neutral-600 block font-normal font-mono">Genuine OEM Replacement Part</span>
+              ${p.is_covered
+                ? '<span class="text-[10px] text-emerald-700 block font-semibold font-mono">🛡️ 100% Covered Under OEM Warranty</span>'
+                : `<span class="text-[10px] text-amber-800 block font-semibold font-mono">💵 Customer Payable (${escapeHtml(p.non_coverage_reason || 'Consumable / Non-Warranty')})</span>`}
             </td>
             <td class="py-2 px-2.5 border-r border-black/40 text-center font-mono">${escapeHtml(hsn)}</td>
             <td class="py-2 px-2.5 border-r border-black/40 text-center font-mono font-semibold">${pQty}</td>
@@ -3154,16 +3160,31 @@ window.openReceiptModal = async function(requestId, showPrevious = false) {
   if ($("receiptInspectionFee")) $("receiptInspectionFee").textContent = `₹${inspectFee.toFixed(2)}`;
   if ($("receiptLaborCost")) $("receiptLaborCost").textContent = `₹${laborCost.toFixed(2)}`;
   if ($("receiptPartsSubtotal")) $("receiptPartsSubtotal").textContent = `₹${partsCost.toFixed(2)}`;
+
+  const coveredPartsWaiver = jc ? Number(jc.covered_parts_cost || 0) : (isWarranty && isFullyCovered ? partsCost : 0);
+  const totalWaiverAndDiscount = discountAmount + coveredPartsWaiver;
+
   if ($("receiptDiscountRow")) {
-    $("receiptDiscountRow").classList.toggle("hidden", discountAmount <= 0);
-    if ($("receiptDiscountAmount")) $("receiptDiscountAmount").textContent = `-₹${discountAmount.toFixed(2)}`;
+    $("receiptDiscountRow").classList.toggle("hidden", totalWaiverAndDiscount <= 0);
+    if ($("receiptDiscountAmount")) $("receiptDiscountAmount").textContent = `-₹${totalWaiverAndDiscount.toFixed(2)}`;
+    const discountLabel = $("receiptDiscountRow").querySelector("td:first-child");
+    if (discountLabel) {
+      if (coveredPartsWaiver > 0 && discountAmount > 0) {
+        discountLabel.textContent = "Less: OEM Warranty Covered Parts & Discount:";
+      } else if (coveredPartsWaiver > 0) {
+        discountLabel.textContent = "Less: OEM Brand Warranty Covered Parts Waiver:";
+      } else {
+        discountLabel.textContent = "Less: Brand Warranty / Promotional Discount:";
+      }
+    }
   }
+
   if ($("receiptCgstTax")) $("receiptCgstTax").textContent = `₹${cgst.toFixed(2)}`;
   if ($("receiptSgstTax")) $("receiptSgstTax").textContent = `₹${sgst.toFixed(2)}`;
-  if ($("receiptGrandTotal")) $("receiptGrandTotal").textContent = isWarranty ? "₹0.00" : `₹${totalAmount.toFixed(2)}`;
+  if ($("receiptGrandTotal")) $("receiptGrandTotal").textContent = isFullyCovered ? "₹0.00" : `₹${totalAmount.toFixed(2)}`;
   
   if ($("receiptAmountWords")) {
-    if (isWarranty && totalAmount === 0) {
+    if (isFullyCovered) {
       $("receiptAmountWords").textContent = "Zero Rupees (100% Covered Under OEM Brand Warranty)";
     } else {
       $("receiptAmountWords").textContent = numberToWordsIndian(totalAmount);
@@ -3774,6 +3795,10 @@ window.openCustomerEstimateModal = async function(requestId = selectedRequestId)
     if ($("estModalLaborCost")) $("estModalLaborCost").textContent = `₹${Number(est.labor_estimate || 0).toFixed(2)}`;
     if ($("estModalTotalAmount")) $("estModalTotalAmount").textContent = `₹${Number(est.total_estimate || 0).toFixed(2)}`;
     if ($("estCustomerRemarks")) $("estCustomerRemarks").value = est.customer_remarks || "";
+
+    const isAlreadyApproved = est.status === "approved";
+    if ($("estModalStatusApproved")) $("estModalStatusApproved").classList.toggle("hidden", !isAlreadyApproved);
+    if ($("estModalActions")) $("estModalActions").classList.toggle("hidden", isAlreadyApproved);
 
     openDialog("customerEstimateModal");
   } catch (err) {

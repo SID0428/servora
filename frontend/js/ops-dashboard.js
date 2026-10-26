@@ -6920,11 +6920,13 @@ window.openOpsReceiptModal = async function(requestId, showPrevious = false) {
 
   const parts = (jc && Array.isArray(jc.parts_used)) ? jc.parts_used : [];
   const partsCost = jc ? Number(jc.parts_cost || 0) : 0;
-  const laborCost = jc ? Number(jc.labor_cost || 350) : 350;
-  const inspectionFee = jc ? Number(jc.inspection_fee || 299) : 299;
+  const coveredPartsCost = jc ? Number(jc.covered_parts_cost || 0) : (isWarranty ? partsCost : 0);
+  const laborCost = jc ? Number(jc.labor_cost || 0) : 350;
+  const inspectionFee = jc ? Number(jc.inspection_fee || 0) : 299;
   const discount = jc ? Number(jc.discount_amount || jc.discount || 0) : 0;
-  const taxAmount = isWarranty ? 0.0 : (jc ? Number(jc.tax_amount || ((inspectionFee + laborCost + partsCost - discount) * 0.18)) : ((inspectionFee + laborCost + partsCost - discount) * 0.18));
-  const totalAmount = isWarranty ? 0.0 : (jc ? Number(jc.total_amount || (inspectionFee + laborCost + partsCost - discount + taxAmount)) : (inspectionFee + laborCost + partsCost - discount + taxAmount));
+  const taxAmount = jc ? Number(jc.tax_amount || 0) : (isWarranty ? 0.0 : ((inspectionFee + laborCost + partsCost - discount) * 0.18));
+  const totalAmount = jc ? Number(jc.total_amount ?? 0) : (isWarranty ? 0.0 : (inspectionFee + laborCost + partsCost - discount + taxAmount));
+  const isFullyCovered = totalAmount === 0;
 
   if ($("opsReceiptItemsBody")) {
     let rowsHtml = `
@@ -6937,7 +6939,7 @@ window.openOpsReceiptModal = async function(requestId, showPrevious = false) {
         <td class="py-2 px-2.5 border-r border-black/40 text-center font-mono">9987</td>
         <td class="py-2 px-2.5 border-r border-black/40 text-center font-mono font-semibold">1</td>
         <td class="py-2 px-2.5 border-r border-black/40 text-right font-mono">₹${inspectionFee.toFixed(2)}</td>
-        <td class="py-2 px-2.5 text-right font-mono font-bold text-black">${isWarranty ? '₹0.00' : '₹' + inspectionFee.toFixed(2)}</td>
+        <td class="py-2 px-2.5 text-right font-mono font-bold text-black">₹${inspectionFee.toFixed(2)}</td>
       </tr>
       <tr class="border-b border-black/20">
         <td class="py-2 px-2.5 border-r border-black/40 text-center font-mono">2</td>
@@ -6948,7 +6950,7 @@ window.openOpsReceiptModal = async function(requestId, showPrevious = false) {
         <td class="py-2 px-2.5 border-r border-black/40 text-center font-mono">9987</td>
         <td class="py-2 px-2.5 border-r border-black/40 text-center font-mono font-semibold">1</td>
         <td class="py-2 px-2.5 border-r border-black/40 text-right font-mono">₹${laborCost.toFixed(2)}</td>
-        <td class="py-2 px-2.5 text-right font-mono font-bold text-black">${isWarranty ? '₹0.00' : '₹' + laborCost.toFixed(2)}</td>
+        <td class="py-2 px-2.5 text-right font-mono font-bold text-black">₹${laborCost.toFixed(2)}</td>
       </tr>
     `;
 
@@ -6964,22 +6966,25 @@ window.openOpsReceiptModal = async function(requestId, showPrevious = false) {
             <td class="py-2 px-2.5 border-r border-black/40 font-medium text-black">
               ${safe(p.part_name)} ${p.part_code ? `<span class="font-mono text-[10px] text-neutral-600">[${safe(p.part_code)}]</span>` : ''}
               ${p.serial_number ? `<span class="text-[10px] text-neutral-900 block font-mono font-bold tracking-tight">S/N: ${safe(p.serial_number)}</span>` : ''}
-              <span class="text-[10px] text-neutral-600 block font-mono font-normal">Genuine OEM Component</span>
+              ${p.is_covered
+                ? '<span class="text-[10px] text-emerald-700 block font-mono font-semibold">🛡️ 100% Covered Under OEM Warranty</span>'
+                : `<span class="text-[10px] text-amber-800 block font-mono font-semibold">💵 Customer Payable (${safe(p.non_coverage_reason || 'Consumable / Non-Warranty')})</span>`}
             </td>
             <td class="py-2 px-2.5 border-r border-black/40 text-center font-mono">${safe(hsn)}</td>
             <td class="py-2 px-2.5 border-r border-black/40 text-center font-mono font-semibold">${pQty}</td>
             <td class="py-2 px-2.5 border-r border-black/40 text-right font-mono">₹${pRate.toFixed(2)}</td>
-            <td class="py-2 px-2.5 text-right font-mono font-bold text-black">${isWarranty ? '₹0.00' : '₹' + pTotal.toFixed(2)}</td>
+            <td class="py-2 px-2.5 text-right font-mono font-bold text-black">₹${pTotal.toFixed(2)}</td>
           </tr>
         `;
       });
     }
 
-    if (isWarranty) {
+    const totalWaiver = isFullyCovered ? (inspectionFee + laborCost + partsCost) : coveredPartsCost;
+    if (totalWaiver > 0) {
       rowsHtml += `
         <tr class="border-b border-black/40 bg-neutral-100 font-semibold text-black">
-          <td colspan="5" class="py-2 px-3 text-right text-xs">Less: 100% Brand OEM Warranty Coverage Waiver:</td>
-          <td class="py-2 px-3 text-right font-mono font-bold text-xs">-₹${(inspectionFee + laborCost + partsCost).toFixed(2)}</td>
+          <td colspan="5" class="py-2 px-3 text-right text-xs">Less: ${isFullyCovered ? '100% Brand OEM Warranty Coverage Waiver' : 'OEM Brand Warranty Covered Parts Waiver'}:</td>
+          <td class="py-2 px-3 text-right font-mono font-bold text-xs">-₹${totalWaiver.toFixed(2)}</td>
         </tr>
       `;
     }
@@ -6987,15 +6992,15 @@ window.openOpsReceiptModal = async function(requestId, showPrevious = false) {
     $("opsReceiptItemsBody").innerHTML = rowsHtml;
   }
 
-  if ($("opsReceiptInspectionFee")) $("opsReceiptInspectionFee").textContent = isWarranty ? "₹0.00" : `₹${inspectionFee.toFixed(2)}`;
-  if ($("opsReceiptPartsSubtotal")) $("opsReceiptPartsSubtotal").textContent = isWarranty ? "₹0.00" : `₹${partsCost.toFixed(2)}`;
-  if ($("opsReceiptLaborCost")) $("opsReceiptLaborCost").textContent = isWarranty ? "₹0.00" : `₹${laborCost.toFixed(2)}`;
-  if ($("opsReceiptGstTax")) $("opsReceiptGstTax").textContent = isWarranty ? "₹0.00" : `₹${taxAmount.toFixed(2)}`;
-  if ($("opsReceiptTaxAmount")) $("opsReceiptTaxAmount").textContent = isWarranty ? "₹0.00" : `₹${taxAmount.toFixed(2)}`;
-  if ($("opsReceiptGrandTotal")) $("opsReceiptGrandTotal").textContent = isWarranty ? "₹0.00" : `₹${totalAmount.toFixed(2)}`;
+  if ($("opsReceiptInspectionFee")) $("opsReceiptInspectionFee").textContent = `₹${inspectionFee.toFixed(2)}`;
+  if ($("opsReceiptPartsSubtotal")) $("opsReceiptPartsSubtotal").textContent = `₹${partsCost.toFixed(2)}`;
+  if ($("opsReceiptLaborCost")) $("opsReceiptLaborCost").textContent = `₹${laborCost.toFixed(2)}`;
+  if ($("opsReceiptGstTax")) $("opsReceiptGstTax").textContent = `₹${taxAmount.toFixed(2)}`;
+  if ($("opsReceiptTaxAmount")) $("opsReceiptTaxAmount").textContent = `₹${taxAmount.toFixed(2)}`;
+  if ($("opsReceiptGrandTotal")) $("opsReceiptGrandTotal").textContent = isFullyCovered ? "₹0.00" : `₹${totalAmount.toFixed(2)}`;
   
   if ($("opsReceiptAmountWords")) {
-    if (isWarranty && totalAmount === 0) {
+    if (isFullyCovered) {
       $("opsReceiptAmountWords").textContent = "Zero Rupees (100% Covered Under OEM Brand Warranty)";
     } else {
       $("opsReceiptAmountWords").textContent = numberToWordsIndian(totalAmount);
@@ -7007,7 +7012,7 @@ window.openOpsReceiptModal = async function(requestId, showPrevious = false) {
   if ($("opsReceiptParts")) $("opsReceiptParts").textContent = `₹${partsCost.toFixed(2)}`;
   if ($("opsReceiptCgst")) $("opsReceiptCgst").textContent = `₹${(taxAmount / 2).toFixed(2)}`;
   if ($("opsReceiptSgst")) $("opsReceiptSgst").textContent = `₹${(taxAmount / 2).toFixed(2)}`;
-  if ($("opsReceiptTotal")) $("opsReceiptTotal").textContent = isWarranty ? "₹0.00" : `₹${totalAmount.toFixed(2)}`;
+  if ($("opsReceiptTotal")) $("opsReceiptTotal").textContent = isFullyCovered ? "₹0.00" : `₹${totalAmount.toFixed(2)}`;
   if ($("opsReceiptPaymentMethod")) $("opsReceiptPaymentMethod").textContent = req.payment_method ? req.payment_method.toUpperCase() : "UPI / ONLINE";
   if ($("opsReceiptTxnRef")) $("opsReceiptTxnRef").textContent = req.payment_transaction_id || `PAY-${req.id}`;
 

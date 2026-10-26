@@ -4,8 +4,8 @@ PRODUCTION-GRADE TECHNICAL ARCHITECTURE & DEVELOPER ONBOARDING MANUAL
 ================================================================================
 File: documentation.txt
 Platform: ServSure (formerly Servora)
-Version: 1.9.8 (Production Release - Two-Phase Doorstep OTP Lifecycle & On-Demand Service Completion OTP)
-Last Updated: October 27, 2026 (01:27 IST)
+Version: 1.9.9 (Production Release - Approved Estimate Banner Dismissal & Zero-Invoice Total Bug Fix)
+Last Updated: October 27, 2026 (01:48 IST)
 Repository: https://github.com/SID0428/servora.git
 
 Welcome to ServSure! This manual is the definitive, authoritative reference
@@ -2108,6 +2108,48 @@ were identified between the initial rough draft documentation and the actual cod
             - If completion OTP requested: Displays indigo `SERVICE COMPLETION OTP` with 4-digit code and approval prompt.
             - If not yet requested: Displays blue `DIAGNOSTICS & REPAIR IN PROGRESS` badge with explanation that technician will request the completion OTP once repairs are finished.
           - Completed stage: Displays emerald `SERVICE COMPLETED & SETTLED` ("PAID") receipt verification badge.
+
+
+47. BUG FIX & RESOLUTION: Approved Pre-Repair Estimate Banner Dismissal & Zero-Invoice Total Bug on Warranty Jobs
+   - Initial State / Observed Issue:
+     1. Persistent Estimate Banner After Customer Approval: When a customer reviewed and digitally authorized a pre-repair cost
+        estimate, the tracking section in `customer-dashboard.html` continued to render the amber banner:
+        "Pre-Repair Cost Estimate Submitted [✓ Approved by You]" with an active "🔍 Review & Approve Estimate" button.
+     2. Zero-Invoice Total Bug (`TOTAL INVOICE VALUE: ₹0.00`) on Warranty Jobs with Billable Consumables:
+        In the official service invoice / receipt modal (`receiptModal` and `opsReceiptModal`), services on warranty-registered
+        appliances that included customer-payable non-warranty items (e.g., Gas Refill ₹800.00, Labor ₹450.00, GST ₹203.03) incorrectly
+        displayed `TOTAL INVOICE VALUE (INR): ₹0.00` and `Amount Chargeable (in words): ZERO RUPEES (100% COVERED UNDER OEM BRAND WARRANTY)`.
+        The accounting breakdown itemized the full costs (Subtotal ₹15,300, Labor ₹450, GST ₹203.03) but zeroed out the grand total,
+        creating an irreconcilable financial discrepancy on customer and technician receipts.
+   - Root Causes:
+     1. In `frontend/js/dashboard.js:1621`, `trackingEstimateBanner` was unhidden whenever `request.has_estimate` or `request.status === "Repair in Progress"`
+        was true. Although `est.status === "approved"` was checked, the banner remained visible and retained its active trigger button.
+     2. In `frontend/js/dashboard.js:3092` and `frontend/js/ops-dashboard.js:6927`, the invoice grand total was hardcoded as:
+        `const totalAmount = isWarranty ? 0.0 : (jc ? Number(jc.total_amount || 0) : ...)`
+        and:
+        `if ($("receiptGrandTotal")) $("receiptGrandTotal").textContent = isWarranty ? "₹0.00" : ...`
+        Because `isWarranty` was true for the appliance, this ternary unconditionally forced `totalAmount = 0.0` and
+        `receiptGrandTotal = "₹0.00"`, completely disregarding `jc.total_amount` which held the accurate customer-payable sum (e.g. ₹1,453.03).
+     3. The invoice modal lacked a dedicated deduction row for OEM warranty-covered parts (`covered_parts_cost`), preventing the accounting
+        table from visually reconciling total parts (`₹15,300.00`) against covered parts (`₹14,500.00`).
+   - Resolution:
+     1. Pre-Repair Estimate Banner Dismissal (`frontend/js/dashboard.js` & `frontend/customer-dashboard.html`):
+        - Updated `loadTrackingDetails`: If `est.status === "approved"` or the ticket is actively in progress/completed,
+          `$("trackingEstimateBanner").classList.add("hidden")` is invoked and execution returns immediately.
+        - In `customerEstimateModal`: When viewing an already approved estimate, action buttons (`approveEstimateBtn`, `declineEstimateBtn`)
+          are hidden, and a confirmation banner is displayed: "✓ You have already authorized this estimate. Technician is proceeding with repair."
+     2. Invoice Grand Total & Accounting Engine Fix (`frontend/js/dashboard.js` & `frontend/js/ops-dashboard.js`):
+        - Updated `openReceiptModal` and `openOpsReceiptModal`:
+          - `const totalAmount = jc ? Number(jc.total_amount ?? 0) : (isWarranty ? 0.0 : Number((inspectFee + laborCost + partsCost - discountAmount + cgst + sgst).toFixed(2)));`
+          - `const isFullyCovered = totalAmount === 0;`
+          - `receiptGrandTotal.textContent = isFullyCovered ? "₹0.00" : `₹${totalAmount.toFixed(2)}`;`
+          - `receiptAmountWords.textContent = isFullyCovered ? "Zero Rupees (100% Covered Under OEM Brand Warranty)" : numberToWordsIndian(totalAmount);`
+        - Added transparent OEM warranty waiver deduction row:
+          - Computed `coveredPartsWaiver = jc ? Number(jc.covered_parts_cost || 0) : (isWarranty && isFullyCovered ? partsCost : 0);`
+          - Shows `Less: OEM Brand Warranty Covered Parts Waiver: -₹${totalWaiverAndDiscount.toFixed(2)}` in `receiptDiscountRow`.
+          - Individual part rows now display dedicated badges: `🛡️ 100% Covered Under OEM Warranty` vs `💵 Customer Payable (Consumable / Non-Warranty)`.
+        - Fully reconciles the invoice from user's job card `#SR-9929`:
+          Doorstep Inspection ₹0.00 + Labor ₹450.00 + Replaced Parts ₹15,300.00 - OEM Covered Waiver ₹14,500.00 + CGST ₹101.52 + SGST ₹101.51 = **₹1,453.03**.
 
 ==================================================
 End of Documentation
