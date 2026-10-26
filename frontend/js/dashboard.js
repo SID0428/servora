@@ -3169,9 +3169,11 @@ window.openPaymentModal = async function(requestId) {
   const partsCost = jc ? Number(jc.parts_cost || 0) : 0;
   const discount = jc ? Number(jc.discount_amount || 0) : 0;
   const subtotal = inspectFee + laborCost + partsCost - discount;
-  const gstAmount = jc ? Number(jc.tax_amount || 0) : Number((subtotal * 0.18).toFixed(2));
-  const totalAmount = isWarranty ? 0.0 : (jc ? Number(jc.total_amount || 0) : Number((subtotal + gstAmount).toFixed(2)));
+  const totalAmount = jc
+    ? Number(jc.total_amount || 0)
+    : (isWarranty ? 0.0 : Number((subtotal + gstAmount).toFixed(2)));
 
+  const isFullWarrantySettlement = isWarranty && totalAmount === 0;
   currentPayingAmount = totalAmount;
 
   if ($("payModalReqId")) $("payModalReqId").textContent = reqId;
@@ -3182,11 +3184,11 @@ window.openPaymentModal = async function(requestId) {
   if ($("payModalGst")) $("payModalGst").textContent = `₹${gstAmount.toFixed(2)}`;
 
   if ($("payModalWarrantyNotice")) {
-    $("payModalWarrantyNotice").classList.toggle("hidden", !isWarranty);
+    $("payModalWarrantyNotice").classList.toggle("hidden", !isFullWarrantySettlement);
   }
 
   if ($("confirmPayBtn")) {
-    $("confirmPayBtn").textContent = isWarranty ? "✓ Confirm ₹0.00 Warranty Settlement" : `🔒 Pay ₹${totalAmount.toFixed(2)} & Close Service`;
+    $("confirmPayBtn").textContent = isFullWarrantySettlement ? "✓ Confirm ₹0.00 Warranty Settlement" : `🔒 Pay ₹${totalAmount.toFixed(2)} & Close Service`;
   }
   if ($("paymentFormMessage")) $("paymentFormMessage").textContent = "";
 

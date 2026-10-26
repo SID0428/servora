@@ -1479,7 +1479,12 @@ def create_job_card(request_id: str, payload: JobCardCreatePayload, request: Req
                 db=db
             )
 
-        part_tax_inc = bool(getattr(part_obj, "is_tax_inclusive", False) if part_obj else getattr(p, "is_tax_inclusive", False))
+        part_tax_inc = True
+        if getattr(p, "is_tax_inclusive", None) is not None:
+            part_tax_inc = bool(p.is_tax_inclusive)
+        elif part_obj and getattr(part_obj, "is_tax_inclusive", None) is not None:
+            part_tax_inc = bool(part_obj.is_tax_inclusive)
+
         p_dict["is_covered"] = bool(is_part_covered)
         p_dict["coverage_type"] = cov_type or ("oem_warranty" if is_part_covered else "customer_billable")
         p_dict["non_coverage_reason"] = non_cov_reason if not is_part_covered else None

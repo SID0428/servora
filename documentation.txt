@@ -4,8 +4,8 @@ PRODUCTION-GRADE TECHNICAL ARCHITECTURE & DEVELOPER ONBOARDING MANUAL
 ================================================================================
 File: documentation.txt
 Platform: ServSure (formerly Servora)
-Version: 1.9.6 (Production Release - Technician Requisition Isolation to Franchise & Estimate Duplicate Prevention)
-Last Updated: October 26, 2026 (23:18 IST)
+Version: 1.9.7 (Production Release - Job Card Tax Inclusivity Pricing Engine & Spare Parts Layout Overlap Fix)
+Last Updated: October 27, 2026 (01:06 IST)
 Repository: https://github.com/SID0428/servora.git
 
 Welcome to ServSure! This manual is the definitive, authoritative reference
@@ -2009,6 +2009,47 @@ were identified between the initial rough draft documentation and the actual cod
           - `📅 Upcoming (${date})`
      2. Accurate Metric Counters in `setMetrics()`:
         - Expanded `ongoingStatuses` to include all active repair workflow states (`Part Assigned to Technician`, `Part Requested`, `Estimate Pending Approval`, etc.) so the "In Progress" card accurately reflects active field workload.
+
+45. ARCHITECTURE & UI FIX: Job Card Tax Inclusivity Pricing Engine & Spare Parts Card Layout Overlap Resolution
+   - Problem Statement & Root Cause:
+     1. Extra 18% GST Incorrectly Added on Tax-Inclusive Consumables (e.g. Gas Refill):
+        - When a technician generated a Job Card for a service with billable consumables (e.g. Gas Refill ₹800.00) and labor (₹350.00), the calculation engine in `recalculateOpsJobCardTotals()` lumped `customerPartsTotal` directly into `customerSubtotal = customerPartsTotal + customerLabor` and computed `tax = customerSubtotal * 0.18` (₹207.00 extra tax on ₹1150).
+        - Because Gas Refill (and retail spare parts in India) is already inclusive of 18% GST (tax-inclusive), adding +18% on top of ₹800.00 resulted in double taxation (Customer Payable ₹1,357.00 instead of ₹1,213.00).
+        - In `backend/app/routes/requests.py`, `create_job_card` defaulted `part_tax_inc` to `False` if `part_obj` was missing from the catalog and the payload omitted `is_tax_inclusive`, compounding the tax calculation issue on custom parts.
+     2. UI Overlapping in "Spare Parts & Consumables Used" Rows:
+        - In `addOpsPartRow`, the `<select class="part-coverage">` dropdown had tight padding (`px-2 py-1.5`) without `appearance-none` or right chevron spacing (`pr-8`), causing the browser native dropdown arrows (`⇅` / `▼`) to render directly on top of the option text (overlapping over `(Consumable)` and `OEM Covered`).
+        - In addition, all row elements (`part-name`, `part-sn`, `part-qty`, `part-price`, `part-coverage`, `part-line-total`, `delete-btn`) were constrained on a single horizontal flex line without wrapping, squishing inputs into each other on standard dialog widths (572px available).
+     3. Customer Portal Payment Settlement Waiver Bug:
+        - In `frontend/js/dashboard.js:openPayModal`, `totalAmount` was hardcoded to `isWarranty ? 0.0 : ...`, ignoring `jc.total_amount` whenever the ticket was flagged as `is_under_warranty`, even if the job card had billable non-covered consumables (e.g. Gas Refill ₹1,213.00).
+   - Resolution:
+     1. Dual-Mode Tax Calculation Engine (Tax-Inclusive Parts vs Tax-Exclusive Services):
+        - `frontend/js/ops-dashboard.js:recalculateOpsJobCardTotals()`:
+          - Separated customer billable parts into `customerInclusiveParts` and `customerExclusiveParts` using `row.dataset.taxInclusive`.
+          - Calculated extra GST strictly on tax-exclusive items: `extraTax = Math.round((customerExclusiveParts + customerLabor) * 0.18 * 100) / 100`.
+          - Customer Payable: `grandTotal = Math.round((customerPartsTotal + customerLabor + extraTax) * 100) / 100`.
+          - For Gas Refill ₹800.00 (tax-inclusive) + Labor ₹350.00 (tax-exclusive):
+            - Customer Parts: ₹800.00 (Tax Incl.)
+            - Labor Charges: ₹350.00
+            - GST (18% on Labor Charges): ₹63.00
+            - Customer Payable: ₹1,213.00 (No extra tax levied on Gas Refill).
+          - Dynamically adapts readout labels: `GST (18% on Labor Charges)` vs `GST (18% on Labor & Exclusive Items)`.
+        - `backend/app/routes/requests.py:create_job_card()`:
+          - Prioritized `p.is_tax_inclusive` and defaulted to `True` for consumables and standard catalog parts.
+          - Accurately decomposes embedded GST on inclusive parts (`tax_inc_tax = p_total - (p_total / 1.18)`) and adds exclusive GST for labor, guaranteeing exact statutory total alignment (`₹1,213.00`).
+     2. Redesigned Responsive Spare Parts Card Component:
+        - `frontend/js/ops-dashboard.js:addOpsPartRow()`:
+          - Restructured the single cramped row into a clean, modern, 2-line responsive card:
+            - Line 1: Full-width part description (`part-name`) and serial number input (`part-sn`).
+            - Line 2: Quantity pill (`[Qty: 1]`), Unit Price pill (`[₹ 800]`), `Tax Incl.` indicator badge, Custom coverage dropdown with `appearance-none`, `pr-8`, and an absolute centered `▼` chevron that never collides with text, line total, and quick-remove button (`✕`).
+        - `frontend/js/ops-dashboard.js:addTechEstimatePartRow()`:
+          - Added `appearance-none` and `pr-8` with custom indicator wrapper to `.est-part-covered` to prevent chevron text collision in the pre-repair estimate modal.
+        - `frontend/technician-dashboard.html` & `frontend/franchise-dashboard.html`:
+          - Added explicit IDs `opsCalcCustomerPartsLabel` and `opsCalcTaxLabel` for dynamic, transparent billing communication.
+     3. Customer Payment Settlement Fix (`frontend/js/dashboard.js`):
+        - In `window.openPayModal`:
+          - `const totalAmount = jc ? Number(jc.total_amount || 0) : (isWarranty ? 0.0 : Number((subtotal + gstAmount).toFixed(2)));`
+          - `const isFullWarrantySettlement = isWarranty && totalAmount === 0;`
+          - Enables customers to settle billable consumables on warranty jobs via Razorpay/UPI/Cash while preserving ₹0.00 one-click settlement for 100% OEM-covered claims.
 
 ==================================================
 End of Documentation

@@ -7451,20 +7451,29 @@ function recalculateOpsJobCardTotals() {
   let partsTotal = 0;
   let coveredPartsTotal = 0;
   let customerPartsTotal = 0;
+  let customerInclusiveParts = 0;
+  let customerExclusiveParts = 0;
 
   if (container) {
     container.querySelectorAll(".ops-part-row").forEach(row => {
-      const qty = parseInt(row.querySelector(".part-qty")?.value || "1", 10);
-      const price = parseFloat(row.querySelector(".part-price")?.value || "0");
-      const lineTotal = (qty || 0) * (price || 0);
+      const qty = parseInt(row.querySelector(".part-qty")?.value || "1", 10) || 1;
+      const price = parseFloat(row.querySelector(".part-price")?.value || "0") || 0;
+      const lineTotal = qty * price;
       partsTotal += lineTotal;
 
       const cov = row.querySelector(".part-coverage")?.value;
       const isPartCovered = (cov === "covered");
+      const isTaxInclusive = row.dataset.taxInclusive !== "false";
+
       if (isPartCovered) {
         coveredPartsTotal += lineTotal;
       } else {
         customerPartsTotal += lineTotal;
+        if (isTaxInclusive) {
+          customerInclusiveParts += lineTotal;
+        } else {
+          customerExclusiveParts += lineTotal;
+        }
       }
 
       const totalDisplay = row.querySelector(".part-line-total");
@@ -7476,25 +7485,39 @@ function recalculateOpsJobCardTotals() {
     });
   }
 
-  const rawLabor = parseFloat($("opsJcLaborCost")?.value || "0");
+  const rawLabor = parseFloat($("opsJcLaborCost")?.value || "0") || 0;
   const customerLabor = (isReqWarranty && coveredPartsTotal > 0 && customerPartsTotal === 0 && rawLabor === 0) ? 0.0 : rawLabor;
   const oemLaborClaim = isReqWarranty ? rawLabor : 0.0;
 
-  const customerSubtotal = customerPartsTotal + customerLabor;
-  const tax = Math.round(customerSubtotal * 0.18 * 100) / 100;
-  const grandTotal = Math.round((customerSubtotal + tax) * 100) / 100;
+  // Extra tax added on top: only on exclusive parts and labor charges.
+  // Tax-inclusive parts already have 18% GST included within their line total.
+  const taxableExtraAmount = customerExclusiveParts + customerLabor;
+  const extraTax = Math.round(taxableExtraAmount * 0.18 * 100) / 100;
+  const grandTotal = Math.round((customerPartsTotal + customerLabor + extraTax) * 100) / 100;
   const oemClaimTotal = coveredPartsTotal + oemLaborClaim;
 
   if ($("opsCalcPartsSubtotal")) $("opsCalcPartsSubtotal").textContent = `₹${partsTotal.toFixed(2)}`;
   if ($("opsCalcCoveredParts")) $("opsCalcCoveredParts").textContent = `-₹${coveredPartsTotal.toFixed(2)}`;
   if ($("opsCalcCustomerParts")) $("opsCalcCustomerParts").textContent = `₹${customerPartsTotal.toFixed(2)}`;
+  if ($("opsCalcCustomerPartsLabel")) {
+    $("opsCalcCustomerPartsLabel").textContent = customerInclusiveParts > 0
+      ? "💵 Customer Parts (Consumables, Tax Incl.):"
+      : "💵 Customer Parts (Consumables):";
+  }
   if ($("opsCalcLabor")) $("opsCalcLabor").textContent = `₹${customerLabor.toFixed(2)} ${isReqWarranty && customerLabor === 0 ? '(Waived under OEM)' : ''}`;
-  if ($("opsCalcTax")) $("opsCalcTax").textContent = `₹${tax.toFixed(2)}`;
+  if ($("opsCalcTaxLabel")) {
+    if (customerExclusiveParts > 0) {
+      $("opsCalcTaxLabel").textContent = "GST (18% on Labor & Exclusive Items):";
+    } else {
+      $("opsCalcTaxLabel").textContent = "GST (18% on Labor Charges):";
+    }
+  }
+  if ($("opsCalcTax")) $("opsCalcTax").textContent = `₹${extraTax.toFixed(2)}`;
   if ($("opsCalcTotal")) $("opsCalcTotal").textContent = `₹${grandTotal.toFixed(2)}`;
   if ($("opsCalcOemClaim")) $("opsCalcOemClaim").textContent = `₹${oemClaimTotal.toFixed(2)} (${isReqWarranty ? 'Claimed to OEM' : 'Customer Payable'})`;
 }
 
-function addOpsPartRow(name = "", qty = 1, price = 0, isCovered = null, reason = "", serialNumber = "") {
+function addOpsPartRow(name = "", qty = 1, price = 0, isCovered = null, reason = "", serialNumber = "", isTaxInclusive = true) {
   const container = $("opsPartsContainer");
   if (!container) return;
 
@@ -7511,20 +7534,40 @@ function addOpsPartRow(name = "", qty = 1, price = 0, isCovered = null, reason =
   const rowId = `part_row_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`;
   const lineTotal = (qty || 1) * (price || 0);
   const rowHtml = `
-    <div id="${rowId}" class="ops-part-row flex flex-col sm:flex-row sm:items-center gap-2 p-2.5 bg-slate-50 rounded-xl border border-slate-200">
-      <div class="flex items-center gap-2 flex-1 min-w-0">
-        <input type="text" placeholder="Part description (e.g. Capacitor 45uF)" value="${safe(name)}" required class="part-name flex-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs bg-white">
-        <input type="text" placeholder="S/N (e.g. SN-COMP-9841)" value="${safe(serialNumber)}" class="part-sn w-32 rounded-lg border border-slate-200 px-2 py-1.5 text-[11px] font-mono bg-white text-slate-800" title="Part Serial Number">
-        <input type="number" min="1" max="50" value="${qty}" class="part-qty w-12 rounded-lg border border-slate-200 px-2 py-1.5 text-xs text-center bg-white">
-        <input type="number" min="0" step="10" placeholder="₹ Price" value="${price}" class="part-price w-16 rounded-lg border border-slate-200 px-2 py-1.5 text-xs text-right bg-white">
+    <div id="${rowId}" data-tax-inclusive="${isTaxInclusive ? 'true' : 'false'}" class="ops-part-row bg-white hover:bg-slate-50/70 p-3 rounded-2xl border border-slate-200/90 shadow-xs space-y-2.5 transition-colors">
+      <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+        <div class="flex-1 min-w-0">
+          <input type="text" placeholder="Part description (e.g. Gas Refill R32, Capacitor 45uF)" value="${safe(name)}" required class="part-name w-full rounded-xl border border-slate-200 px-3 py-1.5 text-xs bg-white text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400">
+        </div>
+        <div class="w-full sm:w-44 shrink-0">
+          <input type="text" placeholder="S/N (e.g. SN-COMP-9841)" value="${safe(serialNumber)}" class="part-sn w-full rounded-xl border border-slate-200 px-2.5 py-1.5 text-[11px] font-mono bg-white text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20" title="Part Serial Number">
+        </div>
       </div>
-      <div class="flex items-center justify-between sm:justify-end gap-2 shrink-0">
-        <select class="part-coverage rounded-lg border border-slate-200 px-2 py-1.5 text-[11px] bg-white font-medium ${isCovered ? 'text-emerald-700' : 'text-slate-700'}">
-          <option value="covered" ${isCovered ? "selected" : ""}>🛡️ OEM Covered (₹0)</option>
-          <option value="billable" ${!isCovered ? "selected" : ""}>💵 Billable (Consumable)</option>
-        </select>
-        <span class="part-line-total text-xs font-bold text-slate-800 w-20 text-right">₹${lineTotal.toFixed(2)}</span>
-        <button type="button" class="text-rose-500 hover:text-rose-700 p-1 font-bold" onclick="document.getElementById('${rowId}').remove(); recalculateOpsJobCardTotals();">✕</button>
+      <div class="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-slate-100">
+        <div class="flex items-center gap-2 shrink-0">
+          <div class="flex items-center gap-1 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1">
+            <span class="text-[10px] text-slate-500 font-semibold uppercase tracking-wider">Qty</span>
+            <input type="number" min="1" max="50" value="${qty}" class="part-qty w-10 text-xs text-center font-bold text-slate-800 bg-transparent focus:outline-none" title="Quantity">
+          </div>
+          <div class="flex items-center gap-1 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1">
+            <span class="text-[10px] text-slate-500 font-semibold">₹</span>
+            <input type="number" min="0" step="10" placeholder="Price" value="${price}" class="part-price w-16 text-xs text-right font-bold text-slate-800 bg-transparent focus:outline-none" title="Unit Price (₹ Incl. of Taxes)">
+          </div>
+          <span class="text-[10px] font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200/60" title="Price is inclusive of 18% GST">Tax Incl.</span>
+        </div>
+        <div class="flex items-center gap-2 shrink-0">
+          <div class="relative">
+            <select class="part-coverage rounded-xl border pl-3 pr-8 py-1.5 text-[11px] font-semibold cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500/20 appearance-none ${isCovered ? 'bg-emerald-50 text-emerald-800 border-emerald-200' : 'bg-slate-50 text-slate-800 border-slate-200'}">
+              <option value="covered" ${isCovered ? "selected" : ""}>🛡️ OEM Covered (₹0)</option>
+              <option value="billable" ${!isCovered ? "selected" : ""}>💵 Billable (Consumable)</option>
+            </select>
+            <span class="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-[10px]">▼</span>
+          </div>
+          <div class="text-right min-w-[75px]">
+            <span class="part-line-total text-xs font-bold text-slate-900">₹${lineTotal.toFixed(2)}</span>
+          </div>
+          <button type="button" class="w-7 h-7 flex items-center justify-center rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors font-bold text-sm" title="Remove part" onclick="document.getElementById('${rowId}').remove(); recalculateOpsJobCardTotals();">✕</button>
+        </div>
       </div>
     </div>
   `;
@@ -7535,7 +7578,8 @@ function addOpsPartRow(name = "", qty = 1, price = 0, isCovered = null, reason =
       inp.addEventListener("input", recalculateOpsJobCardTotals);
     });
     newRow.querySelector(".part-coverage")?.addEventListener("change", (e) => {
-      e.target.className = `part-coverage rounded-lg border border-slate-200 px-2 py-1.5 text-[11px] bg-white font-medium ${e.target.value === 'covered' ? 'text-emerald-700' : 'text-slate-700'}`;
+      const isCov = e.target.value === 'covered';
+      e.target.className = `part-coverage rounded-xl border pl-3 pr-8 py-1.5 text-[11px] font-semibold cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500/20 appearance-none ${isCov ? 'bg-emerald-50 text-emerald-800 border-emerald-200' : 'bg-slate-50 text-slate-800 border-slate-200'}`;
       recalculateOpsJobCardTotals();
     });
     newRow.querySelector(".part-name")?.addEventListener("blur", (e) => {
@@ -7543,7 +7587,7 @@ function addOpsPartRow(name = "", qty = 1, price = 0, isCovered = null, reason =
         const sel = newRow.querySelector(".part-coverage");
         if (sel) {
           sel.value = "billable";
-          sel.className = "part-coverage rounded-lg border border-slate-200 px-2 py-1.5 text-[11px] bg-white font-medium text-slate-700";
+          sel.className = "part-coverage rounded-xl border pl-3 pr-8 py-1.5 text-[11px] font-semibold cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500/20 appearance-none bg-slate-50 text-slate-800 border-slate-200";
           recalculateOpsJobCardTotals();
         }
       }
@@ -7591,7 +7635,7 @@ window.openOpsJobCardModal = async function(requestId) {
     if ($("opsJcWorkSummary")) $("opsJcWorkSummary").value = existingJc.work_summary || "";
     if ($("opsJcLaborCost")) $("opsJcLaborCost").value = existingJc.labor_cost;
     if (Array.isArray(existingJc.parts_used)) {
-      existingJc.parts_used.forEach(p => addOpsPartRow(p.part_name, p.quantity, p.unit_price, p.is_covered, p.non_coverage_reason, p.serial_number || ''));
+      existingJc.parts_used.forEach(p => addOpsPartRow(p.part_name, p.quantity, p.unit_price, p.is_covered, p.non_coverage_reason, p.serial_number || '', p.is_tax_inclusive ?? true));
     }
     recalculateOpsJobCardTotals();
 
@@ -7658,13 +7702,13 @@ window.openOpsJobCardModal = async function(requestId) {
           if (anyConsumable(sp.part_name)) {
             isPartCovered = false;
           }
-          addOpsPartRow(sp.part_name, 1, partPrice, isPartCovered, nonCovReason, sp.serial_number);
+          addOpsPartRow(sp.part_name, 1, partPrice, isPartCovered, nonCovReason, sp.serial_number, sp.is_tax_inclusive ?? true);
         });
       } else if (estData && Array.isArray(estData.parts) && estData.parts.length > 0) {
         estData.parts.forEach(p => {
           let cov = Boolean(p.is_covered);
           if (anyConsumable(p.part_name)) cov = false;
-          addOpsPartRow(p.part_name, p.quantity || 1, p.unit_price || 0, cov, p.non_coverage_reason, p.serial_number || '');
+          addOpsPartRow(p.part_name, p.quantity || 1, p.unit_price || 0, cov, p.non_coverage_reason, p.serial_number || '', p.is_tax_inclusive ?? true);
         });
       }
     } catch (e) {
@@ -7712,6 +7756,7 @@ async function submitOpsJobCard(e) {
       if (anyConsumable(name)) {
         isPartCovered = false;
       }
+      const isTaxInclusive = row.dataset.taxInclusive !== "false";
       if (name) {
         parts_used.push({
           part_name: name,
@@ -7721,7 +7766,8 @@ async function submitOpsJobCard(e) {
           is_covered: isPartCovered,
           coverage_type: isPartCovered ? "OEM_WARRANTY" : "CUSTOMER_PAYABLE",
           non_coverage_reason: isPartCovered ? null : (anyConsumable(name) ? "Consumable / Wear & Tear" : "Non-warranty item"),
-          serial_number: sn
+          serial_number: sn,
+          is_tax_inclusive: isTaxInclusive
         });
       }
     });
@@ -7740,6 +7786,7 @@ async function submitOpsJobCard(e) {
         work_summary,
         parts_used,
         labor_cost,
+        inspection_fee: 0.0,
         technician_signature: techSig
       })
     });
@@ -9437,10 +9484,13 @@ window.addTechEstimatePartRow = function(name = "", code = "", qty = 1, price = 
         <span class="text-[11px] text-slate-400">₹:</span>
         <input type="number" min="0" placeholder="Price" class="w-20 rounded-lg border border-slate-200 p-1.5 text-xs text-right bg-white est-part-price" value="${price}" oninput="window.calcTechEstimateTotal()">
       </div>
-      <select class="est-part-covered rounded-lg border border-slate-200 p-1.5 text-[11px] bg-white font-medium ${isCovered ? 'text-emerald-700 font-bold' : 'text-slate-700'}" onchange="this.className = 'est-part-covered rounded-lg border border-slate-200 p-1.5 text-[11px] bg-white font-medium ' + (this.value === 'covered' ? 'text-emerald-700 font-bold' : 'text-slate-700'); window.calcTechEstimateTotal();">
-        <option value="covered" ${isCovered ? "selected" : ""}>🛡️ OEM Covered (₹0)</option>
-        <option value="billable" ${!isCovered ? "selected" : ""}>💵 Billable (Customer)</option>
-      </select>
+      <div class="relative">
+        <select class="est-part-covered rounded-xl border border-slate-200 pl-2.5 pr-8 py-1.5 text-[11px] bg-white font-medium ${isCovered ? 'text-emerald-700 font-bold' : 'text-slate-700'} cursor-pointer appearance-none" onchange="this.className = 'est-part-covered rounded-xl border border-slate-200 pl-2.5 pr-8 py-1.5 text-[11px] bg-white font-medium cursor-pointer appearance-none ' + (this.value === 'covered' ? 'text-emerald-700 font-bold' : 'text-slate-700'); window.calcTechEstimateTotal();">
+          <option value="covered" ${isCovered ? "selected" : ""}>🛡️ OEM Covered (₹0)</option>
+          <option value="billable" ${!isCovered ? "selected" : ""}>💵 Billable (Customer)</option>
+        </select>
+        <span class="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-[10px]">▼</span>
+      </div>
     </div>
     <div class="est-part-badge text-[11px] ${badgeColor} flex items-center gap-1 px-1">
       <span class="est-badge-icon">${badgeIcon}</span> <span class="est-badge-text">${safe(badgeText)}</span>
@@ -9490,7 +9540,7 @@ window.onTechEstimatePartSelect = function(selectEl) {
 
   if (coveredSelect) {
     coveredSelect.value = isCovered ? "covered" : "billable";
-    coveredSelect.className = `est-part-covered rounded-lg border border-slate-200 p-1.5 text-[11px] bg-white font-medium ${isCovered ? 'text-emerald-700 font-bold' : 'text-slate-700'}`;
+    coveredSelect.className = `est-part-covered rounded-xl border border-slate-200 pl-2.5 pr-8 py-1.5 text-[11px] bg-white font-medium cursor-pointer appearance-none ${isCovered ? 'text-emerald-700 font-bold' : 'text-slate-700'}`;
   }
 
   if (badgeEl && badgeTextEl && badgeIconEl) {
@@ -9507,7 +9557,7 @@ window.checkEstPartConsumable = function(inputEl) {
     const sel = inputEl.closest(".part-row")?.querySelector(".est-part-covered");
     if (sel) {
       sel.value = "billable";
-      sel.className = "est-part-covered rounded-lg border border-slate-200 p-1.5 text-[11px] bg-white font-medium text-slate-700";
+      sel.className = "est-part-covered rounded-xl border border-slate-200 pl-2.5 pr-8 py-1.5 text-[11px] bg-white font-medium cursor-pointer appearance-none text-slate-700";
       window.calcTechEstimateTotal();
     }
   }
@@ -9574,7 +9624,8 @@ window.submitTechEstimate = async function() {
         total_price: qty * price,
         is_covered: isCovered,
         coverage_type: isCovered ? "oem_warranty" : "customer_billable",
-        non_coverage_reason: isCovered ? null : (badgeText || (anyConsumable(name) ? "Consumable / Wear & Tear" : "Non-warranty item"))
+        non_coverage_reason: isCovered ? null : (badgeText || (anyConsumable(name) ? "Consumable / Wear & Tear" : "Non-warranty item")),
+        is_tax_inclusive: true
       });
     }
   });
