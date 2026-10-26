@@ -4,8 +4,8 @@ PRODUCTION-GRADE TECHNICAL ARCHITECTURE & DEVELOPER ONBOARDING MANUAL
 ================================================================================
 File: documentation.txt
 Platform: ServSure (formerly Servora)
-Version: 1.9.7 (Production Release - Job Card Tax Inclusivity Pricing Engine & Spare Parts Layout Overlap Fix)
-Last Updated: October 27, 2026 (01:06 IST)
+Version: 1.9.8 (Production Release - Two-Phase Doorstep OTP Lifecycle & On-Demand Service Completion OTP)
+Last Updated: October 27, 2026 (01:27 IST)
 Repository: https://github.com/SID0428/servora.git
 
 Welcome to ServSure! This manual is the definitive, authoritative reference
@@ -2050,6 +2050,64 @@ were identified between the initial rough draft documentation and the actual cod
           - `const totalAmount = jc ? Number(jc.total_amount || 0) : (isWarranty ? 0.0 : Number((subtotal + gstAmount).toFixed(2)));`
           - `const isFullWarrantySettlement = isWarranty && totalAmount === 0;`
           - Enables customers to settle billable consumables on warranty jobs via Razorpay/UPI/Cash while preserving ₹0.00 one-click settlement for 100% OEM-covered claims.
+
+
+46. ARCHITECTURE & SECURITY WORKFLOW: Two-Phase Doorstep OTP Verification & On-Demand Service Completion OTP Workflow
+   - Initial State / Observed Issue:
+     1. Unconditional Doorstep OTP Persistence: When a technician verified the Start OTP to begin diagnostic and repair work,
+        the customer portal continued displaying the 4-digit start OTP throughout the entire active repair duration.
+     2. Pre-mature Completion OTP Exposure: The system previously generated both start and completion OTPs upfront, sending or
+        revealing the completion OTP before the technician even diagnosed the appliance. Customers could inadvertently share the
+        completion OTP before repairs were actually finished, tested, and demonstrated.
+     3. Missing On-Demand Dispatch: Technicians had no mechanism to trigger an on-demand completion OTP notification upon finishing
+        the job, leaving customer communication asynchronous and confusing.
+   - Root Causes:
+     1. Database & State Gating: `ServiceRequestModel` lacked explicit tracking flags for start verification (`is_start_otp_verified`)
+        and on-demand completion OTP dispatch (`completion_otp_requested`, `completion_otp_requested_at`).
+     2. Data Serialization Redaction: `backend/app/routes/requests.py:format_request_detail` returned `verification_otp` whenever
+        the user was an authorized customer, without checking whether the initial doorstep inspection had already commenced.
+     3. Client-Side Rendering:
+        - `frontend/js/dashboard.js:loadActiveRequests()` unconditionally rendered `request.verification_otp` on active cards.
+        - `frontend/js/dashboard.js:loadTrackingDetails()` displayed `SERVICE COMPLETION OTP` immediately upon transition to
+          `Service In Progress`, exposing the code before parts were replaced.
+     4. Operational Dashboard Actions: The Job Card modal (`opsJobCardDialog` in `technician-dashboard.html` and `franchise-dashboard.html`)
+        had a single OTP entry input without a button to dispatch the completion OTP to the customer.
+   - Resolution:
+     1. Database Models & Schema Migrations:
+        - Added `is_start_otp_verified = Column(Boolean, nullable=True, default=False)`
+        - Added `completion_otp_requested = Column(Boolean, nullable=True, default=False)`
+        - Added `completion_otp_requested_at = Column(String(64), nullable=True)` to `ServiceRequestModel` (`backend/app/db/models.py`).
+        - Added dialect-safe automatic migration in `backend/app/seeds.py` executing `ALTER TABLE service_requests ADD COLUMN ...` for all three fields.
+        - Synchronized `ServiceRequestDetail` Pydantic model (`backend/app/schemas/__init__.py`).
+     2. Notification Service Upgrade (`backend/app/notification_service.py`):
+        - Updated `notify_technician_arrival`: Dispatches only the Doorstep Service Start OTP. Removed premature completion OTP dispatch.
+        - Added `notify_completion_otp_requested(req, db)`: Triggers a dedicated, real-time completion verification email to the customer with the 4-digit code and instructions to share it only after inspecting the completed repair.
+     3. Backend Route Enforcement (`backend/app/routes/requests.py`):
+        - `POST /api/requests/{request_id}/request-completion-otp`:
+          - Authenticates user (technician assigned or franchise/branch/admin).
+          - Generates or refreshes a 4-digit `completion_otp`, sets `completion_otp_requested = True` and timestamp.
+          - Updates ticket timeline step `step_4` to log dispatch timestamp.
+          - Triggers `notify_completion_otp_requested` email to customer.
+        - `POST /api/requests/{request_id}/action` (`action == "start_service"`):
+          - Verifies doorstep start OTP. Sets `is_start_otp_verified = True`, clears `start_otp = None`, and sets `completion_otp_requested = False`.
+        - `POST /api/requests/{request_id}/action` (`action == "complete"`):
+          - Strictly enforces matching against `req.completion_otp` and rejects completion attempts with invalid codes.
+        - `format_request_detail`:
+          - Strictly restricts OTP exposure to the authenticated customer owning the ticket.
+          - Start OTP is returned only prior to service start (`Pending`, `Confirmed`, `Technician Assigned`, `Technician on the Way`, `Reopened`).
+          - Once service starts, `start_otp_val = None` (hidden from portal).
+          - Completion OTP is returned only when `completion_otp_requested == True`.
+     4. Ops & Technician Job Card Dialog (`technician-dashboard.html`, `franchise-dashboard.html`, `frontend/js/ops-dashboard.js`):
+        - Upgraded OTP section with `opsRequestOtpBtn` ("Request OTP" / "Resend OTP"), input field, and verification notification banner `opsOtpSentBanner`.
+        - Clicking "Request OTP" asynchronously calls `/api/requests/{requestId}/request-completion-otp`, updates button state, and displays confirmation prompt.
+     5. Customer Portal Tracking & Active Cards (`frontend/js/dashboard.js`):
+        - In `loadActiveRequests`: Active request cards display Start OTP badge only during pre-service stages; once service is in progress, Start OTP disappears; Completion OTP badge appears dynamically only after technician requests it.
+        - In `loadTrackingDetails`:
+          - Pre-service stages: Displays amber `SERVICE START OTP` badge for doorstep inspection.
+          - In-progress stages (`Service In Progress`, `Repair in Progress`):
+            - If completion OTP requested: Displays indigo `SERVICE COMPLETION OTP` with 4-digit code and approval prompt.
+            - If not yet requested: Displays blue `DIAGNOSTICS & REPAIR IN PROGRESS` badge with explanation that technician will request the completion OTP once repairs are finished.
+          - Completed stage: Displays emerald `SERVICE COMPLETED & SETTLED` ("PAID") receipt verification badge.
 
 ==================================================
 End of Documentation

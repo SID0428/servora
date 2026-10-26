@@ -271,6 +271,9 @@ class ServiceRequestDetail(BaseModel):
     verification_otp: Optional[str] = None
     start_otp: Optional[str] = None
     completion_otp: Optional[str] = None
+    is_start_otp_verified: Optional[bool] = False
+    completion_otp_requested: Optional[bool] = False
+    completion_otp_requested_at: Optional[str] = None
     previous_technician_id: Optional[str] = None
     previous_technician_name: Optional[str] = None
     previous_job_card: Optional[JobCardResponse] = None

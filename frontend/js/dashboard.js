@@ -1029,11 +1029,11 @@ function renderRequests() {
                   )}</span>
                 </div>
                 ${
-                  request.verification_otp
-                    ? `<span class="font-mono font-bold text-amber-900 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded text-[10px]">OTP: ${escapeHtml(
-                        request.verification_otp
-                      )}</span>`
-                    : ""
+                  !request.is_start_otp_verified && request.start_otp && ["Technician Assigned", "Technician on the Way", "Confirmed", "Pending", "Reopened / Under Review"].includes(request.status)
+                    ? `<span class="font-mono font-bold text-amber-900 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded text-[10px]">Start OTP: ${escapeHtml(request.start_otp)}</span>`
+                    : (request.completion_otp && request.completion_otp_requested
+                      ? `<span class="font-mono font-bold text-indigo-900 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded text-[10px]">Completion OTP: ${escapeHtml(request.completion_otp)}</span>`
+                      : "")
                 }
               </div>
             </div>`;
@@ -1426,35 +1426,78 @@ function populateTracking(request) {
       }
       otpDisplay.textContent = "PAID";
       otpDisplay.className = "font-sans text-xs uppercase font-extrabold text-emerald-700 bg-white px-3 py-1 rounded-xl border border-emerald-300 shadow-sm shrink-0 tracking-wider";
-    } else if (request.status === "Service In Progress") {
-      otpPanel.classList.remove("hidden");
-      otpPanel.className = "rounded-2xl border border-indigo-300 bg-indigo-50/80 p-4 transition-all";
-      if (otpTitle) {
-        otpTitle.textContent = "SERVICE COMPLETION OTP";
-        otpTitle.className = "text-[10px] font-bold text-indigo-800 uppercase tracking-wider block";
+    } else if (["Service In Progress", "Part Assigned to Technician", "Repair in Progress"].includes(request.status)) {
+      if (request.completion_otp_requested && request.completion_otp) {
+        otpPanel.classList.remove("hidden");
+        otpPanel.className = "rounded-2xl border border-indigo-300 bg-indigo-50/80 p-4 transition-all";
+        if (otpTitle) {
+          otpTitle.textContent = "SERVICE COMPLETION OTP";
+          otpTitle.className = "text-[10px] font-bold text-indigo-800 uppercase tracking-wider block";
+        }
+        if (otpDesc) {
+          otpDesc.textContent = "Technician requested OTP. Share with technician ONLY after repair is fully tested & approved.";
+          otpDesc.className = "text-xs text-indigo-900 mt-0.5";
+        }
+        otpDisplay.textContent = request.completion_otp;
+        otpDisplay.className = "font-mono text-2xl text-indigo-950 bg-white px-3.5 py-1.5 rounded-xl border border-indigo-200 shadow-sm tracking-widest shrink-0";
+      } else {
+        otpPanel.classList.remove("hidden");
+        otpPanel.className = "rounded-2xl border border-blue-200 bg-blue-50/70 p-4 transition-all";
+        if (otpTitle) {
+          otpTitle.textContent = "DIAGNOSTICS & REPAIR IN PROGRESS";
+          otpTitle.className = "text-[10px] font-bold text-blue-800 uppercase tracking-wider block";
+        }
+        if (otpDesc) {
+          otpDesc.textContent = "Technician is currently servicing your appliance. When completed, technician will request the Completion OTP to your email and portal.";
+          otpDesc.className = "text-xs text-blue-900 mt-0.5";
+        }
+        otpDisplay.textContent = "IN PROGRESS";
+        otpDisplay.className = "font-sans text-xs uppercase font-extrabold text-blue-700 bg-white px-3 py-1 rounded-xl border border-blue-200 shadow-sm shrink-0 tracking-wider";
       }
-      if (otpDesc) {
-        otpDesc.textContent = "Share this OTP with technician ONLY after repair is completed & tested.";
-        otpDesc.className = "text-xs text-indigo-900 mt-0.5";
-      }
-      otpDisplay.textContent = request.completion_otp || request.verification_otp || "----";
-      otpDisplay.className = "font-mono text-2xl text-indigo-950 bg-white px-3.5 py-1.5 rounded-xl border border-indigo-200 shadow-sm tracking-widest shrink-0";
     } else if (request.status === "Reopened / Under Review") {
-      otpPanel.classList.remove("hidden");
-      otpPanel.className = "rounded-2xl border border-rose-300 bg-rose-50/80 p-4 transition-all";
-      if (otpTitle) {
-        otpTitle.textContent = "REVISIT SERVICE START OTP";
-        otpTitle.className = "text-[10px] font-bold text-rose-800 uppercase tracking-wider block";
+      if (request.completion_otp_requested && request.completion_otp) {
+        otpPanel.classList.remove("hidden");
+        otpPanel.className = "rounded-2xl border border-indigo-300 bg-indigo-50/80 p-4 transition-all";
+        if (otpTitle) {
+          otpTitle.textContent = "SERVICE COMPLETION OTP";
+          otpTitle.className = "text-[10px] font-bold text-indigo-800 uppercase tracking-wider block";
+        }
+        if (otpDesc) {
+          otpDesc.textContent = "Share this OTP with technician ONLY after repair is completed & tested.";
+          otpDesc.className = "text-xs text-indigo-900 mt-0.5";
+        }
+        otpDisplay.textContent = request.completion_otp;
+        otpDisplay.className = "font-mono text-2xl text-indigo-950 bg-white px-3.5 py-1.5 rounded-xl border border-indigo-200 shadow-sm tracking-widest shrink-0";
+      } else if (!request.is_start_otp_verified && request.start_otp) {
+        otpPanel.classList.remove("hidden");
+        otpPanel.className = "rounded-2xl border border-rose-300 bg-rose-50/80 p-4 transition-all";
+        if (otpTitle) {
+          otpTitle.textContent = "REVISIT SERVICE START OTP";
+          otpTitle.className = "text-[10px] font-bold text-rose-800 uppercase tracking-wider block";
+        }
+        if (otpDesc) {
+          otpDesc.textContent = "Share with revisit technician upon arrival at your doorstep.";
+          otpDesc.className = "text-xs text-rose-900 mt-0.5";
+        }
+        otpDisplay.textContent = request.start_otp;
+        otpDisplay.className = "font-mono text-2xl text-rose-950 bg-white px-3.5 py-1.5 rounded-xl border border-rose-200 shadow-sm tracking-widest shrink-0";
+      } else {
+        otpPanel.classList.remove("hidden");
+        otpPanel.className = "rounded-2xl border border-blue-200 bg-blue-50/70 p-4 transition-all";
+        if (otpTitle) {
+          otpTitle.textContent = "DIAGNOSTICS & REPAIR IN PROGRESS";
+          otpTitle.className = "text-[10px] font-bold text-blue-800 uppercase tracking-wider block";
+        }
+        if (otpDesc) {
+          otpDesc.textContent = "Technician is servicing the revisit. When completed, technician will request the Completion OTP.";
+          otpDesc.className = "text-xs text-blue-900 mt-0.5";
+        }
+        otpDisplay.textContent = "IN PROGRESS";
+        otpDisplay.className = "font-sans text-xs uppercase font-extrabold text-blue-700 bg-white px-3 py-1 rounded-xl border border-blue-200 shadow-sm shrink-0 tracking-wider";
       }
-      if (otpDesc) {
-        otpDesc.textContent = "Share with revisit technician upon arrival at your doorstep.";
-        otpDesc.className = "text-xs text-rose-900 mt-0.5";
-      }
-      otpDisplay.textContent = request.start_otp || request.verification_otp || "----";
-      otpDisplay.className = "font-mono text-2xl text-rose-950 bg-white px-3.5 py-1.5 rounded-xl border border-rose-200 shadow-sm tracking-widest shrink-0";
     } else {
-      // Technician Assigned or Technician on the Way
-      const startOtpVal = request.start_otp || request.verification_otp;
+      // Pre-service stages: Technician Assigned or Technician on the Way
+      const startOtpVal = (!request.is_start_otp_verified && request.start_otp) ? request.start_otp : null;
       if (startOtpVal) {
         otpPanel.classList.remove("hidden");
         otpPanel.className = "rounded-2xl border border-amber-200 bg-amber-50/70 p-4 transition-all";

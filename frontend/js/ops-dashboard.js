@@ -7719,6 +7719,48 @@ window.openOpsJobCardModal = async function(requestId) {
 
     recalculateOpsJobCardTotals();
   }
+
+  // Completion OTP Request Handler
+  const reqOtpBtn = $("opsRequestOtpBtn");
+  const otpBanner = $("opsOtpSentBanner");
+  const otpBannerText = $("opsOtpSentBannerText");
+  const reqOtpBtnText = $("opsRequestOtpBtnText");
+
+  if (req.completion_otp_requested) {
+    if (otpBanner) otpBanner.classList.remove("hidden");
+    if (otpBannerText) otpBannerText.textContent = "✓ Completion OTP has been sent to customer's email and is visible on their portal.";
+    if (reqOtpBtnText) reqOtpBtnText.textContent = "Resend OTP";
+  } else {
+    if (otpBanner) otpBanner.classList.add("hidden");
+    if (reqOtpBtnText) reqOtpBtnText.textContent = "Request OTP";
+  }
+
+  if (reqOtpBtn) {
+    reqOtpBtn.onclick = async () => {
+      reqOtpBtn.disabled = true;
+      if (reqOtpBtnText) reqOtpBtnText.textContent = "Sending OTP…";
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/requests/${encodeURIComponent(requestId)}/request-completion-otp`, {
+          method: "POST",
+          headers: jsonHeaders(),
+          credentials: "include"
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(extractErrorMessage(data, "Failed to send completion OTP"));
+
+        req.completion_otp_requested = true;
+        if (otpBanner) otpBanner.classList.remove("hidden");
+        if (otpBannerText) otpBannerText.textContent = "✓ Completion OTP sent to customer via email and visible on their portal. Ask customer for the 4-digit code.";
+        if (reqOtpBtnText) reqOtpBtnText.textContent = "Resend OTP";
+        showToast("Completion OTP sent to customer via email & portal!", "success");
+      } catch (err) {
+        if ($("opsJcMessage")) $("opsJcMessage").textContent = err.message || "Could not send completion OTP";
+        if (reqOtpBtnText) reqOtpBtnText.textContent = req.completion_otp_requested ? "Resend OTP" : "Request OTP";
+      } finally {
+        reqOtpBtn.disabled = false;
+      }
+    };
+  }
 };
 
 async function submitOpsJobCard(e) {

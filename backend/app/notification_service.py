@@ -216,7 +216,6 @@ def notify_technician_arrival(req: ServiceRequestModel, db: Session):
     tech = db.query(TechnicianModel).filter(TechnicianModel.id == req.technician_id).first() if req.technician_id else None
     tech_name = tech.name if tech else "Your Field Service Technician"
     start_otp = getattr(req, "start_otp", None) or req.verification_otp
-    comp_otp = getattr(req, "completion_otp", None) or "----"
     appliance_desc = f"{req.brand or ''} {req.appliance_name or 'Appliance'}".strip()
     subject = f"Your Technician is on the Way! · ServSure Ticket #{req.id}"
 
@@ -226,7 +225,6 @@ Good news! Your assigned technician, {tech_name}, has started the visit and is n
 
 Service Verification Details:
 - Service Start OTP: {start_otp} (Share this 4-digit OTP with {tech_name} upon arrival to verify doorstep visit)
-- Service Completion OTP: {comp_otp} (Share ONLY when the repair is fully finished, tested, and you are satisfied)
 
 Live Location Tracking:
 You can track {tech_name}'s real-time live location directly on your ServSure Customer Dashboard:
@@ -234,6 +232,8 @@ https://servsure.vercel.app/customer-dashboard.html
 
 Service Address:
 {req.customer_address}
+
+Note: Once repair work is finished, your technician will request a separate Completion OTP to your email and portal.
 
 Best regards,
 ServSure Customer Care & Field Operations
@@ -258,27 +258,80 @@ ServSure Customer Care & Field Operations
             <a href="https://servsure.vercel.app/customer-dashboard.html" style="display: inline-block; background: #0066ff; color: #ffffff; text-decoration: none; font-size: 12px; font-weight: 700; padding: 8px 18px; border-radius: 8px;">Track Technician Live →</a>
         </div>
 
-        <!-- Verification OTPs -->
-        <div style="display: flex; gap: 12px; margin: 0 0 20px 0;">
-            <div style="flex: 1; background-color: #fefce8; border: 1.5px solid #fde047; border-radius: 10px; padding: 14px; text-align: center;">
-                <span style="font-size: 10px; font-weight: 800; color: #854d0e; display: block; letter-spacing: 0.5px;">1. START OTP (Arrival)</span>
-                <span style="font-size: 26px; font-weight: 800; color: #713f12; font-family: monospace; letter-spacing: 4px; display: block; margin-top: 4px;">{start_otp}</span>
-                <span style="font-size: 10px; color: #a16207; display: block; margin-top: 4px;">Share with technician at doorstep</span>
-            </div>
-            <div style="flex: 1; background-color: #e0e7ff; border: 1.5px solid #c7d2fe; border-radius: 10px; padding: 14px; text-align: center;">
-                <span style="font-size: 10px; font-weight: 800; color: #3730a3; display: block; letter-spacing: 0.5px;">2. COMPLETION OTP</span>
-                <span style="font-size: 26px; font-weight: 800; color: #312e81; font-family: monospace; letter-spacing: 4px; display: block; margin-top: 4px;">{comp_otp}</span>
-                <span style="font-size: 10px; color: #4338ca; display: block; margin-top: 4px;">Share ONLY after job is finished</span>
-            </div>
+        <!-- Start Verification OTP -->
+        <div style="background-color: #fefce8; border: 1.5px solid #fde047; border-radius: 10px; padding: 16px; text-align: center; margin: 0 0 20px 0;">
+            <span style="font-size: 11px; font-weight: 800; color: #854d0e; display: block; letter-spacing: 0.5px; text-transform: uppercase;">Doorstep Service Start OTP</span>
+            <span style="font-size: 32px; font-weight: 800; color: #713f12; font-family: monospace; letter-spacing: 6px; display: block; margin: 6px 0;">{start_otp}</span>
+            <span style="font-size: 11px; color: #a16207; display: block;">Share this code with {tech_name} upon doorstep arrival to begin inspection.</span>
         </div>
 
         <div style="background-color: #f8fafc; border-radius: 8px; padding: 12px; font-size: 12px; color: #64748b; line-height: 1.4;">
             <strong style="color: #334155;">Service Location:</strong> {req.customer_address}<br>
-            <strong style="color: #334155;">Safety Protection:</strong> Do not share your Completion OTP until repair work is completely finished, demonstrated, and verified to your satisfaction.
+            <strong style="color: #334155;">Safety Protection:</strong> Once repair work is finished, the technician will request a separate Completion OTP to finalize the job.
         </div>
     </div>
     """
     send_notification_email(to_email, to_name, subject, text, html, "technician_arrival", req.id, req.customer_id, db)
+
+def notify_completion_otp_requested(req: ServiceRequestModel, db: Session):
+    customer = db.query(UserModel).filter(UserModel.id == req.customer_id).first()
+    to_email = customer.email if customer else "customer@servsure.com"
+    to_name = req.customer_name or (customer.name if customer else "Valued Customer")
+    tech = db.query(TechnicianModel).filter(TechnicianModel.id == req.technician_id).first() if req.technician_id else None
+    tech_name = tech.name if tech else "Your Field Service Technician"
+    comp_otp = getattr(req, "completion_otp", None) or "----"
+    appliance_desc = f"{req.brand or ''} {req.appliance_name or 'Appliance'}".strip()
+    subject = f"Service Completion OTP: #{req.id} · ServSure"
+
+    text = f"""Hello {to_name},
+
+Your technician, {tech_name}, has finished the service & diagnosis for ticket #{req.id} ({appliance_desc}).
+
+Your Service Completion OTP is: {comp_otp}
+
+IMPORTANT INSTRUCTIONS:
+- Please inspect and test your appliance to ensure the issue is completely resolved.
+- Share this 4-digit Completion OTP ({comp_otp}) with {tech_name} ONLY after you are satisfied with the repair.
+- The technician will enter this OTP to complete the service and generate your final digital job card and warranty receipt.
+
+You can also view this OTP anytime on your ServSure Customer Portal:
+https://servsure.vercel.app/customer-dashboard.html
+
+Best regards,
+ServSure Customer Care & Field Operations Team
+"""
+    html = f"""
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 14px; background: #ffffff;">
+        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 20px;">
+            <span style="font-size: 22px; font-weight: 800; color: #0066ff;">servsure<span style="color: #0066ff;">.</span></span>
+            <span style="font-size: 11px; font-weight: 700; color: #4f46e5; background: #eef2ff; padding: 3px 8px; border-radius: 9999px; border: 1px solid #c7d2fe; margin-left: auto;">🔒 COMPLETION OTP</span>
+        </div>
+
+        <h2 style="color: #0f172a; margin: 0 0 10px 0; font-size: 20px;">Work Completed & Verification Required</h2>
+        <p style="font-size: 14px; color: #334155; line-height: 1.5; margin: 0 0 16px 0;">Hello <strong>{to_name}</strong>,</p>
+        <p style="font-size: 14px; color: #475569; line-height: 1.5; margin: 0 0 18px 0;">
+            Your technician <strong>{tech_name}</strong> has finished the service on your <strong>{appliance_desc}</strong> (Ticket <strong>#{req.id}</strong>).
+        </p>
+
+        <!-- Completion OTP Highlight Box -->
+        <div style="background-color: #f5f3ff; border: 2px dashed #8b5cf6; border-radius: 12px; padding: 20px; text-align: center; margin: 20px 0;">
+            <span style="font-size: 11px; font-weight: 800; color: #6d28d9; text-transform: uppercase; letter-spacing: 1.5px; display: block;">Your Service Completion OTP</span>
+            <span style="font-size: 36px; font-weight: 900; color: #4c1d95; font-family: monospace; letter-spacing: 8px; display: block; margin: 8px 0;">{comp_otp}</span>
+            <p style="font-size: 12px; color: #5b21b6; margin: 4px 0 0 0; font-weight: 500;">Share this OTP with technician ONLY after inspecting & testing the appliance.</p>
+        </div>
+
+        <div style="background: #f8fafc; border-left: 4px solid #3b82f6; padding: 12px 16px; margin: 20px 0; border-radius: 0 8px 8px 0;">
+            <p style="font-size: 12px; color: #334155; margin: 0; line-height: 1.5;">
+                <strong>Next Step:</strong> Once you give this OTP to the technician, your official Digital Job Card, GST invoice, and service warranty will be generated automatically.
+            </p>
+        </div>
+
+        <div style="text-align: center; margin-top: 24px;">
+            <a href="https://servsure.vercel.app/customer-dashboard.html" style="display: inline-block; background: #0066ff; color: #ffffff; text-decoration: none; font-size: 13px; font-weight: 700; padding: 10px 22px; border-radius: 10px;">Open Customer Dashboard →</a>
+        </div>
+    </div>
+    """
+    send_notification_email(to_email, to_name, subject, text, html, "completion_otp_requested", req.id, req.customer_id, db)
 
 def notify_estimate_submitted(req: ServiceRequestModel, estimate, db: Session):
     customer = db.query(UserModel).filter(UserModel.id == req.customer_id).first()

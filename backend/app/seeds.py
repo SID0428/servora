@@ -223,6 +223,15 @@ def seed_database(db: Session):
     if "is_visiting_charge_tax_inclusive" not in req_columns:
         with engine.begin() as connection:
             connection.execute(text("ALTER TABLE service_requests ADD COLUMN is_visiting_charge_tax_inclusive BOOLEAN DEFAULT 1"))
+    if "is_start_otp_verified" not in req_columns:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE service_requests ADD COLUMN is_start_otp_verified BOOLEAN DEFAULT 0"))
+    if "completion_otp_requested" not in req_columns:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE service_requests ADD COLUMN completion_otp_requested BOOLEAN DEFAULT 0"))
+    if "completion_otp_requested_at" not in req_columns:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE service_requests ADD COLUMN completion_otp_requested_at VARCHAR(64) NULL"))
 
     existing_tables = set(inspect(engine).get_table_names())
     if "company_appliances" in existing_tables:

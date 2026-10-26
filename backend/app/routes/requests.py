@@ -33,7 +33,8 @@ from app.notification_service import (
     notify_booking_created,
     notify_appointment_rescheduled,
     notify_technician_assigned,
-    notify_technician_arrival
+    notify_technician_arrival,
+    notify_completion_otp_requested
 )
 from app.routes.warranty_amc import evaluate_part_warranty_status
 from app.schemas import (
@@ -156,9 +157,28 @@ def format_request_detail(req: ServiceRequestModel, db: Session, user: Optional[
     if user and user.role == "customer" and user.id == req.customer_id:
         is_authorized_customer = True
 
-    start_otp_val = (getattr(req, "start_otp", None) or req.verification_otp) if is_authorized_customer else None
-    completion_otp_val = getattr(req, "completion_otp", None) if is_authorized_customer else None
-    verification_otp_val = req.verification_otp if is_authorized_customer else None
+    # Start OTP: strictly accessible to customer BEFORE service has started.
+    # Once start OTP is verified or service is in progress / completed, hide start OTP completely.
+    is_start_verified = bool(
+        getattr(req, "is_start_otp_verified", False) or 
+        req.status in ("Service In Progress", "Repair in Progress", "Part Requested", "Part Assigned to Technician", "Estimate Pending Approval", "Completed")
+    )
+    start_otp_val = None
+    if is_authorized_customer and not is_start_verified and req.status in ("Pending", "Confirmed", "Technician Assigned", "Technician on the Way", "Reopened / Under Review"):
+        start_otp_val = getattr(req, "start_otp", None) or req.verification_otp
+
+    # Completion OTP: strictly accessible to customer ONLY AFTER technician has requested it.
+    is_comp_requested = bool(getattr(req, "completion_otp_requested", False))
+    completion_otp_val = getattr(req, "completion_otp", None) if (is_authorized_customer and is_comp_requested) else None
+
+    # Verification OTP legacy fallback
+    verification_otp_val = None
+    if is_authorized_customer:
+        if not is_start_verified:
+            verification_otp_val = start_otp_val
+        elif is_comp_requested:
+            verification_otp_val = completion_otp_val
+
     payment_status_val = getattr(req, "payment_status", None) or ("Paid" if req.status == "Completed" else "Pending")
 
     current_jc = db.query(JobCardModel).filter(JobCardModel.request_id == req.id).first()
@@ -244,6 +264,9 @@ def format_request_detail(req: ServiceRequestModel, db: Session, user: Optional[
         verification_otp=verification_otp_val,
         start_otp=start_otp_val,
         completion_otp=completion_otp_val,
+        is_start_otp_verified=is_start_verified,
+        completion_otp_requested=is_comp_requested,
+        completion_otp_requested_at=getattr(req, "completion_otp_requested_at", None),
         previous_technician_id=getattr(req, "previous_technician_id", None),
         previous_technician_name=getattr(req, "previous_technician_name", None),
         previous_job_card=previous_job_card,
@@ -1298,6 +1321,9 @@ def technician_action(request_id: str, payload: TechnicianActionPayload, request
             raise HTTPException(status_code=400, detail="Invalid Service Start OTP provided by customer. Please verify with customer at doorstep.")
         req.status = "Service In Progress"
         req.status_badge = "In Progress"
+        req.is_start_otp_verified = True
+        req.start_otp = None
+        req.completion_otp_requested = False
         for step in timeline:
             if step.get("id") in ("step_1", "step_2", "step_3"):
                 step["state"] = "completed"
@@ -1342,6 +1368,56 @@ def technician_action(request_id: str, payload: TechnicianActionPayload, request
     db.commit()
     db.refresh(req)
     return format_request_detail(req, db, user=user)
+
+@router.post("/{request_id}/request-completion-otp")
+def request_completion_otp(request_id: str, request: Request, db: Session = Depends(get_db)):
+    user = get_authenticated_user(request, db)
+    req = db.query(ServiceRequestModel).filter(ServiceRequestModel.id == request_id).first()
+    if not req:
+        raise HTTPException(status_code=404, detail="Service request not found")
+
+    if user.role not in ("technician", "franchise", "branch", "admin"):
+        raise HTTPException(status_code=403, detail="Only assigned technician or franchise can request completion OTP")
+
+    if user.role == "technician":
+        technician = db.query(TechnicianModel).filter(
+            (TechnicianModel.id == user.id) | (TechnicianModel.name == user.name)
+        ).first()
+        tech_id = technician.id if technician else user.id
+        if req.technician_id and req.technician_id != tech_id:
+            raise HTTPException(status_code=403, detail="You are not assigned to this service request")
+
+    # Generate or refresh strong 4-digit completion OTP
+    comp_otp = getattr(req, "completion_otp", None)
+    if not comp_otp or len(comp_otp) < 4:
+        comp_otp = str(random.randint(1000, 9999))
+        req.completion_otp = comp_otp
+
+    now_str = datetime.now().strftime("%d %b %Y, %I:%M %p")
+    req.completion_otp_requested = True
+    req.completion_otp_requested_at = now_str
+    req.verification_otp = comp_otp
+
+    timeline = json.loads(req.timeline_json) if req.timeline_json else []
+    for step in timeline:
+        if step.get("id") == "step_4":
+            step["description"] = f"Repair completed. Completion OTP sent to customer at {now_str}."
+    req.timeline_json = json.dumps(timeline)
+
+    db.commit()
+    db.refresh(req)
+
+    try:
+        notify_completion_otp_requested(req, db)
+    except Exception as e:
+        logger.warning("Could not dispatch completion OTP email: %s", e)
+
+    return {
+        "status": "success",
+        "message": "Completion OTP sent to customer's email and published to their portal.",
+        "completion_otp_requested": True,
+        "completion_otp_requested_at": now_str
+    }
 
 @router.post("/{request_id}/location", response_model=ServiceRequestDetail)
 def update_technician_location(request_id: str, payload: TechnicianLocationPayload, db: Session = Depends(get_db)):

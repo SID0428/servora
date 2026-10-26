@@ -225,12 +225,28 @@
         </div>
 
         <!-- Customer Verification OTP (Mandatory for completing service) -->
-        <div id="opsOtpSection" class="space-y-1">
-          <label class="block font-semibold text-slate-700">
-            Customer Doorstep OTP <span class="text-rose-500">*</span>
-          </label>
-          <input type="text" id="opsJcOtpInput" maxlength="6" placeholder="Enter 4-digit code provided by customer" class="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs bg-white font-mono tracking-widest text-center focus:outline-none focus:ring-2 focus:ring-blue-500/20">
-          <p class="text-[10px] text-slate-400">Technician must obtain the 4-digit verification code from the customer.</p>
+        <div id="opsOtpSection" class="p-3.5 bg-gradient-to-r from-amber-50/80 to-indigo-50/60 rounded-2xl border border-amber-200/90 space-y-2">
+          <div class="flex items-center justify-between">
+            <label class="font-semibold text-slate-800 flex items-center gap-1.5 text-xs">
+              <span>🔒 Customer Completion OTP</span>
+              <span class="text-rose-500">*</span>
+            </label>
+            <span class="text-[10px] text-indigo-800 font-bold bg-indigo-100/90 px-2 py-0.5 rounded-full border border-indigo-200">Required to Complete Job</span>
+          </div>
+          <p class="text-[11px] text-slate-600 leading-relaxed">
+            Click <strong>Request OTP</strong> to send the completion code to customer's registered email and portal, then enter the 4-digit code provided by customer.
+          </p>
+          <div class="flex items-center gap-2">
+            <input type="text" id="opsJcOtpInput" maxlength="6" placeholder="4-digit OTP" class="flex-1 text-center font-mono text-base font-bold tracking-widest rounded-xl border border-amber-300 px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/20 text-slate-900 placeholder:text-slate-300">
+            <button type="button" id="opsRequestOtpBtn" class="shrink-0 px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-bold text-xs rounded-xl shadow-xs transition-all flex items-center gap-1.5 cursor-pointer">
+              <span>📨</span>
+              <span id="opsRequestOtpBtnText">Request OTP</span>
+            </button>
+          </div>
+          <div id="opsOtpSentBanner" class="hidden text-[11px] font-medium text-emerald-800 bg-emerald-100/80 border border-emerald-200 px-2.5 py-1.5 rounded-xl flex items-center gap-1.5">
+            <span>✓</span>
+            <span id="opsOtpSentBannerText">Completion OTP sent to customer via email and visible on their portal.</span>
+          </div>
         </div>
 
         <!-- Customer Signature / Status Display if already completed -->
