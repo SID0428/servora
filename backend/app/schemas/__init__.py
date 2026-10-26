@@ -173,6 +173,8 @@ class CompanyApplianceCreate(BaseModel):
     category: str = Field(min_length=2, max_length=64)
     model_numbers: Union[List[str], str]
     warranty_months: Optional[int] = 12
+    visiting_charge: Optional[float] = 299.0
+    is_visiting_charge_tax_inclusive: Optional[bool] = True
     description: Optional[str] = None
 
 class CompanyApplianceResponse(BaseModel):
@@ -184,6 +186,8 @@ class CompanyApplianceResponse(BaseModel):
     category: str
     model_numbers: List[str]
     warranty_months: int
+    visiting_charge: Optional[float] = 299.0
+    is_visiting_charge_tax_inclusive: Optional[bool] = True
     description: Optional[str] = None
     created_at: Optional[str] = None
 
@@ -295,6 +299,8 @@ class ServiceRequestDetail(BaseModel):
     distance_km: Optional[float] = None
     slot_applicable: Optional[bool] = True
     outstation_note: Optional[str] = None
+    visiting_charge: Optional[float] = 299.0
+    is_visiting_charge_tax_inclusive: Optional[bool] = True
 
 class ServiceBookingCreate(BaseModel):
     appliance_id: str

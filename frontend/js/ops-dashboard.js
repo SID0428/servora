@@ -1140,7 +1140,7 @@ function renderCompanyAppliances() {
   if ($("bottomSubtitle")) $("bottomSubtitle").textContent = "Supported device lineup across all authorized service regions.";
 
   if ($("requestHead")) {
-    $("requestHead").innerHTML = ["Appliance & Brand", "Category", "Supported Model Numbers", "Standard Warranty", "Registered On", "Action"].map((h) => `<th>${h}</th>`).join("");
+    $("requestHead").innerHTML = ["Appliance & Brand", "Category", "Supported Model Numbers", "Standard Warranty", "Visiting Fee", "Registered On", "Action"].map((h) => `<th>${h}</th>`).join("");
   }
 
   const query = ($("requestSearch")?.value || "").trim().toLowerCase();
@@ -1174,6 +1174,9 @@ function renderCompanyAppliances() {
             `;
           }
 
+          const visitingAmt = Number(app.visiting_charge ?? 299).toFixed(0);
+          const isTaxInc = app.is_visiting_charge_tax_inclusive !== false;
+
           return `
             <tr>
               <td>
@@ -1191,6 +1194,14 @@ function renderCompanyAppliances() {
               </td>
               <td class="text-slate-700 font-medium text-xs whitespace-nowrap">
                 🛡️ ${safe(app.warranty_months || 12)} Months
+              </td>
+              <td class="text-slate-700 font-medium text-xs whitespace-nowrap">
+                <span class="inline-flex items-center gap-1 font-semibold text-slate-800">
+                  ₹${visitingAmt}
+                </span>
+                <span class="block text-[10px] ${isTaxInc ? 'text-emerald-600 font-semibold' : 'text-amber-600 font-semibold'}">
+                  ${isTaxInc ? 'Tax Incl.' : '+18% GST Extra'}
+                </span>
               </td>
               <td class="text-slate-500 font-mono text-xs whitespace-nowrap">
                 ${formatDisplayDate(app.created_at)}
@@ -1211,7 +1222,7 @@ function renderCompanyAppliances() {
             </tr>
           `;
         }).join("")
-      : `<tr><td class="empty-row" colspan="6">${query ? "No appliances match your search." : "No appliances registered in catalog yet. Click '+ Add appliance' to add your device catalog."}</td></tr>`;
+      : `<tr><td class="empty-row" colspan="7">${query ? "No appliances match your search." : "No appliances registered in catalog yet. Click '+ Add appliance' to add your device catalog."}</td></tr>`;
   }
 
   if ($("requestCount")) $("requestCount").textContent = `${filtered.length} appliance${filtered.length === 1 ? '' : 's'} shown`;
@@ -1263,6 +1274,11 @@ function openApplianceDetails(appId) {
   if ($("detailApplianceBrand")) $("detailApplianceBrand").textContent = app.brand || user?.name || "OEM Brand";
   if ($("detailApplianceCategory")) $("detailApplianceCategory").textContent = app.category || "Appliance";
   if ($("detailApplianceWarranty")) $("detailApplianceWarranty").textContent = `🛡️ ${app.warranty_months || 12} Months Warranty`;
+  if ($("detailApplianceVisitingFee")) {
+    const fee = Number(app.visiting_charge ?? 299).toFixed(0);
+    const taxTxt = app.is_visiting_charge_tax_inclusive !== false ? "Tax Included" : "+18% GST Extra";
+    $("detailApplianceVisitingFee").textContent = `🛵 ₹${fee} Visiting Fee (${taxTxt})`;
+  }
   if ($("detailRegisteredOn")) $("detailRegisteredOn").textContent = `Registered: ${formatDisplayDate(app.created_at)}`;
 
   const descContainer = $("detailApplianceDescContainer");
@@ -1319,6 +1335,8 @@ function openEditApplianceModal(appId) {
   const models = Array.isArray(app.model_numbers) ? app.model_numbers : [];
   if ($("applianceCatalogModels")) $("applianceCatalogModels").value = models.join(", ");
   if ($("applianceCatalogWarranty")) $("applianceCatalogWarranty").value = app.warranty_months || 12;
+  if ($("applianceCatalogVisitingCharge")) $("applianceCatalogVisitingCharge").value = app.visiting_charge !== undefined && app.visiting_charge !== null ? app.visiting_charge : 299;
+  if ($("applianceCatalogVisitingTaxInclusive")) $("applianceCatalogVisitingTaxInclusive").value = app.is_visiting_charge_tax_inclusive !== false ? "true" : "false";
   if ($("applianceCatalogDesc")) $("applianceCatalogDesc").value = app.description || "";
 
   dialog.showModal();
@@ -3591,9 +3609,12 @@ function renderFranchiseInventory() {
   if (toolsEl) toolsEl.style.display = "";
   if (footEl) footEl.style.display = "";
 
-  const pendingCount = franchisePartRequests.filter((r) => r.status === "Pending").length;
-  const receivedCount = franchisePartRequests.filter((r) => r.status === "Sent").length;
-  const techReqsCount = franchisePartRequests.filter((r) => r.request_id || r.technician_name).length;
+  const techReqsList = franchisePartRequests.filter((r) => r.request_id || r.technician_name || r.technician_id);
+  const oemOrdersList = franchisePartRequests.filter((r) => !r.request_id && !r.technician_name && !r.technician_id);
+
+  const pendingCount = oemOrdersList.filter((r) => r.status === "Pending").length;
+  const receivedCount = oemOrdersList.filter((r) => r.status === "Sent").length;
+  const techReqsCount = techReqsList.length;
   const inStockSerialCount = franchiseSerializedParts.filter((s) => s.status === "in_stock").length;
 
   if ($("tableTitle")) {
@@ -3615,7 +3636,7 @@ function renderFranchiseInventory() {
               🏷️ Serialized Parts (${inStockSerialCount} ready)
             </button>
             <button type="button" id="tabFranchiseRequests" class="px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${franchiseInventorySubTab === 'requests' ? 'bg-white text-blue-600 shadow-xs' : 'text-slate-600 hover:text-slate-900'}">
-              🚚 OEM Orders (${franchisePartRequests.length})
+              🚚 OEM Orders (${oemOrdersList.length})
               ${receivedCount > 0 ? `<span class="px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-emerald-600 text-white">${receivedCount}</span>` : ''}
             </button>
           </div>
@@ -3690,7 +3711,7 @@ function renderFranchiseInventory() {
         </div>
         <div class="p-2.5 bg-slate-50 rounded-xl border border-slate-100">
           <span class="font-semibold text-slate-800 block">Open OEM Orders</span>
-          <span class="text-slate-500">${franchisePartRequests.length} restock orders placed</span>
+          <span class="text-slate-500">${oemOrdersList.length} restock orders placed</span>
         </div>
       </div>
     `;
@@ -3786,10 +3807,7 @@ function renderFranchiseInventory() {
       ].map((label) => `<th>${safe(label)}</th>`).join("");
     }
 
-    const techReqs = franchisePartRequests.filter((r) => r.request_id || r.technician_name || r.technician_id);
-    const listToFilter = techReqs.length > 0 ? techReqs : franchisePartRequests;
-
-    const filtered = listToFilter.filter((item) =>
+    const filtered = techReqsList.filter((item) =>
       [item.id, item.request_id, item.part_name, item.part_code, item.technician_name, item.requested_by, item.status]
         .join(" ")
         .toLowerCase()
@@ -3947,7 +3965,7 @@ function renderFranchiseInventory() {
       ].map((label) => `<th>${safe(label)}</th>`).join("");
     }
 
-    const filtered = franchisePartRequests.filter((item) =>
+    const filtered = oemOrdersList.filter((item) =>
       [item.id, item.part_name, item.part_code, item.status, item.notes]
         .join(" ")
         .toLowerCase()
@@ -4126,7 +4144,10 @@ function initAssignSerialModalEvents() {
 }
 window.initAssignSerialModalEvents = initAssignSerialModalEvents;
 
+let isIndentingBrandPart = false;
 async function techIndentBrandPart(requestId) {
+  if (isIndentingBrandPart) return;
+  isIndentingBrandPart = true;
   try {
     const sr = requests.find(r => r.id === requestId);
     const est = sr?.estimate || {};
@@ -4178,6 +4199,8 @@ async function techIndentBrandPart(requestId) {
     await loadRequests();
   } catch (err) {
     showToast(err.message || "Failed to submit requisition", "error");
+  } finally {
+    isIndentingBrandPart = false;
   }
 }
 window.techIndentBrandPart = techIndentBrandPart;
@@ -5257,7 +5280,9 @@ function renderCompanyInventoryAndSpares() {
   if (toolsEl) toolsEl.style.display = "";
   if (footEl) footEl.style.display = "";
 
-  const pendingReqs = companyPartRequests.filter((r) => r.status === "Pending");
+  // Company only receives franchise branch OEM orders, never technician service ticket requests
+  const franchiseOEMOrders = companyPartRequests.filter((r) => !r.request_id && !r.technician_id && !r.technician_name);
+  const pendingReqs = franchiseOEMOrders.filter((r) => r.status === "Pending");
   const totalStockUnits = companySparesCatalog.reduce((acc, p) => acc + (p.stock_quantity || 0), 0);
 
   if ($("tableTitle")) {
@@ -5273,7 +5298,7 @@ function renderCompanyInventoryAndSpares() {
               📦 Warehouse Stock (${companySparesCatalog.length})
             </button>
             <button type="button" id="tabCompanyRequests" class="px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${companyInventorySubTab === 'requests' ? 'bg-white text-blue-600 shadow-xs' : 'text-slate-600 hover:text-slate-900'}">
-              🚚 Franchise Requisitions (${companyPartRequests.length})
+              🚚 Franchise Requisitions (${franchiseOEMOrders.length})
               ${pendingReqs.length > 0 ? `<span class="px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-rose-500 text-white">${pendingReqs.length}</span>` : ''}
             </button>
           </div>
@@ -5475,7 +5500,7 @@ function renderCompanyInventoryAndSpares() {
       ].map((label) => `<th>${safe(label)}</th>`).join("");
     }
 
-    const filtered = companyPartRequests.filter((item) =>
+    const filtered = franchiseOEMOrders.filter((item) =>
       [item.id, item.branch_name, item.part_name, item.part_code, item.status, item.requested_by]
         .join(" ")
         .toLowerCase()
@@ -7322,7 +7347,7 @@ function setupOpsTechSignaturePad() {
 }
 
 function anyConsumable(str = "") {
-  return ["gas", "refill", "refrigerant", "filter", "seal", "gasket", "oil", "pipe", "hose", "cleaning"].some(w => (str || "").toLowerCase().includes(w));
+  return ["gas", "refil", "refill", "refrigerant", "filter", "seal", "gasket", "oil", "pipe", "hose", "cleaning"].some(w => (str || "").toLowerCase().includes(w));
 }
 
 function recalculateOpsJobCardTotals() {
@@ -7359,7 +7384,7 @@ function recalculateOpsJobCardTotals() {
   }
 
   const rawLabor = parseFloat($("opsJcLaborCost")?.value || "0");
-  const customerLabor = (isReqWarranty && coveredPartsTotal > 0 && customerPartsTotal === 0) ? 0.0 : rawLabor;
+  const customerLabor = (isReqWarranty && coveredPartsTotal > 0 && customerPartsTotal === 0 && rawLabor === 0) ? 0.0 : rawLabor;
   const oemLaborClaim = isReqWarranty ? rawLabor : 0.0;
 
   const customerSubtotal = customerPartsTotal + customerLabor;
@@ -7383,9 +7408,11 @@ function addOpsPartRow(name = "", qty = 1, price = 0, isCovered = null, reason =
   const targetReq = requests.find(r => r.id === currentOpsJcRequestId);
   const isReqWarranty = Boolean(targetReq?.is_under_warranty);
 
-  if (isCovered === null) {
-    const isConsumable = anyConsumable(name);
-    isCovered = isReqWarranty && !isConsumable;
+  const isConsumable = anyConsumable(name);
+  if (isConsumable) {
+    isCovered = false;
+  } else if (isCovered === null) {
+    isCovered = isReqWarranty;
   }
 
   const rowId = `part_row_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`;
@@ -7498,25 +7525,60 @@ window.openOpsJobCardModal = async function(requestId) {
       $("opsJcStatusBadge").className = "text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700";
     }
     if ($("opsJcWorkSummary")) $("opsJcWorkSummary").value = `Inspected ${req.appliance_name}. Completed diagnosis and testing.`;
-    if ($("opsJcLaborCost")) $("opsJcLaborCost").value = req.is_under_warranty ? "0" : "350";
     if ($("opsCustomerSigReadout")) $("opsCustomerSigReadout").classList.add("hidden");
     if ($("opsOtpSection")) $("opsOtpSection").classList.remove("hidden");
     if ($("saveOpsJcBtn")) $("saveOpsJcBtn").textContent = "Generate & Complete Job";
 
-    // Auto-populate parts from allocated serialized parts or customer estimate
+    // Auto-populate labor charges and parts from customer estimate and allocated serialized parts
     try {
+      const estRes = await fetch(`${API_BASE_URL}/api/requests/${encodeURIComponent(requestId)}/estimate`, { headers: jsonHeaders(), credentials: "include" });
+      const estData = estRes.ok ? await estRes.json() : null;
+
+      let inheritedLabor = 0;
+      if (estData && (estData.labor_estimate !== undefined || estData.inspection_fee !== undefined)) {
+        inheritedLabor = (parseFloat(estData.labor_estimate) || 0) + (parseFloat(estData.inspection_fee) || 0);
+      } else {
+        inheritedLabor = req.is_under_warranty ? 0 : 350;
+      }
+      if ($("opsJcLaborCost")) $("opsJcLaborCost").value = inheritedLabor.toString();
+
       const snRes = await fetch(`${API_BASE_URL}/api/inventory/serialized-parts?request_id=${encodeURIComponent(requestId)}`, { headers: jsonHeaders(), credentials: "include" });
       const snParts = snRes.ok ? await snRes.json() : [];
       if (snParts && snParts.length > 0) {
-        snParts.forEach(sp => addOpsPartRow(sp.part_name, 1, sp.unit_price || 0, req.is_under_warranty, "", sp.serial_number));
-      } else {
-        const estRes = await fetch(`${API_BASE_URL}/api/requests/${encodeURIComponent(requestId)}/estimate`, { headers: jsonHeaders(), credentials: "include" });
-        const estData = estRes.ok ? await estRes.json() : null;
-        if (estData && Array.isArray(estData.parts) && estData.parts.length > 0) {
-          estData.parts.forEach(p => addOpsPartRow(p.part_name, p.quantity || 1, p.unit_price || 0, p.is_covered, p.non_coverage_reason, p.serial_number || ''));
-        }
+        snParts.forEach(sp => {
+          const estPart = estData?.parts?.find(ep =>
+            (ep.part_code && ep.part_code === sp.part_code) ||
+            (ep.part_name && sp.part_name && ep.part_name.toLowerCase().trim() === sp.part_name.toLowerCase().trim())
+          );
+          let partPrice = sp.unit_price || 0;
+          let isPartCovered = null;
+          let nonCovReason = "";
+          if (estPart) {
+            isPartCovered = Boolean(estPart.is_covered);
+            if (estPart.unit_price) partPrice = estPart.unit_price;
+            nonCovReason = estPart.non_coverage_reason || "";
+          } else {
+            const isConsumable = anyConsumable(sp.part_name);
+            isPartCovered = req.is_under_warranty && !isConsumable;
+            if (isConsumable) nonCovReason = "Consumable / Wear & Tear";
+          }
+          if (anyConsumable(sp.part_name)) {
+            isPartCovered = false;
+          }
+          addOpsPartRow(sp.part_name, 1, partPrice, isPartCovered, nonCovReason, sp.serial_number);
+        });
+      } else if (estData && Array.isArray(estData.parts) && estData.parts.length > 0) {
+        estData.parts.forEach(p => {
+          let cov = Boolean(p.is_covered);
+          if (anyConsumable(p.part_name)) cov = false;
+          addOpsPartRow(p.part_name, p.quantity || 1, p.unit_price || 0, cov, p.non_coverage_reason, p.serial_number || '');
+        });
       }
-    } catch (e) {}
+    } catch (e) {
+      if ($("opsJcLaborCost") && !$("opsJcLaborCost").value) {
+        $("opsJcLaborCost").value = req.is_under_warranty ? "0" : "350";
+      }
+    }
 
     recalculateOpsJobCardTotals();
   }
@@ -7553,7 +7615,10 @@ async function submitOpsJobCard(e) {
       const sn = row.querySelector(".part-sn")?.value.trim() || null;
       const qty = parseInt(row.querySelector(".part-qty")?.value || "1", 10);
       const price = parseFloat(row.querySelector(".part-price")?.value || "0");
-      const isPartCovered = (row.querySelector(".part-coverage")?.value === "covered");
+      let isPartCovered = (row.querySelector(".part-coverage")?.value === "covered");
+      if (anyConsumable(name)) {
+        isPartCovered = false;
+      }
       if (name) {
         parts_used.push({
           part_name: name,
@@ -8165,6 +8230,8 @@ function initEvents() {
     const form = $("companyApplianceForm");
     if (form) form.reset();
     if ($("applianceCatalogBrand") && user?.name) $("applianceCatalogBrand").value = user.name;
+    if ($("applianceCatalogVisitingCharge")) $("applianceCatalogVisitingCharge").value = "299";
+    if ($("applianceCatalogVisitingTaxInclusive")) $("applianceCatalogVisitingTaxInclusive").value = "true";
     $("companyApplianceDialog")?.showModal();
   });
 
@@ -8373,12 +8440,16 @@ function initEvents() {
     }
 
     const formData = new FormData(form);
+    const visitingChargeRaw = formData.get("visiting_charge");
+    const isTaxInclusiveRaw = formData.get("is_visiting_charge_tax_inclusive");
     const payload = {
       appliance_name: formData.get("appliance_name")?.trim(),
       category: formData.get("category"),
       brand: formData.get("brand")?.trim() || user?.name || "",
       model_numbers: formData.get("model_numbers")?.trim(),
       warranty_months: parseInt(formData.get("warranty_months") || "12", 10),
+      visiting_charge: visitingChargeRaw !== null && visitingChargeRaw !== "" ? parseFloat(visitingChargeRaw) : 299.0,
+      is_visiting_charge_tax_inclusive: isTaxInclusiveRaw === "true" || isTaxInclusiveRaw === true,
       description: formData.get("description")?.trim() || null,
     };
 
@@ -9175,8 +9246,13 @@ window.openTechEstimateModal = async function(requestId) {
 
       <div class="grid grid-cols-2 gap-3 pt-2">
         <div>
-          <label class="block text-xs font-semibold text-slate-700 mb-1">Diagnostic / Inspection Fee (₹)</label>
-          <input type="number" id="techEstInspectionFee" class="w-full rounded-xl border border-slate-200 p-2.5 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500" value="${existingEst?.inspection_fee ?? (req.is_under_warranty ? 0.0 : 299.0)}" oninput="window.calcTechEstimateTotal()">
+          <label class="block text-xs font-semibold text-slate-700 mb-1">
+            Diagnostic / Inspection Fee (₹)
+            <span class="text-[10px] text-blue-600 block font-normal">
+              ${req.is_under_warranty ? '🛡️ Waived under Warranty' : `(${req.visiting_charge ?? 299} Visiting Charge · ${req.is_visiting_charge_tax_inclusive !== false ? 'Tax Incl.' : '+18% GST'})`}
+            </span>
+          </label>
+          <input type="number" id="techEstInspectionFee" class="w-full rounded-xl border border-slate-200 p-2.5 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500" value="${existingEst?.inspection_fee ?? (req.is_under_warranty ? 0.0 : (req.visiting_charge ?? 299.0))}" oninput="window.calcTechEstimateTotal()">
         </div>
         <div>
           <label class="block text-xs font-semibold text-slate-700 mb-1">Labor / Service Charges (₹)</label>
@@ -9383,8 +9459,11 @@ window.calcTechEstimateTotal = function() {
   }
 };
 
+let isSubmittingEstimate = false;
 window.submitTechEstimate = async function() {
+  if (isSubmittingEstimate) return;
   if (!currentEstimateRequestId) return;
+  isSubmittingEstimate = true;
   const parts = [];
   document.querySelectorAll("#techEstPartsContainer .part-row").forEach(row => {
     const name = row.querySelector(".est-part-name")?.value.trim();
@@ -9432,6 +9511,8 @@ window.submitTechEstimate = async function() {
     await loadDashboard();
   } catch (err) {
     showToast(err.message, "error");
+  } finally {
+    isSubmittingEstimate = false;
   }
 };
 

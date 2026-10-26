@@ -123,9 +123,20 @@
       <label>Supported model numbers <span class="text-xs text-slate-400 font-normal">(comma or newline separated)</span>
         <textarea name="model_numbers" id="applianceCatalogModels" rows="3" required placeholder="e.g. CR-AC-15INV, CR-AC-15ECO, CR-AC-20MAX"></textarea>
       </label>
-      <label>Standard warranty period (months)
-        <input name="warranty_months" id="applianceCatalogWarranty" type="number" min="1" max="120" value="12" required>
-      </label>
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <label>Standard warranty (months)
+          <input name="warranty_months" id="applianceCatalogWarranty" type="number" min="1" max="120" value="12" required>
+        </label>
+        <label>Labour visiting charge (₹)
+          <input name="visiting_charge" id="applianceCatalogVisitingCharge" type="number" min="0" step="10" value="299" required placeholder="299">
+        </label>
+        <label>Tax configuration
+          <select name="is_visiting_charge_tax_inclusive" id="applianceCatalogVisitingTaxInclusive" class="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm bg-white">
+            <option value="true">Included in Visiting Fee</option>
+            <option value="false">Excluded (+18% GST Extra)</option>
+          </select>
+        </label>
+      </div>
       <label>Description & specs <span class="optional-label">Optional</span>
         <textarea name="description" id="applianceCatalogDesc" rows="2" placeholder="Key specifications, series, or technical highlights"></textarea>
       </label>
@@ -146,9 +157,10 @@
             🧊
           </div>
           <div>
-            <div class="flex items-center gap-2">
+            <div class="flex flex-wrap items-center gap-2">
               <span id="detailApplianceCategory" class="px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 text-xs font-semibold">Category</span>
               <span id="detailApplianceWarranty" class="px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-xs font-semibold border border-emerald-200">🛡️ 12 Months Warranty</span>
+              <span id="detailApplianceVisitingFee" class="px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 text-xs font-semibold border border-blue-200">🛵 ₹299 Visiting (Tax Included)</span>
             </div>
             <h2 id="detailApplianceName" class="text-xl font-bold text-slate-900 mt-1">Appliance Name</h2>
             <p id="detailApplianceBrand" class="text-xs text-blue-600 font-semibold uppercase tracking-wider">Brand Name</p>

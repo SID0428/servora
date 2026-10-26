@@ -217,6 +217,22 @@ def seed_database(db: Session):
     if "outstation_note" not in req_columns:
         with engine.begin() as connection:
             connection.execute(text("ALTER TABLE service_requests ADD COLUMN outstation_note VARCHAR(256) NULL"))
+    if "visiting_charge" not in req_columns:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE service_requests ADD COLUMN visiting_charge FLOAT DEFAULT 299.0"))
+    if "is_visiting_charge_tax_inclusive" not in req_columns:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE service_requests ADD COLUMN is_visiting_charge_tax_inclusive BOOLEAN DEFAULT 1"))
+
+    existing_tables = set(inspect(engine).get_table_names())
+    if "company_appliances" in existing_tables:
+        capp_columns = {column["name"] for column in inspect(engine).get_columns("company_appliances")}
+        if "visiting_charge" not in capp_columns:
+            with engine.begin() as connection:
+                connection.execute(text("ALTER TABLE company_appliances ADD COLUMN visiting_charge FLOAT DEFAULT 299.0"))
+        if "is_visiting_charge_tax_inclusive" not in capp_columns:
+            with engine.begin() as connection:
+                connection.execute(text("ALTER TABLE company_appliances ADD COLUMN is_visiting_charge_tax_inclusive BOOLEAN DEFAULT 1"))
 
     jc_columns = {column["name"] for column in inspect(engine).get_columns("job_cards")}
     if "inspection_fee" not in jc_columns:
@@ -896,3 +912,22 @@ def seed_database(db: Session):
             db.add_all(policies)
             db.commit()
 
+    # 9. Deduplicate existing duplicate pending part requests
+    try:
+        all_pending_prs = db.query(PartRequestModel).filter(
+            PartRequestModel.request_id.isnot(None),
+            PartRequestModel.status == "Pending"
+        ).order_by(PartRequestModel.created_at.asc()).all()
+
+        seen_keys = set()
+        for pr in all_pending_prs:
+            part = db.query(SparePartModel).filter(SparePartModel.id == pr.part_id).first()
+            part_name_key = (part.part_code if part and part.part_code else (part.name if part else pr.part_id)).strip().lower()
+            key = (pr.request_id, part_name_key)
+            if key in seen_keys:
+                db.delete(pr)
+            else:
+                seen_keys.add(key)
+        db.commit()
+    except Exception as e:
+        logger.warning(f"Error deduplicating part requests in seeds: {e}")

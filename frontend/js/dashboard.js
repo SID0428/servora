@@ -3040,7 +3040,7 @@ window.openReceiptModal = async function(requestId, showPrevious = false) {
 
   // Itemized breakdown adhering to Phase 2 automated price engine
   const parts = (jc && Array.isArray(jc.parts_used)) ? jc.parts_used : [];
-  const inspectFee = jc ? Number(jc.inspection_fee || 299) : 299;
+  const inspectFee = jc ? Number(jc.inspection_fee ?? (targetReq?.visiting_charge || 299)) : Number(targetReq?.visiting_charge || 299);
   const laborCost = jc ? Number(jc.labor_cost || 0) : 350;
   const partsCost = jc ? Number(jc.parts_cost || 0) : 0;
   const discountAmount = jc ? Number(jc.discount_amount || 0) : 0;
@@ -3164,7 +3164,7 @@ window.openPaymentModal = async function(requestId) {
   }
 
   const isWarranty = Boolean(targetReq.is_under_warranty || (jc && jc.is_warranty_covered));
-  const inspectFee = jc ? Number(jc.inspection_fee || 299) : 299;
+  const inspectFee = jc ? Number(jc.inspection_fee ?? (targetReq?.visiting_charge || 299)) : Number(targetReq?.visiting_charge || 299);
   const laborCost = jc ? Number(jc.labor_cost || 0) : 0;
   const partsCost = jc ? Number(jc.parts_cost || 0) : 0;
   const discount = jc ? Number(jc.discount_amount || 0) : 0;
@@ -3736,12 +3736,20 @@ window.openCustomerEstimateModal = async function(requestId = selectedRequestId)
   }
 };
 
+let isRespondingEstimate = false;
 window.respondToCustomerEstimate = async function(action) {
+  if (isRespondingEstimate) return;
   const reqId = selectedRequestId || userRequests.find(r => r.status === "Estimate Pending Approval" || r.has_estimate)?.id;
   if (!reqId) {
     showToast("No active request selected for estimate approval", "warning");
     return;
   }
+  isRespondingEstimate = true;
+  const approveBtn = $("approveEstimateBtn");
+  const declineBtn = $("declineEstimateBtn");
+  if (approveBtn) approveBtn.disabled = true;
+  if (declineBtn) declineBtn.disabled = true;
+
   const remarks = $("estCustomerRemarks")?.value.trim() || "";
   try {
     const res = await apiFetch(`/api/requests/${encodeURIComponent(reqId)}/estimate/respond`, {
@@ -3765,6 +3773,10 @@ window.respondToCustomerEstimate = async function(action) {
     await loadDashboardData();
   } catch (err) {
     showToast(extractErrorMessage(err, "Failed to submit estimate response"), "error");
+  } finally {
+    isRespondingEstimate = false;
+    if (approveBtn) approveBtn.disabled = false;
+    if (declineBtn) declineBtn.disabled = false;
   }
 };
 

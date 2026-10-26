@@ -271,7 +271,9 @@ def format_request_detail(req: ServiceRequestModel, db: Session, user: Optional[
         is_outstation=bool(getattr(req, "is_outstation", False)),
         distance_km=getattr(req, "distance_km", None),
         slot_applicable=bool(getattr(req, "slot_applicable", True)),
-        outstation_note=getattr(req, "outstation_note", None)
+        outstation_note=getattr(req, "outstation_note", None),
+        visiting_charge=getattr(req, "visiting_charge", 299.0) if getattr(req, "visiting_charge", None) is not None else 299.0,
+        is_visiting_charge_tax_inclusive=getattr(req, "is_visiting_charge_tax_inclusive", True) if getattr(req, "is_visiting_charge_tax_inclusive", None) is not None else True
     )
 
 @router.get("", response_model=List[ServiceRequestDetail])
@@ -845,37 +847,37 @@ def create_request(payload: ServiceBookingCreate, request: Request, db: Session 
     app_model = appliance.model_no if appliance else "STD-01"
 
     app_name = "Home Appliance"
+    matched_catalog_item = None
     if appliance:
         raw_name = (appliance.appliance_name or "").strip()
+        cat_match = db.query(CompanyApplianceCatalogModel).filter(
+            or_(
+                CompanyApplianceCatalogModel.brand.ilike(appliance.brand.strip()),
+                CompanyApplianceCatalogModel.company_id == appliance.company_id
+            )
+        ).all()
+        for cm in cat_match:
+            try:
+                m_list = json.loads(cm.model_numbers) if cm.model_numbers else []
+            except Exception:
+                m_list = [m.strip() for m in str(cm.model_numbers).split(",") if m.strip()]
+            if appliance.model_no.strip() in m_list or (raw_name and cm.appliance_name.lower() in raw_name.lower()):
+                matched_catalog_item = cm
+                break
+        if not matched_catalog_item and cat_match:
+            for cm in cat_match:
+                if cm.appliance_name and not is_generic_name(cm.appliance_name, appliance.brand, appliance.category):
+                    matched_catalog_item = cm
+                    break
+
         if raw_name and not is_generic_name(raw_name, appliance.brand, appliance.category):
             app_name = raw_name
+        elif matched_catalog_item:
+            app_name = matched_catalog_item.appliance_name
+        elif appliance.category and appliance.category.strip().lower() != "other":
+            app_name = f"{appliance.brand.strip()} {appliance.category.strip()}"
         else:
-            cat_match = db.query(CompanyApplianceCatalogModel).filter(
-                or_(
-                    CompanyApplianceCatalogModel.brand.ilike(appliance.brand.strip()),
-                    CompanyApplianceCatalogModel.company_id == appliance.company_id
-                )
-            ).all()
-            found_name = None
-            for cm in cat_match:
-                try:
-                    m_list = json.loads(cm.model_numbers) if cm.model_numbers else []
-                except Exception:
-                    m_list = [m.strip() for m in str(cm.model_numbers).split(",") if m.strip()]
-                if appliance.model_no.strip() in m_list or cm.appliance_name.lower() in (raw_name.lower()):
-                    found_name = cm.appliance_name
-                    break
-            if not found_name and cat_match:
-                for cm in cat_match:
-                    if cm.appliance_name and not is_generic_name(cm.appliance_name, appliance.brand, appliance.category):
-                        found_name = cm.appliance_name
-                        break
-            if found_name:
-                app_name = found_name
-            elif appliance.category and appliance.category.strip().lower() != "other":
-                app_name = f"{appliance.brand.strip()} {appliance.category.strip()}"
-            else:
-                app_name = f"{appliance.brand.strip()} Appliance"
+            app_name = f"{appliance.brand.strip()} Appliance"
 
     # Identify company
     company_id = None
@@ -1007,6 +1009,20 @@ def create_request(payload: ServiceBookingCreate, request: Request, db: Session 
             else:
                 is_warranty = True
 
+    req_visiting_charge = 299.0
+    req_is_visiting_charge_tax_inclusive = True
+    if matched_catalog_item:
+        if matched_catalog_item.visiting_charge is not None:
+            req_visiting_charge = float(matched_catalog_item.visiting_charge)
+        if matched_catalog_item.is_visiting_charge_tax_inclusive is not None:
+            req_is_visiting_charge_tax_inclusive = bool(matched_catalog_item.is_visiting_charge_tax_inclusive)
+    elif company_id:
+        first_cat = db.query(CompanyApplianceCatalogModel).filter(CompanyApplianceCatalogModel.company_id == company_id).first()
+        if first_cat and first_cat.visiting_charge is not None:
+            req_visiting_charge = float(first_cat.visiting_charge)
+            if first_cat.is_visiting_charge_tax_inclusive is not None:
+                req_is_visiting_charge_tax_inclusive = bool(first_cat.is_visiting_charge_tax_inclusive)
+
     new_req = ServiceRequestModel(
         id=new_id,
         customer_id=user.id,
@@ -1041,6 +1057,8 @@ def create_request(payload: ServiceBookingCreate, request: Request, db: Session 
         completion_otp=completion_otp_code,
         is_reopened=False,
         is_under_warranty=is_warranty,
+        visiting_charge=req_visiting_charge,
+        is_visiting_charge_tax_inclusive=req_is_visiting_charge_tax_inclusive,
         payment_status="Pending",
         timeline_json=json.dumps(initial_timeline)
     )

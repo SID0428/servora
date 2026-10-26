@@ -190,6 +190,8 @@ class ServiceRequestModel(Base):
     distance_km = Column(Float, nullable=True)
     slot_applicable = Column(Boolean, nullable=True, default=True)
     outstation_note = Column(String(256), nullable=True)
+    visiting_charge = Column(Float, nullable=True, default=299.0)
+    is_visiting_charge_tax_inclusive = Column(Boolean, nullable=True, default=True)
 
 class JobCardModel(Base):
     __tablename__ = "job_cards"
@@ -411,6 +413,8 @@ class CompanyApplianceCatalogModel(Base):
     category = Column(String(64), nullable=False)
     model_numbers = Column(Text, nullable=False) # JSON-encoded list of model strings
     warranty_months = Column(Integer, default=12, nullable=False)
+    visiting_charge = Column(Float, default=299.0, nullable=False)
+    is_visiting_charge_tax_inclusive = Column(Boolean, default=True, nullable=False)
     description = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 

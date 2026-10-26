@@ -492,22 +492,39 @@ def create_part_request(
     if not company_id:
         raise HTTPException(status_code=400, detail="Parent company could not be resolved for this branch")
 
-    req_obj = PartRequestModel(
-        id=f"REQ-{uuid.uuid4().hex[:8].upper()}",
-        company_id=company_id,
-        branch_id=branch.id,
-        part_id=part.id,
-        quantity=payload.quantity,
-        status="Pending",
-        notes=payload.notes,
-        requested_by=f"{user.name} ({branch.branch_name})",
-        request_id=payload.request_id,
-        technician_id=payload.technician_id or (user.id if user.role == "technician" else None),
-        technician_name=payload.technician_name or (user.name if user.role == "technician" else None),
-        stock_status_at_request=payload.stock_status_at_request or "in_stock",
-        created_at=datetime.utcnow()
-    )
-    db.add(req_obj)
+    # Check if a pending requisition already exists for this service request and part
+    existing_req = None
+    if payload.request_id:
+        existing_req = db.query(PartRequestModel).filter(
+            PartRequestModel.request_id == payload.request_id,
+            PartRequestModel.part_id == part.id,
+            PartRequestModel.status == "Pending"
+        ).first()
+
+    if existing_req:
+        req_obj = existing_req
+        req_obj.quantity = payload.quantity
+        if payload.notes:
+            req_obj.notes = payload.notes
+        if payload.stock_status_at_request:
+            req_obj.stock_status_at_request = payload.stock_status_at_request
+    else:
+        req_obj = PartRequestModel(
+            id=f"REQ-{uuid.uuid4().hex[:8].upper()}",
+            company_id=company_id,
+            branch_id=branch.id,
+            part_id=part.id,
+            quantity=payload.quantity,
+            status="Pending",
+            notes=payload.notes,
+            requested_by=f"{user.name} ({branch.branch_name})",
+            request_id=payload.request_id,
+            technician_id=payload.technician_id or (user.id if user.role == "technician" else None),
+            technician_name=payload.technician_name or (user.name if user.role == "technician" else None),
+            stock_status_at_request=payload.stock_status_at_request or "in_stock",
+            created_at=datetime.utcnow()
+        )
+        db.add(req_obj)
 
     # If linked to a service request, update service request state if out of stock
     if payload.request_id:
@@ -575,7 +592,10 @@ def list_part_requests(
             or_(
                 PartRequestModel.company_id == user.id,
                 PartRequestModel.branch_id.in_(comp_branch_ids)
-            )
+            ),
+            # Technician requests are sent to franchise only, never to company
+            PartRequestModel.technician_id.is_(None),
+            PartRequestModel.request_id.is_(None)
         )
     elif user.role in ("branch", "franchise"):
         branch = db.query(CompanyBranchModel).filter(

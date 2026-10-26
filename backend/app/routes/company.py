@@ -833,6 +833,8 @@ def list_company_appliances(request: Request, db: Session = Depends(get_db)):
             "category": app.category,
             "model_numbers": models,
             "warranty_months": app.warranty_months,
+            "visiting_charge": app.visiting_charge if app.visiting_charge is not None else 299.0,
+            "is_visiting_charge_tax_inclusive": app.is_visiting_charge_tax_inclusive if app.is_visiting_charge_tax_inclusive is not None else True,
             "description": app.description,
             "created_at": app.created_at.isoformat() if app.created_at else None,
         })
@@ -852,6 +854,9 @@ def add_company_appliance(payload: CompanyApplianceCreate, request: Request, db:
     if not cleaned_models:
         raise HTTPException(status_code=422, detail="At least one model number is required")
 
+    vc = float(payload.visiting_charge) if payload.visiting_charge is not None else 299.0
+    vc_tax_inc = True if payload.is_visiting_charge_tax_inclusive is None else bool(payload.is_visiting_charge_tax_inclusive)
+
     new_item = CompanyApplianceCatalogModel(
         id=f"capp_{uuid4().hex[:10]}",
         company_id=company.id,
@@ -860,6 +865,8 @@ def add_company_appliance(payload: CompanyApplianceCreate, request: Request, db:
         category=payload.category.strip(),
         model_numbers=json.dumps(cleaned_models),
         warranty_months=payload.warranty_months or 12,
+        visiting_charge=vc,
+        is_visiting_charge_tax_inclusive=vc_tax_inc,
         description=(payload.description or "").strip() or None,
         created_at=datetime.utcnow()
     )
@@ -875,6 +882,8 @@ def add_company_appliance(payload: CompanyApplianceCreate, request: Request, db:
         "category": new_item.category,
         "model_numbers": cleaned_models,
         "warranty_months": new_item.warranty_months,
+        "visiting_charge": new_item.visiting_charge,
+        "is_visiting_charge_tax_inclusive": new_item.is_visiting_charge_tax_inclusive,
         "description": new_item.description,
         "created_at": new_item.created_at.isoformat(),
     }
@@ -909,6 +918,10 @@ def update_company_appliance(
     item.category = payload.category.strip()
     item.model_numbers = json.dumps(cleaned_models)
     item.warranty_months = payload.warranty_months or 12
+    if payload.visiting_charge is not None:
+        item.visiting_charge = float(payload.visiting_charge)
+    if payload.is_visiting_charge_tax_inclusive is not None:
+        item.is_visiting_charge_tax_inclusive = bool(payload.is_visiting_charge_tax_inclusive)
     item.description = (payload.description or "").strip() or None
 
     db.commit()
@@ -922,6 +935,8 @@ def update_company_appliance(
         "category": item.category,
         "model_numbers": cleaned_models,
         "warranty_months": item.warranty_months,
+        "visiting_charge": item.visiting_charge,
+        "is_visiting_charge_tax_inclusive": item.is_visiting_charge_tax_inclusive,
         "description": item.description,
         "created_at": item.created_at.isoformat() if item.created_at else None,
     }

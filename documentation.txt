@@ -4,8 +4,8 @@ PRODUCTION-GRADE TECHNICAL ARCHITECTURE & DEVELOPER ONBOARDING MANUAL
 ================================================================================
 File: documentation.txt
 Platform: ServSure (formerly Servora)
-Version: 1.9.5 (Production Release - Appliance Display Name Resolution & Estimate Approval Error Formatting Fix)
-Last Updated: October 26, 2026 (22:50 IST)
+Version: 1.9.6 (Production Release - Technician Requisition Isolation to Franchise & Estimate Duplicate Prevention)
+Last Updated: October 26, 2026 (23:18 IST)
 Repository: https://github.com/SID0428/servora.git
 
 Welcome to ServSure! This manual is the definitive, authoritative reference
@@ -1912,6 +1912,81 @@ were identified between the initial rough draft documentation and the actual cod
      4. Foreign Key & Hierarchy Safety in Estimate Responses (`backend/app/routes/estimates.py`):
         - Handled custom technician parts safely by registering them into `SparePartModel` if missing so `part_requests.part_id` foreign keys succeed.
         - Ensured company and branch IDs resolve safely across `UserModel` and `CompanyBranchModel`.
+42. ARCHITECTURE FIX: Technician Part Requisition Isolation to Franchise & Estimate Duplicate Prevention
+   - Problem Statement & Root Cause:
+     1. In Company Dashboard ("Company Inventory & Spares" -> "Franchise Requisitions"), 1-unit technician repair requests (e.g. for Ram on ticket #SR-9929) were appearing with a "Send Part ->" button.
+        - Root Cause: In `backend/app/routes/inventory.py:list_part_requests`, when `user.role == "company"`, the endpoint returned all `PartRequestModel` records under company branches without checking if the request was an individual technician ticket requisition (`technician_id` / `request_id`). Technician requests belong strictly to the technician's franchise branch warehouse for fulfillment/serial allocation, not to the central company OEM.
+     2. In Franchise Dashboard ("Franchise Inventory & Spares" -> "OEM Orders"), the same technician requisitions were appearing as "Awaiting OEM Dispatch".
+        - Root Cause: In `frontend/js/ops-dashboard.js:renderFranchiseInventory`, the "OEM Orders" subtab rendered `franchisePartRequests` without filtering out technician ticket requisitions (`techReqs`), polluting OEM restock orders with doorstep ticket items.
+     3. Duplicate Part Requests (e.g. 6 requisitions showing instead of 3 after requesting once):
+        - Root Cause: When approving estimates or indenting parts, if `part_obj` was not matched by exact ID, a new `SparePartModel` record was created with a random UUID, bypassing the `existing_pr` query on `(request_id, part_id)`. Furthermore, frontend action buttons lacked debouncing locks (`isSubmitting` / `disabled`), allowing accidental double-clicks to trigger duplicate POST calls.
+   - Resolution:
+     1. Strict Technician Requisition Isolation to Franchise (`backend/app/routes/inventory.py`):
+        - In `list_part_requests`, when `user.role == "company"`, enforced `PartRequestModel.technician_id.is_(None)` and `PartRequestModel.request_id.is_(None)`. Technician requests are now sent to and visible only by the respective Franchise Branch.
+     2. Clean Portal Separation in Frontend (`frontend/js/ops-dashboard.js`):
+        - In Franchise Inventory (`renderFranchiseInventory`), cleanly split requests into `techReqsList` (`r.request_id || r.technician_name || r.technician_id`) and `oemOrdersList` (`!r.request_id && !r.technician_name && !r.technician_id`).
+        - Subtab 2 ("Tech Requisitions") exclusively renders `techReqsList`.
+        - Subtab 4 ("OEM Orders") exclusively renders `oemOrdersList`.
+        - In Company Inventory (`renderCompanyInventoryAndSpares`), filtered `franchiseOEMOrders` so the Company Portal exclusively sees branch restock orders and never technician doorstep requisitions.
+     3. Comprehensive Requisition Idempotency & Deduplication:
+        - In `backend/app/routes/estimates.py:respond_to_estimate`:
+          - Added an `already_approved` guard: if the estimate is already approved, returns immediately without creating redundant part requests.
+          - Reuses existing parts in `SparePartModel` matching `part_code` or `name` before generating new custom spare parts.
+          - Checks for existing `PartRequestModel` records by `part_db_id` OR `(request_id, part_code / part_name)`.
+        - In `backend/app/routes/inventory.py:create_part_request`:
+          - Added check: if a pending requisition already exists for `(payload.request_id, part.id)`, updates the existing requisition instead of inserting a duplicate.
+        - In `frontend/js/dashboard.js` (`respondToCustomerEstimate`) and `frontend/js/ops-dashboard.js` (`submitTechEstimate`, `techIndentBrandPart`):
+          - Added `isRespondingEstimate` / `isSubmittingEstimate` / `isIndentingBrandPart` execution guards and disabled submit buttons during in-flight network requests.
+     4. Database Auto-Cleanup Migration (`backend/app/seeds.py`):
+        - Added an automated cleanup loop in `seed_database()` that prunes duplicate pending `PartRequestModel` records sharing the same `(request_id, part)`.
+
+43. FEATURE & ARCHITECTURE FIX: Company Appliance Visiting Charge Configuration, Job Card Pre-Repair Labor Sync & Consumable Warranty Non-Coverage
+   - Problem Statement & Root Cause:
+     1. Consumable Parts (e.g. "gas refil") Mistakenly Shown as OEM Covered in Job Card:
+        - When a technician opened the Job Card modal (`openOpsJobCardModal`), allocated serialized parts were looped over:
+          `snParts.forEach(sp => addOpsPartRow(sp.part_name, 1, sp.unit_price || 0, req.is_under_warranty, "", sp.serial_number));`
+        - It passed `req.is_under_warranty` (`true`) as the 4th argument, overriding the consumable check in `addOpsPartRow`. Even though `gas refil` is a non-functional consumable item excluded from warranty, the Job Card forced it to `🛡️ OEM Covered (₹0)`.
+     2. Job Card Missing Labor & Inspection Charges From Approved Pre-Repair Estimate:
+        - `openOpsJobCardModal` unconditionally reset labor to `req.is_under_warranty ? "0" : "350"`, completely ignoring the customer's approved pre-repair estimate (`estData.labor_estimate` and `estData.inspection_fee`).
+        - In `recalculateOpsJobCardTotals`, `customerLabor` checked `(isReqWarranty && coveredPartsTotal > 0 && customerPartsTotal === 0) ? 0.0 : rawLabor`. Because gas was erroneously flagged as covered, `customerPartsTotal` was 0, triggering the labor waiver even though gas and labor were customer-payable in the estimate.
+     3. Company Portal Missing Labour Visiting / Inspection Charge Settings:
+        - Companies had no mechanism in Company Portal -> Appliance Catalog to configure standard visiting/inspection charges or declare whether GST is tax-inclusive or tax-exclusive (+18% GST extra).
+   - Resolution:
+     1. Company Appliance Catalog Visiting Charge & Tax Configuration:
+        - Database Models (`backend/app/db/models.py`):
+          - Added `visiting_charge` (Float, default 299.0) and `is_visiting_charge_tax_inclusive` (Boolean, default True) to `CompanyApplianceCatalogModel` and `ServiceRequestModel`.
+        - Migration (`backend/app/seeds.py`):
+          - Added dynamic table column inspection and SQLite `ALTER TABLE` migrations for `visiting_charge` and `is_visiting_charge_tax_inclusive` on both `company_appliances` and `service_requests`.
+        - Pydantic Schemas (`backend/app/schemas/__init__.py`):
+          - Updated `CompanyApplianceCreate`, `CompanyApplianceResponse`, and `ServiceRequestDetail` to include `visiting_charge` and `is_visiting_charge_tax_inclusive`.
+        - Company Endpoints (`backend/app/routes/company.py`):
+          - `GET`, `POST`, and `PUT /api/company/appliances` accept and return visiting charge and tax mode.
+     2. Automatic Service Request & Pre-Repair Estimate Stamping:
+        - Booking Route (`backend/app/routes/requests.py`):
+          - `create_request` identifies the matching `CompanyApplianceCatalogModel` and stamps the company's `visiting_charge` and `is_visiting_charge_tax_inclusive` directly onto the `ServiceRequestModel`.
+          - `format_request_detail` exposes both fields.
+        - Estimate Route (`backend/app/routes/estimates.py`):
+          - `create_or_update_estimate` defaults inspection fee to `req.visiting_charge` (fallback to 299.0).
+     3. Strict Consumable Warranty Non-Coverage Protection:
+        - In `frontend/js/ops-dashboard.js`:
+          - Updated `anyConsumable` to include `"refil"` alongside `"refill"`, `"gas"`, `"refrigerant"`, etc.
+          - In `addOpsPartRow`, enforced that if `anyConsumable(name)` is true, `isCovered` is strictly set to `false` (`💵 Billable (Consumable)`), regardless of appliance warranty status.
+          - In `submitOpsJobCard`, guaranteed that consumable parts have `is_covered = false` and `coverage_type = "CUSTOMER_PAYABLE"`.
+     4. Job Card Pre-Repair Estimate Synchronization:
+        - In `openOpsJobCardModal`:
+          - Asynchronously fetches `${API_BASE_URL}/api/requests/${requestId}/estimate`.
+          - Inherits pre-repair approved labor and diagnostic fee into `opsJcLaborCost`:
+            `inheritedLabor = (estData.labor_estimate || 0) + (estData.inspection_fee || 0);`
+          - When allocating serialized parts in Job Card, matches parts against `estData.parts` to carry over exact unit prices and coverage status, ensuring consumables remain customer-billable.
+          - Updated `recalculateOpsJobCardTotals` so labor is not waived when customer-billable parts or explicit labor charges exist.
+     5. Company Portal UI Enhancements:
+        - `frontend/company-dashboard.html`:
+          - In `companyApplianceDialog`, added inputs for "Labour visiting charge (₹)" and "Tax configuration" (`Included in Visiting Fee` vs `Excluded (+18% GST Extra)`).
+          - In `applianceDetailsDialog`, added a badge displaying the visiting charge and tax mode.
+        - `frontend/js/ops-dashboard.js`:
+          - Added "Visiting Fee" column to `renderCompanyAppliances` table with tax indicator badge.
+          - Pre-populates and submits visiting charge in appliance dialogs.
+          - In `openTechEstimateModal`, displays the ticket's visiting charge and tax specification.
 
 ==================================================
 End of Documentation

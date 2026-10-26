@@ -256,7 +256,9 @@ def create_or_update_estimate(
         inspection_fee = 0.0
         labor_estimate = 0.0 if covered_parts_total > 0 and customer_parts_total == 0 else round(payload.labor_estimate, 2)
     else:
-        inspection_fee = payload.inspection_fee if payload.inspection_fee is not None else 299.0
+        req_visiting = getattr(req, "visiting_charge", None)
+        default_inspect = float(req_visiting) if req_visiting is not None else 299.0
+        inspection_fee = float(payload.inspection_fee) if payload.inspection_fee is not None else default_inspect
         labor_estimate = round(payload.labor_estimate, 2)
 
     total_estimate = round(customer_parts_total + labor_estimate + inspection_fee, 2)
@@ -347,9 +349,16 @@ def respond_to_estimate(
     timeline = json.loads(req.timeline_json) if req.timeline_json else []
 
     if payload.action == "approve":
+        already_approved = (est.status == "approved")
         est.status = "approved"
         est.customer_remarks = payload.remarks or "Approved by customer"
         est.responded_at = now_str
+
+        if already_approved:
+            # Estimate already authorized; preserve existing workflow state without duplicating part requests
+            db.commit()
+            db.refresh(est)
+            return format_estimate(est)
 
         # Parse parts from estimate
         parts_list = json.loads(est.parts_json) if est.parts_json else []
@@ -429,20 +438,36 @@ def respond_to_estimate(
                 comp_id = valid_company.id if valid_company else None
 
                 if not part_obj:
-                    # Create custom spare part record so FK constraint passes
-                    custom_code = (part_code or f"PART-{uuid.uuid4().hex[:6].upper()}").strip().upper()
-                    part_obj = SparePartModel(
-                        id=f"part_{uuid.uuid4().hex[:8]}",
-                        part_code=custom_code,
-                        name=part_name or "Custom Spare Part",
-                        category=req.appliance_name or "General",
-                        brand=req.brand or "Universal",
-                        unit_price=float(p.get("unit_price", 0.0) or 0.0),
-                        company_id=comp_id,
-                        is_active=True
-                    )
-                    db.add(part_obj)
-                    db.flush()
+                    # Check if a custom spare part with this part_code or name already exists in SparePartModel
+                    existing_part = None
+                    if part_code:
+                        existing_part = db.query(SparePartModel).filter(
+                            SparePartModel.part_code.ilike(part_code.strip()),
+                            or_(SparePartModel.company_id == comp_id, SparePartModel.company_id.is_(None))
+                        ).first()
+                    if not existing_part and part_name:
+                        existing_part = db.query(SparePartModel).filter(
+                            SparePartModel.name.ilike(part_name.strip()),
+                            or_(SparePartModel.company_id == comp_id, SparePartModel.company_id.is_(None))
+                        ).first()
+
+                    if existing_part:
+                        part_obj = existing_part
+                    else:
+                        # Create custom spare part record so FK constraint passes
+                        custom_code = (part_code or f"PART-{uuid.uuid4().hex[:6].upper()}").strip().upper()
+                        part_obj = SparePartModel(
+                            id=f"part_{uuid.uuid4().hex[:8]}",
+                            part_code=custom_code,
+                            name=part_name or "Custom Spare Part",
+                            category=req.appliance_name or "General",
+                            brand=req.brand or "Universal",
+                            unit_price=float(p.get("unit_price", 0.0) or 0.0),
+                            company_id=comp_id,
+                            is_active=True
+                        )
+                        db.add(part_obj)
+                        db.flush()
 
                 part_db_id = part_obj.id
 
@@ -457,10 +482,22 @@ def respond_to_estimate(
                     req.branch_id = branch_id
 
                 if comp_id and branch_id and part_db_id:
+                    # Deduplication: check by exact part_id OR by matching part_code / part_name on this service ticket
                     existing_pr = db.query(PartRequestModel).filter(
                         PartRequestModel.request_id == req.id,
                         PartRequestModel.part_id == part_db_id
                     ).first()
+
+                    if not existing_pr and (part_code or part_name):
+                        existing_pr = db.query(PartRequestModel).join(
+                            SparePartModel, PartRequestModel.part_id == SparePartModel.id
+                        ).filter(
+                            PartRequestModel.request_id == req.id,
+                            or_(
+                                SparePartModel.part_code.ilike((part_code or "").strip()),
+                                SparePartModel.name.ilike((part_name or "").strip())
+                            )
+                        ).first()
 
                     if not existing_pr:
                         pr = PartRequestModel(
