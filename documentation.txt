@@ -4,8 +4,8 @@ PRODUCTION-GRADE TECHNICAL ARCHITECTURE & DEVELOPER ONBOARDING MANUAL
 ================================================================================
 File: documentation.txt
 Platform: ServSure (formerly Servora)
-Version: 1.9.2 (Production Release - Escalation Table Flashing Fix & Franchise Inventory Brand Isolation)
-Last Updated: October 26, 2026 (00:50 IST)
+Version: 1.9.3 (Production Release - Technician Pre-Repair Gate Company Parts Dropdown & Automated Warranty Evaluation)
+Last Updated: October 26, 2026 (21:50 IST)
 Repository: https://github.com/SID0428/servora.git
 
 Welcome to ServSure! This manual is the definitive, authoritative reference
@@ -891,10 +891,15 @@ Request Headers:
 - `GET /api/warranty-amc/plans`: List available Annual Maintenance Contract (AMC) plans.
 - `POST /api/warranty-amc/subscriptions`: Customer subscribes appliance to AMC coverage.
 
-5.10. Repair Estimates & Approvals (`/api/estimates`)
+5.10. Repair Estimates & Approvals (`/api/estimates` & `/api/requests`)
 -----------------------------------------------------
 - `GET /api/estimates`: List repair estimates for tickets.
-- `POST /api/estimates`: Technician or franchise creates digital quote for parts and labor.
+- `GET /api/requests/{request_id}/estimate`: Get existing repair estimate for a ticket.
+- `GET /api/requests/{request_id}/estimate/parts-catalog`:
+  - Returns parts catalog registered with the ticket's company (`SparePartModel.company_id == company_id`).
+  - Evaluates each part against the customer's specific appliance warranty status (`evaluate_part_warranty_status`).
+  - Returns: `{ "request_id", "company_id", "company_name", "appliance_name", "brand", "is_under_warranty", "parts": [{ "id", "part_code", "name", "category", "unit_price", "is_covered", "coverage_type", "coverage_reason" }] }`.
+- `POST /api/requests/{request_id}/estimate`: Technician or franchise creates digital quote for parts and labor.
 - `POST /api/requests/{request_id}/estimate/respond`:
   - Body: `{ "action": "approve" | "reject", "customer_notes": "..." }`
   - When customer approves an estimate containing replacement spare parts:
@@ -1843,7 +1848,33 @@ were identified between the initial rough draft documentation and the actual cod
         - In `get_branch_inventory`: strictly filtered inventory items by `SparePartModel.company_id == branch.company_id`.
         - In `list_serialized_parts`: strictly filtered serialized items by `SparePartModel.company_id == branch.company_id`.
         - In `get_branch_details` (`company.py`): filtered warehouse inventory and transaction movements by `SparePartModel.company_id == branch.company_id`.
-        - Updated auto-seed fallback to only seed parts where `SparePartModel.company_id == branch.company_id`.
+39. FEATURE: Technician Pre-Repair Gate Company Parts Dropdown & Automated Warranty Coverage Determination
+   - Symptoms & User Request:
+     1. In the Pre-Repair Cost estimate modal ("Submit Customer Estimate" SRS 6.10), field technicians previously had to manually type
+        spare part names, part codes, and unit prices.
+     2. Technicians had to manually figure out and toggle whether each part was covered under warranty (`OEM Covered (₹0)`) or billable to the customer.
+     3. The user requested:
+        - "in pre repair cost in technician portal while adding part give a dropbox option of items registered with the company."
+        - "And automatically whether that part is covered under warranty or not for that customer."
+   - Resolution:
+     1. Backend Parts Catalog & Warranty Evaluation Endpoint (`backend/app/routes/estimates.py`):
+        - Implemented `GET /api/requests/{request_id}/estimate/parts-catalog`.
+        - Resolves `ServiceRequestModel`, `ApplianceModel`, and the ticket's company (`company_id`).
+        - Retrieves all active spare parts registered by that company (`SparePartModel.company_id == company_id`).
+        - Evaluates each part's warranty status using `evaluate_part_warranty_status(db_part, req, appliance, is_comprehensive_active, db)`:
+          - Consumables and wear & tear parts (`part_type == "consumable"` or non-warranty eligible) are marked `is_covered: false` ("Consumable / Wear & Tear (Excluded from Warranty)").
+          - Functional parts within active warranty window are marked `is_covered: true` ("Covered under Comprehensive Warranty").
+          - Extended component tags (e.g. 5-year compressor, motor, pcb) are checked against appliance purchase date and matched policy component maps.
+        - Returns each part with `id`, `part_code`, `name`, `unit_price`, `is_covered`, `coverage_type`, and `coverage_reason`.
+     2. Fix in `create_or_update_estimate` (`backend/app/routes/estimates.py`):
+        - Scoped `db_part` outside of `if is_covered is None:` block to prevent an `UnboundLocalError` when estimates with pre-determined coverage are saved.
+     3. Universal Technician Part Lookups (`backend/app/routes/inventory.py`):
+        - In `GET /api/inventory/parts`, ensured technicians can query parts by `company_id` parameter.
+     4. Pre-Repair Gate Modal Frontend Integration (`frontend/js/ops-dashboard.js`):
+        - In `openTechEstimateModal(requestId)`, asynchronously loads `GET /api/requests/${requestId}/estimate/parts-catalog` in parallel with existing estimate data.
+        - In `addTechEstimatePartRow()`, renders a company parts dropdown (`📦 Choose part registered with company...`) for every part row, with options showing `${p.name} (${p.part_code}) — ₹${p.unit_price} · [${p.is_covered ? '🛡️ Covered' : '💵 Billable'}]`.
+        - Added `window.onTechEstimatePartSelect(selectEl)` handler: selecting a part automatically populates `Part name`, `Code`, `Unit Price`, sets the coverage select to `🛡️ OEM Covered (₹0)` or `💵 Billable`, displays the exact warranty explanation badge (`✓ Covered under Comprehensive Warranty` / `ℹ️ Consumable`), and updates billable totals.
+        - Provides a `✏️ Custom / Other Part (Enter manually)` option so technicians can still enter non-catalog parts when needed.
 
 ==================================================
 End of Documentation

@@ -9053,6 +9053,7 @@ window.runManualSlaScan = async function() {
 // Pre-Repair Technician Estimate Gate (SRS 6.10)
 // ==========================================
 let currentEstimateRequestId = null;
+let currentTechEstimatePartsCatalog = [];
 
 window.openTechEstimateModal = async function(requestId) {
   const req = requests.find(r => r.id === requestId);
@@ -9060,13 +9061,27 @@ window.openTechEstimateModal = async function(requestId) {
   currentEstimateRequestId = requestId;
 
   let existingEst = null;
+  let catalogParts = [];
+
   try {
-    const res = await fetch(`${API_BASE_URL}/api/requests/${requestId}/estimate`, {
-      headers: jsonHeaders(),
-      credentials: "include"
-    });
-    if (res.ok) existingEst = await res.json();
+    const [estRes, catRes] = await Promise.all([
+      fetch(`${API_BASE_URL}/api/requests/${requestId}/estimate`, {
+        headers: jsonHeaders(),
+        credentials: "include"
+      }),
+      fetch(`${API_BASE_URL}/api/requests/${encodeURIComponent(requestId)}/estimate/parts-catalog`, {
+        headers: jsonHeaders(),
+        credentials: "include"
+      })
+    ]);
+    if (estRes.ok) existingEst = await estRes.json();
+    if (catRes.ok) {
+      const catData = await catRes.json();
+      catalogParts = catData.parts || [];
+    }
   } catch (e) {}
+
+  currentTechEstimatePartsCatalog = catalogParts;
 
   let modal = $("techEstimateModal");
   if (!modal) {
@@ -9082,13 +9097,13 @@ window.openTechEstimateModal = async function(requestId) {
         <div>
           <span class="text-[10px] font-bold uppercase tracking-wider text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">Pre-Repair Gate (SRS 6.10)</span>
           <h3 class="text-lg font-bold text-slate-900 mt-1">Submit Customer Estimate</h3>
-          <p class="text-xs text-slate-500">Service Request #${safe(req.id)} · ${safe(req.customer_name)}</p>
+          <p class="text-xs text-slate-500">Service Request #${safe(req.id)} · ${safe(req.customer_name)} (${safe(req.brand || 'Appliance')})</p>
         </div>
         <button type="button" onclick="document.getElementById('techEstimateModal').close()" class="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center font-bold text-sm">✕</button>
       </div>
 
       <p class="text-xs text-slate-600">
-        Before replacing parts or starting repairs, submit an itemized estimate. The customer must approve the cost on their phone before repair commences.
+        Before replacing parts or starting repairs, select from company catalog or enter parts to submit an estimate. Warranty coverage is auto-evaluated based on the customer's warranty status.
       </p>
 
       <div class="space-y-2">
@@ -9098,7 +9113,7 @@ window.openTechEstimateModal = async function(requestId) {
             + Add Spare Part
           </button>
         </div>
-        <div id="techEstPartsContainer" class="space-y-2"></div>
+        <div id="techEstPartsContainer" class="space-y-2.5"></div>
       </div>
 
       <div class="grid grid-cols-2 gap-3 pt-2">
@@ -9134,37 +9149,130 @@ window.openTechEstimateModal = async function(requestId) {
   modal.showModal();
 
   if (existingEst?.parts && existingEst.parts.length > 0) {
-    existingEst.parts.forEach(p => window.addTechEstimatePartRow(p.part_name, p.part_code, p.quantity, p.unit_price, p.is_covered));
+    existingEst.parts.forEach(p => window.addTechEstimatePartRow(p.part_name, p.part_code, p.quantity, p.unit_price, p.is_covered, p.non_coverage_reason));
   } else {
-    window.addTechEstimatePartRow("Thermostat / Sensor", "PART-STD-01", 1, 450, req.is_under_warranty);
+    window.addTechEstimatePartRow("", "", 1, 0, null, "");
   }
   window.calcTechEstimateTotal();
 };
 
-window.addTechEstimatePartRow = function(name = "", code = "", qty = 1, price = 0, isCovered = null) {
+window.addTechEstimatePartRow = function(name = "", code = "", qty = 1, price = 0, isCovered = null, coverageReason = "") {
   const container = $("techEstPartsContainer");
   if (!container) return;
 
   const req = requests.find(r => r.id === currentEstimateRequestId);
-  if (isCovered === null) {
+  const catalog = currentTechEstimatePartsCatalog || [];
+
+  let matchedPart = null;
+  if (code || name) {
+    matchedPart = catalog.find(p => (code && p.part_code === code) || (name && p.name.toLowerCase() === name.toLowerCase()));
+  }
+
+  if (matchedPart) {
+    if (isCovered === null) isCovered = matchedPart.is_covered;
+    if (!coverageReason) coverageReason = matchedPart.coverage_reason;
+  } else if (isCovered === null) {
     const isConsumable = anyConsumable(name);
     isCovered = Boolean(req?.is_under_warranty) && !isConsumable;
   }
 
   const row = document.createElement("div");
-  row.className = "flex flex-col sm:flex-row sm:items-center gap-2 bg-slate-50 p-2 rounded-xl border border-slate-200 text-xs part-row";
+  row.className = "part-row bg-slate-50 p-2.5 rounded-2xl border border-slate-200 text-xs space-y-2";
+
+  const catalogOptions = catalog.map(p => {
+    const isSel = matchedPart && matchedPart.id === p.id;
+    const covLabel = p.is_covered ? "🛡️ OEM Covered (₹0)" : "💵 Billable";
+    return `<option value="${safe(p.id)}" data-name="${safe(p.name)}" data-code="${safe(p.part_code)}" data-price="${p.unit_price}" data-covered="${p.is_covered ? 'true' : 'false'}" data-reason="${safe(p.coverage_reason || '')}" ${isSel ? 'selected' : ''}>${safe(p.name)} (${safe(p.part_code)}) — ₹${p.unit_price} · [${covLabel}]</option>`;
+  }).join("");
+
+  const badgeText = coverageReason || (isCovered ? "Covered under Comprehensive Warranty" : (anyConsumable(name) ? "Consumable / Wear & Tear" : "Billable part"));
+  const badgeColor = isCovered ? "text-emerald-700 font-semibold" : "text-amber-800 font-medium";
+  const badgeIcon = isCovered ? "🛡️" : "ℹ️";
+
   row.innerHTML = `
-    <input type="text" placeholder="Part name" class="flex-1 rounded-lg border border-slate-200 p-1.5 text-xs text-slate-800 est-part-name" value="${safe(name)}" onblur="window.checkEstPartConsumable(this)">
-    <input type="text" placeholder="Code" class="w-20 rounded-lg border border-slate-200 p-1.5 text-xs text-slate-800 est-part-code" value="${safe(code)}">
-    <input type="number" min="1" placeholder="Qty" class="w-14 rounded-lg border border-slate-200 p-1.5 text-xs text-center est-part-qty" value="${qty}" oninput="window.calcTechEstimateTotal()">
-    <input type="number" min="0" placeholder="Price" class="w-20 rounded-lg border border-slate-200 p-1.5 text-xs text-right est-part-price" value="${price}" oninput="window.calcTechEstimateTotal()">
-    <select class="est-part-covered rounded-lg border border-slate-200 p-1.5 text-[11px] bg-white font-medium ${isCovered ? 'text-emerald-700' : 'text-slate-700'}" onchange="this.className = 'est-part-covered rounded-lg border border-slate-200 p-1.5 text-[11px] bg-white font-medium ' + (this.value === 'covered' ? 'text-emerald-700' : 'text-slate-700'); window.calcTechEstimateTotal();">
-      <option value="covered" ${isCovered ? "selected" : ""}>🛡️ OEM Covered (₹0)</option>
-      <option value="billable" ${!isCovered ? "selected" : ""}>💵 Billable (Consumable)</option>
-    </select>
-    <button type="button" onclick="this.closest('.part-row').remove(); window.calcTechEstimateTotal();" class="text-rose-500 hover:text-rose-700 font-bold px-2 py-1">✕</button>
+    <div class="flex items-center gap-2">
+      <div class="flex-1">
+        <select class="w-full rounded-xl border border-blue-200 bg-white p-2 text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 est-part-select" onchange="window.onTechEstimatePartSelect(this)">
+          <option value="">📦 Choose part registered with company (${catalog.length} available)...</option>
+          ${catalogOptions}
+          <option value="__custom__" ${(!matchedPart && (name || code)) ? 'selected' : ''}>✏️ Custom / Other Part (Enter manually)...</option>
+        </select>
+      </div>
+      <button type="button" onclick="this.closest('.part-row').remove(); window.calcTechEstimateTotal();" class="w-7 h-7 rounded-lg bg-rose-50 text-rose-600 hover:bg-rose-100 font-bold flex items-center justify-center shrink-0" title="Remove part">✕</button>
+    </div>
+    <div class="flex flex-wrap sm:flex-nowrap items-center gap-2">
+      <input type="text" placeholder="Part name" class="flex-1 min-w-[140px] rounded-lg border border-slate-200 p-1.5 text-xs text-slate-800 bg-white est-part-name" value="${safe(name)}" onblur="window.checkEstPartConsumable(this)">
+      <input type="text" placeholder="Code" class="w-24 rounded-lg border border-slate-200 p-1.5 text-xs text-slate-800 bg-white est-part-code" value="${safe(code)}">
+      <div class="flex items-center gap-1">
+        <span class="text-[11px] text-slate-400">Qty:</span>
+        <input type="number" min="1" placeholder="Qty" class="w-12 rounded-lg border border-slate-200 p-1.5 text-xs text-center bg-white est-part-qty" value="${qty}" oninput="window.calcTechEstimateTotal()">
+      </div>
+      <div class="flex items-center gap-1">
+        <span class="text-[11px] text-slate-400">₹:</span>
+        <input type="number" min="0" placeholder="Price" class="w-20 rounded-lg border border-slate-200 p-1.5 text-xs text-right bg-white est-part-price" value="${price}" oninput="window.calcTechEstimateTotal()">
+      </div>
+      <select class="est-part-covered rounded-lg border border-slate-200 p-1.5 text-[11px] bg-white font-medium ${isCovered ? 'text-emerald-700 font-bold' : 'text-slate-700'}" onchange="this.className = 'est-part-covered rounded-lg border border-slate-200 p-1.5 text-[11px] bg-white font-medium ' + (this.value === 'covered' ? 'text-emerald-700 font-bold' : 'text-slate-700'); window.calcTechEstimateTotal();">
+        <option value="covered" ${isCovered ? "selected" : ""}>🛡️ OEM Covered (₹0)</option>
+        <option value="billable" ${!isCovered ? "selected" : ""}>💵 Billable (Customer)</option>
+      </select>
+    </div>
+    <div class="est-part-badge text-[11px] ${badgeColor} flex items-center gap-1 px-1">
+      <span class="est-badge-icon">${badgeIcon}</span> <span class="est-badge-text">${safe(badgeText)}</span>
+    </div>
   `;
   container.appendChild(row);
+  window.calcTechEstimateTotal();
+};
+
+window.onTechEstimatePartSelect = function(selectEl) {
+  const row = selectEl.closest(".part-row");
+  if (!row) return;
+
+  const opt = selectEl.selectedOptions[0];
+  const val = selectEl.value;
+
+  const nameInput = row.querySelector(".est-part-name");
+  const codeInput = row.querySelector(".est-part-code");
+  const priceInput = row.querySelector(".est-part-price");
+  const coveredSelect = row.querySelector(".est-part-covered");
+  const badgeEl = row.querySelector(".est-part-badge");
+  const badgeIconEl = row.querySelector(".est-badge-icon");
+  const badgeTextEl = row.querySelector(".est-badge-text");
+
+  if (!val) {
+    return;
+  }
+
+  if (val === "__custom__") {
+    if (badgeEl && badgeTextEl && badgeIconEl) {
+      badgeEl.className = "est-part-badge text-[11px] text-slate-500 flex items-center gap-1 px-1";
+      badgeIconEl.textContent = "✏️";
+      badgeTextEl.textContent = "Custom spare part (manual entry)";
+    }
+    return;
+  }
+
+  const name = opt.dataset.name || "";
+  const code = opt.dataset.code || "";
+  const price = parseFloat(opt.dataset.price || 0);
+  const isCovered = opt.dataset.covered === "true";
+  const reason = opt.dataset.reason || (isCovered ? "Covered under Warranty" : "Billable item");
+
+  if (nameInput) nameInput.value = name;
+  if (codeInput) codeInput.value = code;
+  if (priceInput) priceInput.value = price;
+
+  if (coveredSelect) {
+    coveredSelect.value = isCovered ? "covered" : "billable";
+    coveredSelect.className = `est-part-covered rounded-lg border border-slate-200 p-1.5 text-[11px] bg-white font-medium ${isCovered ? 'text-emerald-700 font-bold' : 'text-slate-700'}`;
+  }
+
+  if (badgeEl && badgeTextEl && badgeIconEl) {
+    badgeEl.className = `est-part-badge text-[11px] ${isCovered ? 'text-emerald-700 font-semibold' : 'text-amber-800 font-medium'} flex items-center gap-1 px-1`;
+    badgeIconEl.textContent = isCovered ? "🛡️" : "ℹ️";
+    badgeTextEl.textContent = reason;
+  }
+
   window.calcTechEstimateTotal();
 };
 
@@ -9227,6 +9335,7 @@ window.submitTechEstimate = async function() {
     const qty = parseInt(row.querySelector(".est-part-qty")?.value || 1, 10);
     const price = parseFloat(row.querySelector(".est-part-price")?.value || 0);
     const isCovered = (row.querySelector(".est-part-covered")?.value === "covered");
+    const badgeText = row.querySelector(".est-badge-text")?.textContent.trim();
     if (name) {
       parts.push({
         part_name: name,
@@ -9235,8 +9344,8 @@ window.submitTechEstimate = async function() {
         unit_price: price,
         total_price: qty * price,
         is_covered: isCovered,
-        coverage_type: isCovered ? "OEM_WARRANTY" : "CUSTOMER_PAYABLE",
-        non_coverage_reason: isCovered ? null : (anyConsumable(name) ? "Consumable / Wear & Tear" : "Non-warranty item")
+        coverage_type: isCovered ? "oem_warranty" : "customer_billable",
+        non_coverage_reason: isCovered ? null : (badgeText || (anyConsumable(name) ? "Consumable / Wear & Tear" : "Non-warranty item"))
       });
     }
   });

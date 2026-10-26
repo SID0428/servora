@@ -45,6 +45,101 @@ def format_estimate(est: EstimateModel) -> EstimateResponse:
         responded_at=est.responded_at
     )
 
+@router.get("/{request_id}/estimate/parts-catalog")
+def get_estimate_parts_catalog(
+    request_id: str,
+    request: Request,
+    db: Session = Depends(get_db)
+):
+    user = get_authenticated_user(request, db)
+    req = db.query(ServiceRequestModel).filter(ServiceRequestModel.id == request_id).first()
+    if not req:
+        raise HTTPException(status_code=404, detail="Service request not found")
+
+    appliance = db.query(ApplianceModel).filter(ApplianceModel.id == req.appliance_id).first() if req.appliance_id else None
+
+    # Resolve company_id for this ticket
+    company_id = req.company_id or (appliance.company_id if appliance else None)
+    if not company_id and req.brand:
+        comp_user = db.query(UserModel).filter(
+            UserModel.role == "company",
+            or_(UserModel.name.ilike(f"%{req.brand}%"), UserModel.company_name.ilike(f"%{req.brand}%"))
+        ).first()
+        if comp_user:
+            company_id = comp_user.id
+
+    is_comprehensive_active = bool(getattr(req, "is_under_warranty", False))
+    if not is_comprehensive_active and appliance and appliance.warranty_status:
+        st = appliance.warranty_status.lower()
+        if "active" in st or "under" in st or "approved" in st:
+            if appliance.warranty_end_date:
+                try:
+                    for fmt in ("%d %b %Y", "%Y-%m-%d", "%d/%m/%Y"):
+                        try:
+                            end_dt = datetime.strptime(appliance.warranty_end_date.strip(), fmt).date()
+                            if datetime.now().date() <= end_dt:
+                                is_comprehensive_active = True
+                            break
+                        except ValueError:
+                            pass
+                except Exception:
+                    is_comprehensive_active = True
+            else:
+                is_comprehensive_active = True
+
+    query = db.query(SparePartModel).filter(SparePartModel.is_active == True)
+    if company_id:
+        query = query.filter(SparePartModel.company_id == company_id)
+    elif req.brand:
+        query = query.filter(SparePartModel.brand.ilike(f"%{req.brand}%"))
+    else:
+        query = query.filter(SparePartModel.company_id == "__none__")
+
+    parts = query.order_by(SparePartModel.name.asc()).all()
+
+    catalog = []
+    for p in parts:
+        is_cov, cov_type, reason = evaluate_part_warranty_status(
+            part_name=p.name,
+            part_code=p.part_code,
+            db_part=p,
+            req=req,
+            appliance=appliance,
+            is_comprehensive_active=is_comprehensive_active,
+            db=db
+        )
+        catalog.append({
+            "id": p.id,
+            "part_code": p.part_code,
+            "name": p.name,
+            "category": p.category,
+            "brand": p.brand,
+            "unit_price": p.unit_price,
+            "stock_quantity": getattr(p, "stock_quantity", 0) or 0,
+            "part_type": getattr(p, "part_type", "functional") or "functional",
+            "is_warranty_eligible": getattr(p, "is_warranty_eligible", True),
+            "warranty_component_type": getattr(p, "warranty_component_type", None),
+            "is_covered": bool(is_cov),
+            "coverage_type": cov_type,
+            "coverage_reason": reason
+        })
+
+    company_name = req.brand
+    if company_id:
+        c_user = db.query(UserModel).filter(UserModel.id == company_id).first()
+        if c_user:
+            company_name = c_user.name
+
+    return {
+        "request_id": req.id,
+        "company_id": company_id,
+        "company_name": company_name,
+        "appliance_name": req.appliance_name,
+        "brand": req.brand,
+        "is_under_warranty": is_comprehensive_active,
+        "parts": catalog
+    }
+
 @router.get("/{request_id}/estimate", response_model=EstimateResponse)
 def get_estimate(request_id: str, db: Session = Depends(get_db)):
     est = db.query(EstimateModel).filter(EstimateModel.request_id == request_id).first()
@@ -93,20 +188,20 @@ def create_or_update_estimate(
         cov_type = getattr(p, "coverage_type", None)
         reason = getattr(p, "non_coverage_reason", None)
 
-        if is_covered is None:
-            db_part = None
-            if getattr(p, "part_id", None):
-                db_part = db.query(SparePartModel).filter(SparePartModel.id == p.part_id).first()
-            if not db_part and getattr(p, "part_code", None):
-                req_comp_id = getattr(req, "company_id", None) or (appliance_rec.company_id if appliance_rec else None)
-                if req_comp_id:
-                    db_part = db.query(SparePartModel).filter(
-                        SparePartModel.part_code == p.part_code,
-                        or_(SparePartModel.company_id == req_comp_id, SparePartModel.company_id == None)
-                    ).first()
-                else:
-                    db_part = db.query(SparePartModel).filter(SparePartModel.part_code == p.part_code).first()
+        db_part = None
+        if getattr(p, "part_id", None):
+            db_part = db.query(SparePartModel).filter(SparePartModel.id == p.part_id).first()
+        if not db_part and getattr(p, "part_code", None):
+            req_comp_id = getattr(req, "company_id", None) or (appliance_rec.company_id if appliance_rec else None)
+            if req_comp_id:
+                db_part = db.query(SparePartModel).filter(
+                    SparePartModel.part_code == p.part_code,
+                    SparePartModel.company_id == req_comp_id
+                ).first()
+            else:
+                db_part = db.query(SparePartModel).filter(SparePartModel.part_code == p.part_code).first()
 
+        if is_covered is None:
             is_covered, cov_type, reason = evaluate_part_warranty_status(
                 part_name=p.part_name,
                 part_code=getattr(p, "part_code", None),

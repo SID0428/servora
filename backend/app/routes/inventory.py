@@ -56,16 +56,19 @@ def get_parts_catalog(
             else:
                 query = query.filter(SparePartModel.company_id == "__unassociated__")
         elif user.role == "technician":
-            tech = db.query(TechnicianModel).filter(TechnicianModel.id == user.id).first()
-            tech_company_id = getattr(tech, "company_id", None)
-            if not tech_company_id and getattr(tech, "branch_id", None):
-                b = db.query(CompanyBranchModel).filter(CompanyBranchModel.id == tech.branch_id).first()
-                if b and b.company_id:
-                    tech_company_id = b.company_id
-            if tech_company_id:
-                query = query.filter(SparePartModel.company_id == tech_company_id)
+            if company_id:
+                query = query.filter(SparePartModel.company_id == company_id)
             else:
-                query = query.filter(SparePartModel.company_id == "__unassociated__")
+                tech = db.query(TechnicianModel).filter(TechnicianModel.id == user.id).first()
+                tech_company_id = getattr(tech, "company_id", None)
+                if not tech_company_id and getattr(tech, "branch_id", None):
+                    b = db.query(CompanyBranchModel).filter(CompanyBranchModel.id == tech.branch_id).first()
+                    if b and b.company_id:
+                        tech_company_id = b.company_id
+                if tech_company_id:
+                    query = query.filter(SparePartModel.company_id == tech_company_id)
+                else:
+                    query = query.filter(SparePartModel.company_id == "__unassociated__")
         elif user.role == "admin" and company_id:
             query = query.filter(SparePartModel.company_id == company_id)
     elif company_id:
