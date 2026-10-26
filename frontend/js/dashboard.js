@@ -34,9 +34,34 @@ function readStoredUser() {
   }
 }
 
+function extractErrorMessage(errData, fallback = "Operation failed") {
+  if (!errData) return fallback;
+  if (typeof errData === "string") return errData === "[object Object]" ? fallback : errData;
+  const detail = errData.detail ?? errData.message ?? errData;
+  if (typeof detail === "string") return detail === "[object Object]" ? fallback : detail;
+  if (Array.isArray(detail)) {
+    return detail.map((item) => (typeof item === "object" ? (item.msg || item.message || JSON.stringify(item)) : String(item))).join("; ");
+  }
+  if (typeof detail === "object" && detail !== null) {
+    const msg = detail.msg || detail.message;
+    if (msg) return msg;
+    try {
+      const str = JSON.stringify(detail);
+      return str === "{}" ? fallback : str;
+    } catch {
+      return fallback;
+    }
+  }
+  const str = String(detail);
+  return str === "[object Object]" ? fallback : str;
+}
+
 function apiFetch(path, options = {}) {
   const storedUser = currentUser || readStoredUser();
   const headers = { ...(options.headers || {}) };
+  if (options.body && typeof options.body === "string" && !headers["Content-Type"] && !headers["content-type"]) {
+    headers["Content-Type"] = "application/json";
+  }
   if (storedUser?.session_token) {
     headers.Authorization = `Bearer ${storedUser.session_token}`;
   }
@@ -84,35 +109,91 @@ function resolveMediaUrl(url) {
   return `${base}${path}`;
 }
 
+function isGenericTitle(title, brand = "", category = "") {
+  if (!title) return true;
+  const t = title.toLowerCase().trim();
+  const b = (brand || "").toLowerCase().trim();
+  const c = (category || "").toLowerCase().trim();
+  if (t === "other" || t === "appliance" || t === "home appliance" || t === "service request" || t === "unknown") return true;
+  if (b && t === b) return true;
+  if (b && (t === `${b} other` || t.endsWith(" other"))) return true;
+  if (b && c && t === `${b} ${c}` && c === "other") return true;
+  return false;
+}
+
 function getApplianceDisplayName(appliance) {
   if (!appliance) return "Appliance";
   let appTitle = (appliance.appliance_name || "").trim();
   const bLower = (appliance.brand || "").trim().toLowerCase();
   const cLower = (appliance.category || "").trim().toLowerCase();
-  const isGeneric = !appTitle || [
-    `${bLower} ${cLower}`,
-    `${bLower} other`,
-    "other",
-    bLower
-  ].includes(appTitle.toLowerCase()) || appTitle.toLowerCase().endsWith(" other");
+  const isGeneric = isGenericTitle(appTitle, appliance.brand, appliance.category);
 
   if (isGeneric) {
     if (typeof currentCompanyCatalog !== "undefined" && currentCompanyCatalog?.appliances?.length) {
       const matchedCat = currentCompanyCatalog.appliances.find(
         (a) => (!a.brand || a.brand.toLowerCase() === bLower) && (a.category?.toLowerCase() === cLower || a.category?.toLowerCase() === "other")
-      );
-      if (matchedCat && matchedCat.appliance_name) {
+      ) || currentCompanyCatalog.appliances[0];
+      if (matchedCat && matchedCat.appliance_name && !isGenericTitle(matchedCat.appliance_name, appliance.brand, appliance.category)) {
         return matchedCat.appliance_name;
       }
     }
-    return appTitle || `${appliance.brand} ${appliance.category}`;
+    if (appliance.brand && appliance.category && appliance.category.toLowerCase() !== "other") {
+      return `${appliance.brand} ${appliance.category}`;
+    }
+    if (appliance.brand) {
+      return `${appliance.brand} Appliance`;
+    }
+    return "Home Appliance";
   }
   return appTitle;
+}
+
+function getRequestApplianceDisplayName(request) {
+  if (!request) return "Appliance";
+  let appName = (request.appliance_name || "").trim();
+  const brand = (request.brand || "").trim();
+  const category = (request.category || "").trim();
+
+  // 1. If request is linked to an appliance in userAppliances, check for non-generic display name
+  if (request.appliance_id && Array.isArray(userAppliances)) {
+    const matchedApp = userAppliances.find((a) => a.id === request.appliance_id);
+    if (matchedApp) {
+      const bestName = getApplianceDisplayName(matchedApp);
+      if (bestName && !isGenericTitle(bestName, matchedApp.brand, matchedApp.category)) {
+        return bestName;
+      }
+    }
+  }
+
+  // 2. If appliance_name is generic like "gelistra Other", "Other", etc.
+  if (isGenericTitle(appName, brand, category)) {
+    if (typeof currentCompanyCatalog !== "undefined" && currentCompanyCatalog?.appliances?.length) {
+      const bLower = brand.toLowerCase();
+      const matched = currentCompanyCatalog.appliances.find(
+        (a) => (!a.brand || a.brand.toLowerCase() === bLower) && (!a.category || a.category.toLowerCase() !== "other")
+      ) || currentCompanyCatalog.appliances[0];
+      if (matched && matched.appliance_name && !isGenericTitle(matched.appliance_name, brand, category)) {
+        return matched.appliance_name;
+      }
+    }
+    if (brand && category && category.toLowerCase() !== "other") {
+      return `${brand} ${category}`;
+    }
+    if (brand) {
+      return `${brand} Appliance`;
+    }
+    return "Home Appliance";
+  }
+
+  return appName || "Appliance";
 }
 
 function showToast(message, type = "info") {
   const container = $("toast-container");
   if (!container) return;
+  const safeMessage = typeof message === "string"
+    ? (message === "[object Object]" ? "An unexpected error occurred" : message)
+    : extractErrorMessage(message, "Notification");
   const toast = document.createElement("div");
   toast.className = `rounded-xl border px-4 py-3 text-sm font-medium shadow-lg transition-all duration-300 ${
     type === "error"
@@ -121,7 +202,7 @@ function showToast(message, type = "info") {
       ? "border-emerald-200 bg-emerald-50 text-emerald-800"
       : "border-slate-700 bg-slate-900 text-white"
   }`;
-  toast.textContent = message;
+  toast.textContent = safeMessage;
   container.append(toast);
   window.setTimeout(() => {
     toast.classList.add("opacity-0", "translate-y-1");
@@ -223,19 +304,6 @@ async function loadCurrentCustomer() {
   }
   currentUser = cachedUser;
   return true;
-}
-
-function extractErrorMessage(errData, fallback = "Operation failed") {
-  if (!errData) return fallback;
-  const detail = errData.detail ?? errData.message ?? errData;
-  if (typeof detail === "string") return detail;
-  if (Array.isArray(detail)) {
-    return detail.map((item) => (typeof item === "object" ? (item.msg || item.message || JSON.stringify(item)) : String(item))).join("; ");
-  }
-  if (typeof detail === "object") {
-    return detail.msg || detail.message || JSON.stringify(detail);
-  }
-  return String(detail);
 }
 
 async function readApiJson(path, options) {
@@ -928,12 +996,12 @@ function renderRequests() {
                   <div class="w-11 h-11 rounded-2xl bg-[#eff6ff] text-[#0066ff] flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
                     ${getApplianceSvg(
                       request.category || "",
-                      request.appliance_name || ""
+                      getRequestApplianceDisplayName(request)
                     )}
                   </div>
                   <div class="min-w-0">
                     <h3 class="font-display font-bold text-[15px] text-slate-900 truncate">
-                      ${escapeHtml(request.appliance_name || "Appliance")}
+                      ${escapeHtml(getRequestApplianceDisplayName(request))}
                     </h3>
                     <p class="text-xs text-slate-500 font-medium">
                       Request ID: <span class="font-semibold text-slate-700">${escapeHtml(
@@ -1003,7 +1071,7 @@ function renderRequests() {
           )}</td>
           <td class="max-w-[230px] px-4 py-4">
             <strong class="block truncate font-semibold text-slate-800">${escapeHtml(
-              request.appliance_name
+              getRequestApplianceDisplayName(request)
             )}</strong>
             <span class="mt-0.5 block truncate text-[11px] text-slate-400">${escapeHtml(
               request.issue
@@ -1258,7 +1326,7 @@ function populateTracking(request) {
 
   if ($("trackingAppliance")) {
     $("trackingAppliance").textContent =
-      `${request.appliance_name || "Service request"}${request.model_no ? ` (${request.model_no})` : ""}`;
+      `${getRequestApplianceDisplayName(request)}${request.model_no ? ` (${request.model_no})` : ""}`;
   }
   if ($("trackingMeta")) {
     $("trackingMeta").textContent = `${request.id} · ${formatDate(
@@ -3609,12 +3677,20 @@ document.addEventListener("DOMContentLoaded", async () => {
 // Pre-Repair Estimate & SLA Escalation Functions (SRS 6.10 & SRS 6.15)
 // ==========================================
 window.openCustomerEstimateModal = async function(requestId = selectedRequestId) {
-  if (!requestId) return;
-  const req = userRequests.find(r => r.id === requestId);
-  if ($("estModalSubtitle")) $("estModalSubtitle").textContent = `Service Request #${requestId} · ${req?.appliance_name || 'Appliance'}`;
+  if (requestId) {
+    selectedRequestId = requestId;
+  }
+  if (!selectedRequestId) {
+    const activeReq = userRequests.find(r => r.status === "Estimate Pending Approval" || r.has_estimate);
+    if (activeReq) selectedRequestId = activeReq.id;
+  }
+  if (!selectedRequestId) return;
+  const requestIdToUse = selectedRequestId;
+  const req = userRequests.find(r => r.id === requestIdToUse);
+  if ($("estModalSubtitle")) $("estModalSubtitle").textContent = `Service Request #${requestIdToUse} · ${getRequestApplianceDisplayName(req)}`;
   
   try {
-    const est = await readApiJson(`/api/requests/${encodeURIComponent(requestId)}/estimate`);
+    const est = await readApiJson(`/api/requests/${encodeURIComponent(requestIdToUse)}/estimate`);
     const rowsEl = $("estModalPartsRows");
     if (rowsEl) {
       if (est.parts && est.parts.length > 0) {
@@ -3656,28 +3732,39 @@ window.openCustomerEstimateModal = async function(requestId = selectedRequestId)
 
     openDialog("customerEstimateModal");
   } catch (err) {
-    showToast("Could not load estimate: " + (err.message || "Not available yet"), "warning");
+    showToast("Could not load estimate: " + (extractErrorMessage(err, "Not available yet")), "warning");
   }
 };
 
 window.respondToCustomerEstimate = async function(action) {
-  if (!selectedRequestId) return;
+  const reqId = selectedRequestId || userRequests.find(r => r.status === "Estimate Pending Approval" || r.has_estimate)?.id;
+  if (!reqId) {
+    showToast("No active request selected for estimate approval", "warning");
+    return;
+  }
   const remarks = $("estCustomerRemarks")?.value.trim() || "";
   try {
-    const res = await apiFetch(`/api/requests/${encodeURIComponent(selectedRequestId)}/estimate/respond`, {
+    const res = await apiFetch(`/api/requests/${encodeURIComponent(reqId)}/estimate/respond`, {
       method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action, remarks })
     });
     if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.detail || "Failed to submit estimate response");
+      let errMsg = "Failed to submit estimate response";
+      try {
+        const err = await res.json();
+        errMsg = extractErrorMessage(err, errMsg);
+      } catch {
+        errMsg = `Error ${res.status}: ${res.statusText || errMsg}`;
+      }
+      throw new Error(errMsg);
     }
     showToast(action === "approve" ? "✓ Estimate approved! Technician authorized to begin repair." : "Estimate declined. Franchise notified.", "info");
     closeDialog("customerEstimateModal");
-    await loadTrackingDetails(selectedRequestId);
+    await loadTrackingDetails(reqId);
     await loadDashboardData();
   } catch (err) {
-    showToast(err.message, "error");
+    showToast(extractErrorMessage(err, "Failed to submit estimate response"), "error");
   }
 };
 

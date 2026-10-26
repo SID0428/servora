@@ -297,6 +297,32 @@ def seed_database(db: Session):
                     if (app_brand == ci_brand or app.company_id == ci.company_id) and (app_cat == ci_cat or ci_cat == "other" or not app_cat):
                         app.appliance_name = ci.appliance_name
                         healed_any = True
+
+        # Also auto-heal service requests with generic 'brand Other' or 'Other'
+        legacy_reqs = db.query(ServiceRequestModel).all()
+        for sr in legacy_reqs:
+            sr_brand = (sr.brand or "").strip().lower()
+            curr_name = (sr.appliance_name or "").strip().lower()
+            is_gen = (not curr_name) or curr_name in (f"{sr_brand} other", "other", sr_brand, "appliance", "home appliance") or curr_name.endswith(" other")
+            if is_gen:
+                if sr.appliance_id:
+                    matched_app = db.query(ApplianceModel).filter(ApplianceModel.id == sr.appliance_id).first()
+                    if matched_app and matched_app.appliance_name and not matched_app.appliance_name.lower().endswith(" other"):
+                        sr.appliance_name = matched_app.appliance_name
+                        healed_any = True
+                        continue
+                matched_ci = None
+                for ci in catalog_items:
+                    if ci.appliance_name and (sr_brand == (ci.brand or "").strip().lower() or sr.company_id == ci.company_id):
+                        matched_ci = ci.appliance_name
+                        break
+                if matched_ci:
+                    sr.appliance_name = matched_ci
+                    healed_any = True
+                elif sr.brand:
+                    sr.appliance_name = f"{sr.brand.strip()} Appliance"
+                    healed_any = True
+
         if healed_any:
             db.commit()
     except Exception:

@@ -4,8 +4,8 @@ PRODUCTION-GRADE TECHNICAL ARCHITECTURE & DEVELOPER ONBOARDING MANUAL
 ================================================================================
 File: documentation.txt
 Platform: ServSure (formerly Servora)
-Version: 1.9.4 (Production Release - Technician Pre-Repair Gate Brand/Company Resolution Fix & Robust Client Fallback)
-Last Updated: October 26, 2026 (22:20 IST)
+Version: 1.9.5 (Production Release - Appliance Display Name Resolution & Estimate Approval Error Formatting Fix)
+Last Updated: October 26, 2026 (22:50 IST)
 Repository: https://github.com/SID0428/servora.git
 
 Welcome to ServSure! This manual is the definitive, authoritative reference
@@ -1891,6 +1891,27 @@ were identified between the initial rough draft documentation and the actual cod
         - Seeded 3 genuine OEM parts for Gelistra in the catalog (`GEL-FAN-01`: DC Evaporator Fan Motor [functional, covered], `GEL-PCB-01`: Smart Inverter Main PCB Board [functional, covered], and `GEL-FLT-01`: Deodorizing Activated Carbon Air Filter [consumable, billable]).
      3. Frontend Resilient Cache Fallback (`frontend/js/ops-dashboard.js`):
         - In `openTechEstimateModal`, added client cache fallback to inspect `companySparesCatalog`, `getUserCache("servsure_cache_catalog")`, and local storage if the network catalog is empty, automatically running warranty evaluation on cached parts.
+
+41. BUG FIX: Customer Portal Generic Appliance Name ("gelistra Other") & Accept Estimate "[object Object]" Error
+   - Symptoms & Root Cause:
+     1. In Customer Portal Active Requests and Service Tracking card, appliance names displayed as raw category fallback (e.g. "gelistra Other" or "gelistra Other (CLOV6BL)") instead of the customer's actual appliance name ("Gelistra Refrigerator").
+        - Root Cause: In `backend/app/routes/requests.py`, request creation unconditionally concatenated `f"{appliance.brand} {appliance.category}"`. When an appliance had a category of "Other", this permanently saved `appliance_name` as "{brand} Other".
+     2. In Customer Portal Pre-Repair Gate modal, clicking "Accept Estimate" / "Approve Estimate & Authorize Repair" triggered an error toast displaying raw "[object Object]".
+        - Root Cause: In `frontend/js/dashboard.js`, `respondToCustomerEstimate` called `apiFetch` with a JSON string body without specifying `"Content-Type": "application/json"`. Because `apiFetch` did not set the header by default, FastAPI rejected the plain text body with HTTP 422 Unprocessable Entity. The client catch block received FastAPI's 422 validation detail array `[{loc: ..., msg: ...}]` and passed it directly to `new Error()`, resulting in JavaScript stringifying the object to "[object Object]" in the toast notification.
+     3. In `backend/app/routes/estimates.py`, when accepting an estimate with custom parts not in `SparePartModel`, foreign key integrity on `part_requests.part_id` could fail, and branch resolution lacked fallback to company branches.
+   - Resolution:
+     1. Dynamic Appliance Display Name Resolution (`backend/app/routes/requests.py` & `frontend/js/dashboard.js`):
+        - In backend `format_request_detail` and `create_request`, added `is_generic_name(app_name, brand)` inspection: if an appliance name is generic or ends with " Other", it queries `ApplianceModel` for the customer's registered appliance name, queries `CompanyApplianceCatalogModel` by model number, or titles the brand cleanly as `{brand} Appliance`.
+        - In frontend `dashboard.js`, added `getRequestApplianceDisplayName(request)` and `isGenericTitle()` helpers to map linked user appliances and catalog entries across Home cards, Requests tables, tracking views, and estimate modals.
+     2. Database Seeding & Legacy Request Auto-Healing (`backend/app/seeds.py`):
+        - In `seed_database()`, added an auto-healing migration loop that inspects all `ServiceRequestModel` records with generic names (such as "gelistra Other") and reconciles them with `ApplianceModel.appliance_name` or `CompanyApplianceCatalogModel`.
+     3. Frontend JSON Header & Sanitized Error Extraction (`frontend/js/dashboard.js`):
+        - Updated `apiFetch` to automatically set `headers["Content-Type"] = "application/json"` whenever `options.body` is a string and the header is omitted.
+        - In `respondToCustomerEstimate`, explicitly passed `headers: { "Content-Type": "application/json" }` and safely preserved `selectedRequestId`.
+        - Enhanced `extractErrorMessage(errData, fallback)` to parse FastAPI error arrays (`detail.map(d => d.msg)`), error objects, and filter out any raw `"[object Object]"` strings from toast notifications.
+     4. Foreign Key & Hierarchy Safety in Estimate Responses (`backend/app/routes/estimates.py`):
+        - Handled custom technician parts safely by registering them into `SparePartModel` if missing so `part_requests.part_id` foreign keys succeed.
+        - Ensured company and branch IDs resolve safely across `UserModel` and `CompanyBranchModel`.
 
 ==================================================
 End of Documentation

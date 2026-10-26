@@ -419,31 +419,66 @@ def respond_to_estimate(
                 part_descriptions.append(f"{part_name} (Qty: {p_qty})")
 
                 # Automatically create part request for franchise under technician name
-                comp_id = (part_obj.company_id if part_obj else None) or req.company_id or "company_1"
-                part_db_id = part_obj.id if part_obj else (part_id or f"part_misc_{uuid.uuid4().hex[:6]}")
+                valid_company = None
+                if part_obj and part_obj.company_id:
+                    valid_company = db.query(UserModel).filter(UserModel.id == part_obj.company_id, UserModel.role == "company").first()
+                if not valid_company and req.company_id:
+                    valid_company = db.query(UserModel).filter(UserModel.id == req.company_id, UserModel.role == "company").first()
+                if not valid_company:
+                    valid_company = db.query(UserModel).filter(UserModel.role == "company").first()
+                comp_id = valid_company.id if valid_company else None
 
-                existing_pr = db.query(PartRequestModel).filter(
-                    PartRequestModel.request_id == req.id,
-                    PartRequestModel.part_id == part_db_id
-                ).first()
-
-                if not existing_pr:
-                    pr = PartRequestModel(
-                        id=f"REQ-{uuid.uuid4().hex[:8].upper()}",
+                if not part_obj:
+                    # Create custom spare part record so FK constraint passes
+                    custom_code = (part_code or f"PART-{uuid.uuid4().hex[:6].upper()}").strip().upper()
+                    part_obj = SparePartModel(
+                        id=f"part_{uuid.uuid4().hex[:8]}",
+                        part_code=custom_code,
+                        name=part_name or "Custom Spare Part",
+                        category=req.appliance_name or "General",
+                        brand=req.brand or "Universal",
+                        unit_price=float(p.get("unit_price", 0.0) or 0.0),
                         company_id=comp_id,
-                        branch_id=branch_id,
-                        part_id=part_db_id,
-                        quantity=p_qty,
-                        status="Pending",
-                        notes=f"Service Requisition for {req.id} ({req.appliance_name} - {req.issue}) · Customer: {req.customer_name}",
-                        requested_by=f"{tech_name} ({tech_id or 'Technician'})",
-                        request_id=req.id,
-                        technician_id=tech_id,
-                        technician_name=tech_name,
-                        stock_status_at_request="in_stock" if is_in_stock else "out_of_stock",
-                        created_at=datetime.utcnow()
+                        is_active=True
                     )
-                    db.add(pr)
+                    db.add(part_obj)
+                    db.flush()
+
+                part_db_id = part_obj.id
+
+                # Validate branch_id against CompanyBranchModel
+                valid_branch = db.query(CompanyBranchModel).filter(CompanyBranchModel.id == branch_id).first() if branch_id else None
+                if not valid_branch and comp_id:
+                    valid_branch = db.query(CompanyBranchModel).filter(CompanyBranchModel.company_id == comp_id).first()
+                if not valid_branch:
+                    valid_branch = db.query(CompanyBranchModel).first()
+                if valid_branch:
+                    branch_id = valid_branch.id
+                    req.branch_id = branch_id
+
+                if comp_id and branch_id and part_db_id:
+                    existing_pr = db.query(PartRequestModel).filter(
+                        PartRequestModel.request_id == req.id,
+                        PartRequestModel.part_id == part_db_id
+                    ).first()
+
+                    if not existing_pr:
+                        pr = PartRequestModel(
+                            id=f"REQ-{uuid.uuid4().hex[:8].upper()}",
+                            company_id=comp_id,
+                            branch_id=branch_id,
+                            part_id=part_db_id,
+                            quantity=p_qty,
+                            status="Pending",
+                            notes=f"Service Requisition for {req.id} ({req.appliance_name} - {req.issue}) · Customer: {req.customer_name}",
+                            requested_by=f"{tech_name} ({tech_id or 'Technician'})",
+                            request_id=req.id,
+                            technician_id=tech_id,
+                            technician_name=tech_name,
+                            stock_status_at_request="in_stock" if is_in_stock else "out_of_stock",
+                            created_at=datetime.utcnow()
+                        )
+                        db.add(pr)
 
             parts_str = ", ".join(part_descriptions)
             if has_out_of_stock:

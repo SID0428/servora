@@ -25,8 +25,10 @@ from app.db.models import (
     AMCSubscriptionModel,
     EstimateModel,
     EscalationModel,
-    PartSerialNumberModel
+    PartSerialNumberModel,
+    CompanyApplianceCatalogModel
 )
+from app.routes.appliances import is_generic_name
 from app.notification_service import (
     notify_booking_created,
     notify_appointment_rescheduled,
@@ -192,6 +194,33 @@ def format_request_detail(req: ServiceRequestModel, db: Session, user: Optional[
         latitude_val = req.latitude
         longitude_val = req.longitude
 
+    # Resolve meaningful, non-generic appliance_name (never display 'brand Other' or 'Other')
+    resolved_app_name = (req.appliance_name or "").strip()
+    b_low = (req.brand or "").strip().lower()
+    cur_low = resolved_app_name.lower()
+    if not resolved_app_name or is_generic_name(resolved_app_name, req.brand) or cur_low in (f"{b_low} other", "other", b_low, "home appliance", "appliance") or cur_low.endswith(" other"):
+        if req.appliance_id:
+            app_rec = db.query(ApplianceModel).filter(ApplianceModel.id == req.appliance_id).first()
+            if app_rec:
+                cand = (app_rec.appliance_name or "").strip()
+                if cand and not is_generic_name(cand, app_rec.brand, app_rec.category):
+                    resolved_app_name = cand
+                elif app_rec.category and app_rec.category.lower() != "other":
+                    resolved_app_name = f"{app_rec.brand.strip()} {app_rec.category.strip()}"
+        if not resolved_app_name or is_generic_name(resolved_app_name, req.brand) or resolved_app_name.lower().endswith(" other") or resolved_app_name.lower() in (f"{b_low} other", "other"):
+            cat_obj = db.query(CompanyApplianceCatalogModel).filter(
+                or_(
+                    CompanyApplianceCatalogModel.brand.ilike(f"%{b_low}%"),
+                    CompanyApplianceCatalogModel.company_id == req.company_id
+                )
+            ).first()
+            if cat_obj and cat_obj.appliance_name and not is_generic_name(cat_obj.appliance_name, req.brand, cat_obj.category):
+                resolved_app_name = cat_obj.appliance_name
+            elif req.brand:
+                resolved_app_name = f"{req.brand.strip()} Appliance"
+            else:
+                resolved_app_name = "Home Appliance"
+
     return ServiceRequestDetail(
         id=req.id,
         customer_id=req.customer_id,
@@ -199,7 +228,7 @@ def format_request_detail(req: ServiceRequestModel, db: Session, user: Optional[
         customer_phone=customer_phone_val,
         customer_address=customer_address_val,
         appliance_id=req.appliance_id,
-        appliance_name=req.appliance_name,
+        appliance_name=resolved_app_name,
         brand=req.brand,
         model_no=req.model_no,
         issue=req.issue,
@@ -812,9 +841,41 @@ def create_request(payload: ServiceBookingCreate, request: Request, db: Session 
         raise HTTPException(status_code=403, detail="Only customers can create service requests")
 
     appliance = db.query(ApplianceModel).filter(ApplianceModel.id == payload.appliance_id).first()
-    app_name = f"{appliance.brand} {appliance.category}" if appliance else "Home Appliance"
     app_brand = appliance.brand if appliance else "Authorized Brand"
     app_model = appliance.model_no if appliance else "STD-01"
+
+    app_name = "Home Appliance"
+    if appliance:
+        raw_name = (appliance.appliance_name or "").strip()
+        if raw_name and not is_generic_name(raw_name, appliance.brand, appliance.category):
+            app_name = raw_name
+        else:
+            cat_match = db.query(CompanyApplianceCatalogModel).filter(
+                or_(
+                    CompanyApplianceCatalogModel.brand.ilike(appliance.brand.strip()),
+                    CompanyApplianceCatalogModel.company_id == appliance.company_id
+                )
+            ).all()
+            found_name = None
+            for cm in cat_match:
+                try:
+                    m_list = json.loads(cm.model_numbers) if cm.model_numbers else []
+                except Exception:
+                    m_list = [m.strip() for m in str(cm.model_numbers).split(",") if m.strip()]
+                if appliance.model_no.strip() in m_list or cm.appliance_name.lower() in (raw_name.lower()):
+                    found_name = cm.appliance_name
+                    break
+            if not found_name and cat_match:
+                for cm in cat_match:
+                    if cm.appliance_name and not is_generic_name(cm.appliance_name, appliance.brand, appliance.category):
+                        found_name = cm.appliance_name
+                        break
+            if found_name:
+                app_name = found_name
+            elif appliance.category and appliance.category.strip().lower() != "other":
+                app_name = f"{appliance.brand.strip()} {appliance.category.strip()}"
+            else:
+                app_name = f"{appliance.brand.strip()} Appliance"
 
     # Identify company
     company_id = None
