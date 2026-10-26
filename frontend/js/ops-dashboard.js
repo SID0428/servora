@@ -4670,12 +4670,14 @@ function renderCompanyWarrantyClaims() {
     ].join("");
   }
 
-  const filtered = companyWarrantyClaims.filter((item) =>
-    [item.id, item.request_id, item.branch_name, item.appliance_name, item.status]
-      .join(" ")
-      .toLowerCase()
-      .includes(query)
-  );
+  const filtered = companyWarrantyClaims
+    .map((item) => enrichClaimWithRequestData(item))
+    .filter((item) =>
+      [item.id, item.request_id, item.branch_name, item.appliance_name, item.status]
+        .join(" ")
+        .toLowerCase()
+        .includes(query)
+    );
 
   if ($("requestRows")) {
     $("requestRows").innerHTML = filtered.length
@@ -5087,9 +5089,116 @@ function initWarrantyPolicyDialogEvents() {
   });
 }
 
+function enrichClaimWithRequestData(claim) {
+  if (!claim) return claim;
+  const rawReqId = String(claim.request_id || "").trim();
+  const cleanReqId = rawReqId.replace(/[–—]/g, "-").trim();
+  const reqDigits = cleanReqId.replace(/\D/g, "");
+
+  const allReqs = (typeof requests !== "undefined" && Array.isArray(requests) && requests.length > 0)
+    ? requests
+    : (getUserCache("servsure_cache_requests") || getUserCache("servora_cache_requests") || []);
+
+  const req = allReqs.find((r) => {
+    if (!r) return false;
+    const rId = String(r.id || "").replace(/[–—]/g, "-").trim();
+    if (rId === cleanReqId || rId === rawReqId) return true;
+    if (reqDigits && rId.endsWith(reqDigits)) return true;
+    return false;
+  });
+
+  // Customer info
+  if (!claim.customer_name || claim.customer_name === "—" || claim.customer_name === "Customer") {
+    if (req?.customer_name) claim.customer_name = req.customer_name;
+  }
+  if (!claim.customer_phone || claim.customer_phone === "—") {
+    if (req?.customer_phone) claim.customer_phone = req.customer_phone;
+  }
+  if (!claim.customer_address || claim.customer_address === "—") {
+    if (req?.customer_address) claim.customer_address = req.customer_address;
+  }
+  if (!claim.technician_name || claim.technician_name === "—") {
+    if (req?.technician_name) claim.technician_name = req.technician_name;
+  }
+
+  // Appliance info
+  const currApp = (claim.appliance_name || "").trim();
+  if (!currApp || currApp.toLowerCase().endsWith(" other") || currApp.toLowerCase() === "other" || currApp === "Appliance") {
+    const cleaner = req?.appliance_name || (claim.brand ? `${claim.brand} Appliance` : "Appliance");
+    if (cleaner && !cleaner.toLowerCase().endsWith(" other")) {
+      claim.appliance_name = cleaner;
+    }
+  }
+  if (!claim.model_no || claim.model_no === "—") {
+    if (req?.model_no || req?.appliance?.model_no) claim.model_no = req.model_no || req.appliance.model_no;
+  }
+  if (!claim.serial_no || claim.serial_no === "—") {
+    if (req?.serial_no || req?.serial_number || req?.appliance?.serial_no) claim.serial_no = req.serial_no || req.serial_number || req.appliance.serial_no;
+  }
+  if (!claim.purchase_date || claim.purchase_date === "—") {
+    if (req?.purchase_date || req?.appliance?.purchase_date) claim.purchase_date = req.purchase_date || req.appliance.purchase_date;
+  }
+  if (!claim.issue || claim.issue.startsWith("Reported defect") || claim.issue === "—") {
+    if (req?.issue || req?.description) claim.issue = req.issue || req.description;
+  }
+  if (!claim.defect_photo && req?.defect_photo) {
+    claim.defect_photo = req.defect_photo;
+  }
+  if (!claim.invoice_url && (req?.invoice_url || req?.appliance?.invoice_url)) {
+    claim.invoice_url = req.invoice_url || req.appliance.invoice_url;
+  }
+
+  // Covered parts calculation
+  let coveredCost = Number(claim.covered_parts_cost || 0);
+  if (!coveredCost && Array.isArray(claim.parts_claimed) && claim.parts_claimed.length > 0) {
+    coveredCost = claim.parts_claimed.reduce((sum, p) => {
+      const isCovered = p.is_covered !== false;
+      if (!isCovered) return sum;
+      const unit = Number(p.unit_price || p.price || 0);
+      const qty = Number(p.quantity || p.qty || 1);
+      const total = Number(p.total ?? (unit * qty));
+      return sum + total;
+    }, 0);
+  }
+  if (!coveredCost && Number(claim.claim_amount || 0) > 0) {
+    coveredCost = Number(claim.claim_amount);
+  }
+  claim.covered_parts_cost = coveredCost;
+
+  // Consumer billed calculation
+  let consumerBilled = Number(claim.service_total_amount || 0);
+  if (!consumerBilled && Number(claim.customer_parts_cost || 0) > 0) {
+    consumerBilled = Number(claim.customer_parts_cost);
+  }
+  if (!consumerBilled && req) {
+    consumerBilled = Number(
+      req.job_card?.total_amount
+      ?? req.total_amount
+      ?? (req.payment_amount || 0)
+    );
+    if (!consumerBilled && Array.isArray(req.job_card?.parts_used)) {
+      consumerBilled = req.job_card.parts_used
+        .filter((p) => p.is_covered === false || p.covered === false)
+        .reduce((sum, p) => sum + Number(p.total ?? (Number(p.unit_price || 0) * Number(p.quantity || 1))), 0);
+    }
+  }
+  if (!consumerBilled && claim.claim_notes) {
+    const notesMatch = claim.claim_notes.match(/Consumer billed\s*₹?\s*([\d,]+(?:\.\d+)?)/i);
+    if (notesMatch && notesMatch[1]) {
+      consumerBilled = parseFloat(notesMatch[1].replace(/,/g, ""));
+    }
+  }
+  claim.service_total_amount = consumerBilled;
+
+  return claim;
+}
+window.enrichClaimWithRequestData = enrichClaimWithRequestData;
+
 function openClaimReviewModal(claim) {
   const modal = $("claimReviewModal");
   if (!modal) return;
+  enrichClaimWithRequestData(claim);
+
   if ($("reviewClaimHiddenId")) $("reviewClaimHiddenId").value = claim.id;
   if ($("reviewClaimId")) $("reviewClaimId").textContent = claim.id;
   if ($("reviewClaimReqId")) $("reviewClaimReqId").textContent = claim.request_id;
@@ -5469,7 +5578,7 @@ function renderFranchiseWarrantyClaims() {
     ].join("");
   }
 
-  let filtered = franchiseWarrantyClaims;
+  let filtered = franchiseWarrantyClaims.map((item) => enrichClaimWithRequestData(item));
   if (franchiseWarrantyStatusTab === "pending") {
     filtered = filtered.filter((c) => c.status === "Pending Review");
   } else if (franchiseWarrantyStatusTab === "approved") {

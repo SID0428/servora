@@ -91,12 +91,39 @@ def list_warranty_claims(
     claims = query.order_by(WarrantyClaimModel.submitted_at.desc()).all()
     results = []
     for c in claims:
+        # Normalize request ID to handle ASCII hyphen and Unicode dashes
+        raw_req_id = c.request_id or ""
+        clean_req_id = raw_req_id.replace("–", "-").replace("—", "-").strip()
+        num_part = re.sub(r'^[^\d]*', '', clean_req_id)
+
         # Load related branch, company, appliance, request, and job card
         comp = db.query(UserModel).filter(UserModel.id == c.company_id).first()
         branch = db.query(CompanyBranchModel).filter(CompanyBranchModel.id == c.branch_id).first()
         appliance = db.query(ApplianceModel).filter(ApplianceModel.id == c.appliance_id).first() if c.appliance_id else None
+
         req = db.query(ServiceRequestModel).filter(ServiceRequestModel.id == c.request_id).first()
-        jc = db.query(JobCardModel).filter(JobCardModel.request_id == c.request_id).first() if c.request_id else None
+        if not req and clean_req_id:
+            req = db.query(ServiceRequestModel).filter(
+                or_(
+                    ServiceRequestModel.id == clean_req_id,
+                    ServiceRequestModel.id.ilike(f"%{clean_req_id}%"),
+                    *( [ServiceRequestModel.id.ilike(f"%{num_part}%")] if num_part else [] )
+                )
+            ).first()
+
+        jc = None
+        if c.request_id:
+            jc = db.query(JobCardModel).filter(JobCardModel.request_id == c.request_id).first()
+            if not jc and clean_req_id:
+                jc = db.query(JobCardModel).filter(
+                    or_(
+                        JobCardModel.request_id == clean_req_id,
+                        JobCardModel.request_id.ilike(f"%{clean_req_id}%"),
+                        *( [JobCardModel.request_id.ilike(f"%{num_part}%")] if num_part else [] )
+                    )
+                ).first()
+        if not jc and req:
+            jc = db.query(JobCardModel).filter(JobCardModel.request_id == req.id).first()
 
         if not appliance and req and req.appliance_id:
             appliance = db.query(ApplianceModel).filter(ApplianceModel.id == req.appliance_id).first()
@@ -131,10 +158,12 @@ def list_warranty_claims(
         covered_parts_cost = sum(get_item_total(p) for p in parts if getattr(p, "is_covered", False)) if parts else 0.0
         if covered_parts_cost == 0.0 and parts:
             covered_parts_cost = sum(get_item_total(p) for p in parts)
+        if covered_parts_cost == 0.0 and c.claim_amount:
+            covered_parts_cost = float(c.claim_amount)
 
         customer_parts_cost = 0.0
         labor_cost = jc.labor_cost if jc else 0.0
-        service_total = jc.total_amount if jc else 0.0
+        service_total = jc.total_amount if jc else (getattr(req, "total_amount", 0.0) if req else 0.0)
         if jc and jc.parts_used_json:
             try:
                 all_jc_parts = json.loads(jc.parts_used_json)
@@ -142,8 +171,23 @@ def list_warranty_claims(
             except Exception:
                 pass
 
-        purchase_invoice = appliance.invoice_url if appliance and appliance.invoice_url else (req.invoice_url if req else None)
-        service_inv_no = f"INV-{jc.id.replace('JC-', '')}" if jc else (f"INV-{req.id.replace('SR-', '')}" if req else None)
+        # If service_total is zero/empty, fallback to customer parts or regex in claim notes
+        if (not service_total or service_total == 0.0) and customer_parts_cost > 0:
+            service_total = customer_parts_cost + (labor_cost if not getattr(req, "is_under_warranty", False) else 0.0)
+        if (not service_total or service_total == 0.0) and c.claim_notes:
+            notes_match = re.search(r"Consumer billed\s*₹?\s*([\d,]+(?:\.\d+)?)", c.claim_notes)
+            if notes_match:
+                try:
+                    service_total = float(notes_match.group(1).replace(",", ""))
+                except Exception:
+                    pass
+
+        purchase_invoice = appliance.invoice_url if appliance and appliance.invoice_url else (getattr(req, "invoice_url", None) if req else None)
+        service_inv_no = (
+            f"INV-{jc.id.replace('JC-', '').replace('JC–', '')}"
+            if jc
+            else (f"INV-{req.id.replace('SR-', '').replace('SR–', '')}" if req else None)
+        )
 
         tech_user = None
         if jc and jc.technician_id:
@@ -152,10 +196,41 @@ def list_warranty_claims(
             tech_user = db.query(UserModel).filter(UserModel.id == req.technician_id).first()
         tech_name = getattr(req, "technician_name", None) or (tech_user.name if tech_user else None)
 
-        app_name = f"{appliance.brand} {appliance.category}" if appliance else (
-            f"{req.brand or ''} {getattr(req, 'appliance_category', None) or req.appliance_name or 'Appliance'}".strip() if req else "Appliance"
+        # Smart appliance name resolution: avoid "brand Other"
+        raw_app_name = (
+            getattr(req, "appliance_name", None)
+            or (appliance.appliance_name if appliance else None)
+            or (f"{appliance.brand} {appliance.category}" if appliance else None)
+            or (f"{getattr(req, 'brand', '')} {getattr(req, 'appliance_category', '')}".strip() if req else None)
+            or "Appliance"
         )
+        if raw_app_name.lower().endswith(" other") or raw_app_name.lower() == "other":
+            cleaner = getattr(req, "appliance_name", None) or (appliance.appliance_name if appliance else None)
+            if cleaner and not cleaner.lower().endswith(" other"):
+                raw_app_name = cleaner
+            else:
+                brand_str = appliance.brand if appliance else (getattr(req, "brand", "") or "")
+                raw_app_name = f"{brand_str} Appliance".strip() if brand_str else "Appliance"
+        app_name = raw_app_name
+
         brand_name = appliance.brand if appliance else (req.brand if req else (comp.name if comp else None))
+
+        model_no = (
+            (appliance.model_no if appliance and appliance.model_no else None)
+            or (getattr(req, "model_no", None) if req else None)
+        )
+        serial_no = (
+            (appliance.serial_no if appliance and appliance.serial_no else None)
+            or (getattr(req, "serial_no", None) if req else None)
+            or (getattr(req, "serial_number", None) if req else None)
+        )
+        purchase_date = appliance.purchase_date if appliance else (getattr(req, "purchase_date", None) if req else None)
+        issue_text = (
+            (getattr(req, "issue", None) if req and req.issue else None)
+            or (getattr(req, "description", None) if req and req.description else None)
+            or (c.claim_notes if c.claim_notes and not c.claim_notes.startswith("OEM Warranty") else None)
+            or "Reported defect during service"
+        )
 
         results.append(
             WarrantyClaimSchema(
@@ -177,16 +252,16 @@ def list_warranty_claims(
                 customer_name=req.customer_name if req else None,
                 customer_phone=req.customer_phone if req else None,
                 customer_address=req.customer_address if req else None,
-                model_no=appliance.model_no if appliance else (getattr(req, "model_no", None) if req else None),
-                serial_no=appliance.serial_no if appliance else (getattr(req, "serial_no", None) or getattr(req, "serial_number", None) if req else None),
-                purchase_date=appliance.purchase_date if appliance else None,
+                model_no=model_no,
+                serial_no=serial_no,
+                purchase_date=purchase_date,
                 invoice_url=purchase_invoice,
                 service_invoice_no=service_inv_no,
                 service_total_amount=service_total,
                 labor_cost=labor_cost,
                 covered_parts_cost=covered_parts_cost,
                 customer_parts_cost=customer_parts_cost,
-                issue=req.issue if req else None,
+                issue=issue_text,
                 defect_photo=getattr(req, "defect_photo", None) if req else None,
                 technician_name=tech_name
             )

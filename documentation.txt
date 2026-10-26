@@ -4,8 +4,8 @@ PRODUCTION-GRADE TECHNICAL ARCHITECTURE & DEVELOPER ONBOARDING MANUAL
 ================================================================================
 File: documentation.txt
 Platform: ServSure (formerly Servora)
-Version: 2.0.0 (Production Release - Warranty Claim Details & Franchise Tracking Workspace)
-Last Updated: October 27, 2026 (02:16 IST)
+Version: 2.0.0 (Production Release - Warranty Claim Enrichment, Dash Normalization & Franchise Modal Fix)
+Last Updated: October 27, 2026 (02:42 IST)
 Repository: https://github.com/SID0428/servora.git
 
 Welcome to ServSure! This manual is the definitive, authoritative reference
@@ -2191,6 +2191,43 @@ were identified between the initial rough draft documentation and the actual cod
           - Status Indicators: ⏳ Sent — Awaiting Review, ✓ Accepted by OEM, ✕ Rejected by OEM.
           - Franchise Claim Detail Dialog: Full inspection view highlighting OEM audit decision notes and rejection reasons.
           - CSV Export: Dedicated export for franchise warranty claims (`servsure-franchise-warranty-claims.csv`).
+
+49. BUG FIX & WORKSPACE ENHANCEMENT: Warranty Claim Enrichment, Unicode Dash Normalization, Smart Appliance Names, and Franchise "View Details" Modal
+   - Initial State / Observed Issue:
+     1. Franchise Portal "View Details" Modal Inoperable: In `franchise-dashboard.html`, clicking "View Details 📄" in the Warranty Claims
+        table failed to display the claim review dialog. Investigation revealed that `<dialog id="claimReviewModal">` was inadvertently nested
+        inside `<dialog id="calendarExceptionDialog">` because `calendarExceptionDialog`'s closing `</div></form></dialog>` had been omitted
+        during prior updates. Because the parent calendar exception dialog remained hidden, calling `.showModal()` on the nested `#claimReviewModal`
+        was blocked by browser DOM rendering rules.
+     2. Missing Customer Details & Generic Appliance Fallback (`gelistra Other`): In both Franchise and Company claim modals, customer details
+        rendered as em-dash (`—`), appliance showed `gelistra Other`, and model/serial/purchase date were blank.
+        Root Cause: Ticket IDs frequently contain Unicode en-dashes (`SR–9929`, U+2013) rather than standard ASCII hyphens (`SR-9929`, U+002D).
+        Backend queries in `warranty_amc.py` (`ServiceRequestModel.id == c.request_id`) strictly compared strings and failed to find the service request.
+        When `req` evaluated to `None`, backend returned `null` for customer, model, serial, and issue, falling back to `gelistra Other`.
+     3. Financial Values Zeroed Out:
+        - "Covered Parts Cost" displayed `₹0.00` even though the claim had itemized covered parts totaling `₹14,500.00` (Compressor ₹9,500 + PCB ₹5,000).
+        - "Consumer Billed" displayed `₹0.00` because `claim.service_total_amount` was not populated from job cards or request billing totals.
+   - Resolution:
+     1. HTML DOM Hierarchy Correction (`frontend/franchise-dashboard.html`):
+        - Properly closed `<form id="calendarExceptionForm">` and `<dialog id="calendarExceptionDialog">` before `<dialog id="claimReviewModal">`.
+        - Restored `#claimReviewModal` as an independent top-level dialog, allowing `openClaimReviewModal(claim)` to call `.showModal()` reliably.
+     2. Robust Ticket ID Normalization & Cross-Referencing (`backend/app/routes/warranty_amc.py` & `frontend/js/ops-dashboard.js`):
+        - Backend: In `list_warranty_claims`, normalized `c.request_id` by stripping whitespace and replacing Unicode dashes (`[–—]`) with standard `-`.
+          Added fallback query matching on normalized ID and numeric suffix so `SR–9929` seamlessly joins with `SR-9929` and `JC-9929`.
+        - Frontend: Added `enrichClaimWithRequestData(claim)` which cross-references `requests` (in-memory or `servsure_cache_requests` / `servora_cache_requests`).
+          Matches on normalized IDs or numeric digits, ensuring cached or locally submitted claims always display complete customer contact details
+          (`Shreyansh Bansal`, `+91 98765 43210`, `12, Sector 4, Greater Noida`) and technician name.
+     3. Smart Appliance Name & Defect Resolution (`backend/app/routes/warranty_amc.py` & `frontend/js/ops-dashboard.js`):
+        - Prioritizes `req.appliance_name` or `appliance.appliance_name` (e.g. `Gelistra Inverter Refrigerator`).
+        - Automatically filters out `" Other"` or `"Other"` suffixes to prevent `"gelistra Other"`.
+        - Populates `model_no` (`GL-9929`), `serial_no` (`SN-GEL-9929`), and customer reported issue (`Cooling issue`) rather than generic placeholder text.
+     4. Dynamic Financial Computation (`backend/app/routes/warranty_amc.py` & `frontend/js/ops-dashboard.js`):
+        - Covered Parts Cost: Dynamically sums itemized parts in `claim.parts_claimed` where `is_covered !== false`.
+          If parts sum is 0, safely falls back to `claim.claim_amount` (e.g. `₹14,500.00`).
+        - Consumer Billed: Computed from `claim.service_total_amount` -> `claim.customer_parts_cost` -> `req.job_card?.total_amount` ->
+          regex extraction from `claim.claim_notes` (`Consumer billed ₹...`) -> sum of non-covered parts/consumables (e.g. Gas Refill `₹750.00`).
+        - Table View Enrichment: Updated `renderFranchiseWarrantyClaims` and `renderWarrantyClaimsTable` to enrich claims before rendering,
+          ensuring table rows and search filters immediately display real customer names and product models.
 
 ==================================================
 End of Documentation
